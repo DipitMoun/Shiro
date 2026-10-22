@@ -1,12 +1,17 @@
 package eu.kanade.presentation.library.manga
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -22,8 +27,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.dp
 import eu.kanade.core.preference.PreferenceMutableState
+import eu.kanade.presentation.library.components.CollectionCard
 import eu.kanade.presentation.library.components.LibraryTabs
+import eu.kanade.presentation.library.components.SubCategorySquare
 import eu.kanade.tachiyomi.ui.library.manga.MangaLibraryItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -101,28 +109,9 @@ fun MangaLibraryContent(
             }
         }
 
-        val gridItems = remember(childCategories, entries) {
-            val groups = childCategories.map { cat ->
-                val pageIndex = categories.indexOf(cat)
-                val itemsForCat = if (pageIndex != -1) getLibraryForPage(pageIndex) else emptyList()
-                val firstManga = itemsForCat.firstOrNull()?.libraryManga
-                val cover = firstManga?.let { lm ->
-                    val it = lm.manga
-                    tachiyomi.domain.entries.manga.model.MangaCover(
-                        mangaId = it.id,
-                        sourceId = it.source,
-                        isMangaFavorite = it.favorite,
-                        url = it.thumbnailUrl,
-                        lastModified = it.coverLastModified,
-                    )
-                }
-                MangaCategoryGridItem.Group(cat, cover)
-            }
-            val entryItems = entries.map { MangaCategoryGridItem.Entry(it) }
-            groups + entryItems
+        val categoryCollections = remember(categories, currentCategory) {
+            categories.filter { it.parentId == null || it.parentId == currentCategory?.id }
         }
-
-        val columns by remember { getColumnsForOrientation(true) } // Simplified assuming compact grid
 
         PullRefresh(
             refreshing = isRefreshing,
@@ -137,18 +126,37 @@ fun MangaLibraryContent(
             },
             enabled = notSelectionMode,
         ) {
-            MangaCategoryGridScreen(
-                items = gridItems,
-                columns = columns.takeIf { it > 0 } ?: 2,
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 160.dp),
                 contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
-                selection = selection,
-                onGroupClick = { clickedCategory ->
-                    onCategoryClick(clickedCategory)
-                },
-                onClickManga = onClickMangaInternal,
-                onLongClickManga = onToggleRangeSelection,
-                onClickContinueReading = onContinueReadingClicked,
-            )
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                items(categoryCollections) { cat ->
+                    val pageIndex = categories.indexOf(cat)
+                    val previewImages = if (pageIndex != -1) {
+                        getLibraryForPage(pageIndex).take(4).map { it.libraryManga.manga.thumbnailUrl }
+                    } else {
+                        emptyList()
+                    }
+                    val subCats = categories
+                        .filter { it.parentId == cat.id }
+                        .map { sub ->
+                            SubCategorySquare(
+                                id = sub.id,
+                                name = sub.name,
+                                count = getNumberOfMangaForCategory(sub) ?: 0,
+                            )
+                        }
+                    CollectionCard(
+                        title = cat.name,
+                        subCategories = subCats,
+                        previewImages = previewImages,
+                        onClick = { onCategoryClick(cat) },
+                    )
+                }
+            }
         }
     }
 }
