@@ -14,3 +14,8 @@ local.properties
 
 # macOS specific files
 .DS_Store
+
+# Shiro signing config
+app/shiro-release.jks
+*.jks
+*.keystore

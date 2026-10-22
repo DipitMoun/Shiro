@@ -144,7 +144,7 @@ data class BrowseAnimeSourceScreen(
                         navigateUp = navigateUp,
                         onWebViewClick = onWebViewClick,
                         onHelpClick = onHelpClick,
-                        onSettingsClick = { navigator.push(AnimeSourcePreferencesScreen(sourceId)) },
+                        onSettingsClick = { navigator.push(AnimeSourcePreferencesScreen(sourceId displayMode = screenModel.displayMode.value)) },
                         onSearch = screenModel::search,
                     )
 

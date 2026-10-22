@@ -42,6 +42,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("shiro-release.jks")
+            storePassword = "shiro123"
+            keyAlias = "shiro"
+            keyPassword = "shiro123"
+        }
+    }
+
     buildTypes {
         val debug by getting {
             applicationIdSuffix = ".dev"
@@ -79,7 +88,7 @@ android {
             versionNameSuffix = "-benchmark"
             applicationIdSuffix = ".benchmark"
 
-            signingConfig = debug.signingConfig
+            signingConfig = signingConfigs.getByName("release")
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }
