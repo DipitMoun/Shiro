@@ -14,10 +14,10 @@ plugins {
 shortcutHelper.setFilePath("./shortcuts.xml")
 
 android {
-    namespace = "eu.kanade.tachiyomi"
+    namespace = "io.github.DipitMoun.shiro"
 
     defaultConfig {
-        applicationId = "xyz.jmir.tachiyomi.mi"
+        applicationId = "io.github.DipitMoun.shiro"
 
         versionCode = 132
         versionName = "0.18.2.1"

@@ -12,31 +12,8 @@ class AppUpdateChecker {
     private val getApplicationRelease: GetApplicationRelease by injectLazy()
 
     suspend fun checkForUpdate(context: Context, forceCheck: Boolean = false): GetApplicationRelease.Result {
-        // Disabling app update checks for older Android versions that we're going to drop support for
-        // if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-        //    return GetApplicationRelease.Result.OsTooOld
-        // }
-
-        return withIOContext {
-            val result = getApplicationRelease.await(
-                GetApplicationRelease.Arguments(
-                    isPreviewBuildType,
-                    BuildConfig.COMMIT_COUNT.toInt(),
-                    BuildConfig.VERSION_NAME,
-                    GITHUB_REPO,
-                    forceCheck,
-                ),
-            )
-
-            when (result) {
-                is GetApplicationRelease.Result.NewUpdate -> AppUpdateNotifier(context).promptUpdate(
-                    result.release,
-                )
-                else -> {}
-            }
-
-            result
-        }
+        // Shiro: update checker disabled - fork does not track upstream Aniyomi releases
+        return GetApplicationRelease.Result.OsTooOld
     }
 }
 
