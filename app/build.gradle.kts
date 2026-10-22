@@ -207,6 +207,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("io.github.tdlib-android:core:0.1.1")
     implementation("com.github.up9cloud:tdlib-android:1.8.29")
     implementation(projects.i18n)
     implementation(projects.i18nAniyomi)
@@ -359,6 +360,7 @@ androidComponents {
 
 buildscript {
     dependencies {
+    implementation("io.github.tdlib-android:core:0.1.1")
         classpath(kotlinx.gradle)
     }
 }
