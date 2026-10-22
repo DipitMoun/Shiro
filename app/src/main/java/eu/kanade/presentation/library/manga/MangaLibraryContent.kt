@@ -1,12 +1,12 @@
 package eu.kanade.presentation.library.manga
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -87,7 +87,7 @@ fun MangaLibraryContent(
         }
 
         val childCategories = categories.filter { it.parentId == currentCategory?.id }
-        
+
         val entries = if (currentCategory != null) {
             val pageIndex = categories.indexOf(currentCategory)
             if (pageIndex != -1) getLibraryForPage(pageIndex) else emptyList()
@@ -96,7 +96,9 @@ fun MangaLibraryContent(
             if (defaultCategory != null && defaultCategory.parentId == null) {
                 val pageIndex = categories.indexOf(defaultCategory)
                 if (pageIndex != -1) getLibraryForPage(pageIndex) else emptyList()
-            } else emptyList()
+            } else {
+                emptyList()
+            }
         }
 
         val gridItems = remember(childCategories, entries) {
@@ -111,7 +113,7 @@ fun MangaLibraryContent(
                         sourceId = it.source,
                         isMangaFavorite = it.favorite,
                         url = it.thumbnailUrl,
-                        lastModified = it.coverLastModified
+                        lastModified = it.coverLastModified,
                     )
                 }
                 MangaCategoryGridItem.Group(cat, cover)

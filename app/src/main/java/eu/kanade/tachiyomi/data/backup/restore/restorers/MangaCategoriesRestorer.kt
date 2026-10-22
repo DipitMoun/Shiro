@@ -18,7 +18,7 @@ class MangaCategoriesRestorer(
             val dbCategories = getMangaCategories.await()
             val dbCategoriesByName = dbCategories.associateBy { it.name }
             var nextOrder = dbCategories.maxOfOrNull { it.order }?.plus(1) ?: 0
-            
+
             // Correctif Shiro : map pour faire correspondre l'ancien ID du backup au nouvel ID
             val idMap = mutableMapOf<Long, Long>()
 

@@ -1,12 +1,12 @@
 package eu.kanade.presentation.library.anime
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -86,7 +86,7 @@ fun AnimeLibraryContent(
         }
 
         val childCategories = categories.filter { it.parentId == currentCategory?.id }
-        
+
         val entries = if (currentCategory != null) {
             val pageIndex = categories.indexOf(currentCategory)
             if (pageIndex != -1) getAnimeLibraryForPage(pageIndex) else emptyList()
@@ -95,7 +95,9 @@ fun AnimeLibraryContent(
             if (defaultCategory != null && defaultCategory.parentId == null) {
                 val pageIndex = categories.indexOf(defaultCategory)
                 if (pageIndex != -1) getAnimeLibraryForPage(pageIndex) else emptyList()
-            } else emptyList()
+            } else {
+                emptyList()
+            }
         }
 
         val gridItems = remember(childCategories, entries) {
@@ -109,7 +111,7 @@ fun AnimeLibraryContent(
                         sourceId = it.source,
                         isAnimeFavorite = it.favorite,
                         url = it.thumbnailUrl,
-                        lastModified = it.coverLastModified
+                        lastModified = it.coverLastModified,
                     )
                 }
                 CategoryGridItem.Group(cat, cover)

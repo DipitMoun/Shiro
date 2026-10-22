@@ -48,17 +48,17 @@ fun AnimeCategoryGridScreen(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(
             items = items,
-            key = { it.hashCode() }
+            key = { it.hashCode() },
         ) { item ->
             when (item) {
                 is CategoryGridItem.Group -> {
                     Column(
                         modifier = Modifier.clickable { onGroupClick(item.category) },
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         if (item.coverAnime != null) {
                             EntryCompactGridItem(
@@ -69,26 +69,26 @@ fun AnimeCategoryGridScreen(
                                 coverBadgeEnd = {},
                                 onLongClick = { },
                                 onClick = { onGroupClick(item.category) },
-                                onClickContinueViewing = null
+                                onClickContinueViewing = null,
                             )
                         } else {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(32.dp),
-                                contentAlignment = Alignment.Center
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Folder,
                                     contentDescription = "Folder",
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
                                 )
                             }
                             Text(
                                 text = item.category.name,
                                 style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2
+                                maxLines = 2,
                             )
                         }
                     }
@@ -109,9 +109,13 @@ fun AnimeCategoryGridScreen(
                         coverBadgeEnd = {},
                         onLongClick = { onLongClickAnime(item.libraryItem.libraryAnime) },
                         onClick = { onClickAnime(item.libraryItem.libraryAnime) },
-                        onClickContinueViewing = if (onClickContinueWatching != null && item.libraryItem.unseenCount > 0) {
+                        onClickContinueViewing = if (onClickContinueWatching != null &&
+                            item.libraryItem.unseenCount > 0
+                        ) {
                             { onClickContinueWatching(item.libraryItem.libraryAnime) }
-                        } else null
+                        } else {
+                            null
+                        },
                     )
                 }
             }
