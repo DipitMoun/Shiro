@@ -26,6 +26,7 @@ import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadProvider
 import eu.kanade.tachiyomi.data.saver.ImageSaver
+import eu.kanade.tachiyomi.data.telegram.TelegramPreferences
 import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramAuthManager
 import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramChannelScraper
 import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramDownloader
@@ -241,6 +242,7 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { TorrentServerApi(get(), get()) }
         addSingletonFactory { TorrentServerUtils(get(), get()) } // Telegram TDLib
         addSingletonFactory { TelegramSessionStorage(app) }
+        addSingletonFactory { TelegramPreferences(app) }
         addSingletonFactory { TelegramAuthManager(app, get()) }
         addSingletonFactory { TelegramChannelScraper(get()) }
         addSingletonFactory { TelegramDownloader(get()) }
