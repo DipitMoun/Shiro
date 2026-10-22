@@ -1,3 +1,4 @@
+import java.util.Properties
 import mihon.buildlogic.Config
 import mihon.buildlogic.getBuildTime
 import mihon.buildlogic.getCommitCount
@@ -13,7 +14,7 @@ plugins {
 
 shortcutHelper.setFilePath("./shortcuts.xml")
 
-val localProperties = java.util.Properties()
+val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
