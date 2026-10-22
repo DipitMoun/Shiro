@@ -70,6 +70,11 @@ import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
 
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramAuthManager
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramChannelScraper
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramDownloader
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramSessionStorage
+
 class AppModule(val app: Application) : InjektModule {
 
     override fun InjektRegistrar.registerInjectables() {
@@ -252,4 +257,8 @@ class AppModule(val app: Application) : InjektModule {
             get<AnimeDownloadManager>()
         }
     }
+        addSingletonFactory { TelegramSessionStorage(app) }
+        addSingletonFactory { TelegramAuthManager(app, get()) }
+        addSingletonFactory { TelegramChannelScraper(get()) }
+        addSingletonFactory { TelegramDownloader(get()) }
 }

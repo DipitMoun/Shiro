@@ -81,3 +81,8 @@
 
 # XmlUtil
 -keep public enum nl.adaptivity.xmlutil.EventType { *; }
+
+# TDLib
+-keep class org.drinkless.tdlib.** { *; }
+-keepclassmembers class org.drinkless.tdlib.** { *; }
+-dontwarn org.drinkless.tdlib.**

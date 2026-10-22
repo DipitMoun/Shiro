@@ -13,12 +13,23 @@ plugins {
 
 shortcutHelper.setFilePath("./shortcuts.xml")
 
+val localProperties = java.util.Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
+}
+val telegramApiId = localProperties.getProperty("TELEGRAM_API_ID")?.toIntOrNull() ?: 0
+val telegramApiHash = localProperties.getProperty("TELEGRAM_API_HASH").orEmpty()
+
 android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
         applicationId = "io.github.DipitMoun.shiro"
 
+        
+        buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
+        buildConfigField("String", "TELEGRAM_API_HASH", "\"\"")
         versionCode = 132
         versionName = "0.18.2.1"
 
@@ -109,6 +120,9 @@ android {
     }
 
     packaging {
+    jniLibs {
+        pickFirsts += "**/libtdjson.so"
+    }
         jniLibs {
             keepDebugSymbols += listOf(
                 "libandroidx.graphics.path",
@@ -193,6 +207,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("com.github.tdlib:tdlib-android:1.8.29")
     implementation(projects.i18n)
     implementation(projects.i18nAniyomi)
     implementation(projects.core.archive)
@@ -344,6 +359,7 @@ androidComponents {
 
 buildscript {
     dependencies {
+    implementation("com.github.tdlib:tdlib-android:1.8.29")
         classpath(kotlinx.gradle)
     }
 }
