@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -19,7 +20,10 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -175,9 +179,45 @@ fun AnimeLibraryContent(
             }
         }
 
+        var showBottomSheet by remember { mutableStateOf(false) }
+        val sheetState = rememberModalBottomSheetState()
+
+        if (showBottomSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showBottomSheet = false },
+                sheetState = sheetState,
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    categories.forEach { cat ->
+                        Text(
+                            text = cat.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier
+                                .clickable {
+                                    onCategoryClick(cat)
+                                    showBottomSheet = false
+                                }
+                                .padding(vertical = 8.dp),
+                        )
+                        categories.filter { it.parentId == cat.id }.forEach { sub ->
+                            Text(
+                                text = "  • ${sub.name}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier
+                                    .clickable {
+                                        onCategoryClick(sub)
+                                        showBottomSheet = false
+                                    }
+                                    .padding(start = 16.dp, top = 4.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
         if (selection.isEmpty()) {
             FloatingActionButton(
-                onClick = { },
+                onClick = { showBottomSheet = true },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
