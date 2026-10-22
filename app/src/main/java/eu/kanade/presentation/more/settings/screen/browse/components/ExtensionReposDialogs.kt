@@ -1,4 +1,14 @@
 package eu.kanade.presentation.more.settings.screen.browse.components
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.ui.unit.dp
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.text.KeyboardOptions
@@ -29,23 +39,35 @@ fun ExtensionRepoCreateDialog(
     onDismissRequest: () -> Unit,
     onCreate: (String) -> Unit,
     repoUrls: ImmutableSet<String>,
+    onTelegramSubmit: (String) -> Unit = {},
 ) {
-    var name by remember { mutableStateOf("") }
+    var isTelegramMode by remember { mutableStateOf(false) }
+    var inputValue by remember { mutableStateOf("") }
 
     val focusRequester = remember { FocusRequester() }
-    val nameAlreadyExists = remember(name) { repoUrls.contains(name) }
+    val nameAlreadyExists = remember(inputValue) { !isTelegramMode && repoUrls.contains(inputValue) }
+
+    val isValid = if (isTelegramMode) {
+        inputValue.startsWith("+") && inputValue.length >= 10
+    } else {
+        inputValue.isNotEmpty() && !nameAlreadyExists
+    }
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
         confirmButton = {
             TextButton(
-                enabled = name.isNotEmpty() && !nameAlreadyExists,
+                enabled = isValid,
                 onClick = {
-                    onCreate(name)
+                    if (isTelegramMode) {
+                        onTelegramSubmit(inputValue)
+                    } else {
+                        onCreate(inputValue)
+                    }
                     onDismissRequest()
                 },
             ) {
-                Text(text = stringResource(MR.strings.action_add))
+                Text(text = if (isTelegramMode) "Continuer" else stringResource(MR.strings.action_add))
             }
         },
         dismissButton = {
@@ -58,39 +80,76 @@ fun ExtensionRepoCreateDialog(
         },
         text = {
             Column {
-                Text(text = stringResource(AYMR.strings.action_add_repo_message))
+                TabRow(
+                    selectedTabIndex = if (isTelegramMode) 1 else 0,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                ) {
+                    Tab(
+                        selected = !isTelegramMode,
+                        onClick = {
+                            isTelegramMode = false
+                            inputValue = ""
+                        },
+                        text = { Text("URL") },
+                        icon = { Icon(Icons.Default.Link, contentDescription = null) },
+                    )
+                    Tab(
+                        selected = isTelegramMode,
+                        onClick = {
+                            isTelegramMode = true
+                            inputValue = "+"
+                        },
+                        text = { Text("Telegram") },
+                        icon = { Icon(Icons.Default.Send, contentDescription = null) },
+                    )
+                }
+
+                if (isTelegramMode) {
+                    Text("Connectez votre compte Telegram pour ajouter un dépôt privé.")
+                } else {
+                    Text(text = stringResource(AYMR.strings.action_add_repo_message))
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
-                    modifier = Modifier
-                        .focusRequester(focusRequester),
-                    value = name,
-                    onValueChange = { name = it },
+                    modifier = Modifier.focusRequester(focusRequester),
+                    value = inputValue,
+                    onValueChange = { inputValue = it },
                     label = {
-                        Text(text = stringResource(MR.strings.label_add_repo_input))
+                        if (isTelegramMode) {
+                            Text("Numéro de téléphone")
+                        } else {
+                            Text(text = stringResource(MR.strings.label_add_repo_input))
+                        }
                     },
                     supportingText = {
-                        val msgRes = if (name.isNotEmpty() && nameAlreadyExists) {
-                            MR.strings.error_repo_exists
+                        if (isTelegramMode) {
+                            Text("Format international: +237...")
                         } else {
-                            MR.strings.information_required_plain
+                            val msgRes = if (inputValue.isNotEmpty() && nameAlreadyExists) {
+                                MR.strings.error_repo_exists
+                            } else {
+                                MR.strings.information_required_plain
+                            }
+                            Text(text = stringResource(msgRes))
                         }
-                        Text(text = stringResource(msgRes))
                     },
-                    isError = name.isNotEmpty() && nameAlreadyExists,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    isError = !isTelegramMode && inputValue.isNotEmpty() && nameAlreadyExists,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = if (isTelegramMode) KeyboardType.Phone else KeyboardType.Uri,
+                    ),
                     singleLine = true,
                 )
             }
         },
     )
 
-    LaunchedEffect(focusRequester) {
-        // TODO: https://issuetracker.google.com/issues/204502668
+    LaunchedEffect(focusRequester, isTelegramMode) {
         delay(0.1.seconds)
         focusRequester.requestFocus()
     }
 }
-
 @Composable
 fun ExtensionRepoDeleteDialog(
     onDismissRequest: () -> Unit,
