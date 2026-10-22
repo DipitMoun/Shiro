@@ -176,7 +176,8 @@ class TelegramAuthManager(
         start()
         val normalized = normalizePhoneNumber(phoneNumber)
         if (normalized == null) {
-            _authState.value = TelegramAuthState.Error("Numéro invalide. Utilisez le format international, par exemple +33612345678.")
+            _authState.value =
+                TelegramAuthState.Error("Numéro invalide. Utilisez le format international, par exemple +33612345678.")
             return
         }
         send(TdApi.SetAuthenticationPhoneNumber(normalized, TdApi.PhoneNumberAuthenticationSettings()))
