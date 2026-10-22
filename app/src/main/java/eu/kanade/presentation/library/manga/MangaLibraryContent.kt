@@ -30,8 +30,10 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import eu.kanade.core.preference.PreferenceMutableState
 import eu.kanade.presentation.library.components.CollectionCard
+import eu.kanade.presentation.library.components.CollectionDetailHeader
 import eu.kanade.presentation.library.components.LibraryTabs
 import eu.kanade.presentation.library.components.SubCategorySquare
+import eu.kanade.tachiyomi.data.collection.CollectionMetadataManager
 import eu.kanade.tachiyomi.ui.library.manga.MangaLibraryItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -40,6 +42,7 @@ import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.library.manga.LibraryManga
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.presentation.core.components.material.PullRefresh
+import uy.kohesive.injekt.injectLazy
 import kotlin.time.Duration.Companion.seconds
 
 @Composable
@@ -77,12 +80,21 @@ fun MangaLibraryContent(
         var isRefreshing by remember(currentCategory) { mutableStateOf(false) }
 
         if (currentCategory != null) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-                Text(text = currentCategory.name)
+            val metadataManager: CollectionMetadataManager by injectLazy()
+            val metadata = metadataManager.getMetadata(currentCategory.id)
+            val entryCount = if (categories.indexOf(currentCategory) != -1) {
+                getLibraryForPage(categories.indexOf(currentCategory)).size
+            } else {
+                0
             }
+
+            CollectionDetailHeader(
+                title = currentCategory.name,
+                description = metadata.description,
+                bannerUrl = metadata.bannerUrl,
+                statsText = "$entryCount titres",
+                onBack = onNavigateBack,
+            )
         }
 
         val notSelectionMode = selection.isEmpty()
