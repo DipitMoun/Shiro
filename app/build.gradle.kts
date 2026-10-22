@@ -359,7 +359,6 @@ androidComponents {
 
 buildscript {
     dependencies {
-    implementation("com.github.tdlib:tdlib-android:1.8.29")
         classpath(kotlinx.gradle)
     }
 }
