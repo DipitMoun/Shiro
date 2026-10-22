@@ -208,7 +208,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("com.github.tdlib:tdlib-android:1.8.29")
+    implementation("com.github.up9cloud:tdlib-android:1.8.29")
     implementation(projects.i18n)
     implementation(projects.i18nAniyomi)
     implementation(projects.core.archive)
