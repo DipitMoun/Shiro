@@ -21,6 +21,7 @@ import tachiyomi.domain.source.manga.model.StubMangaSource
 import tachiyomi.domain.source.manga.repository.MangaStubSourceRepository
 import tachiyomi.domain.source.manga.service.MangaSourceManager
 import tachiyomi.source.local.entries.manga.LocalMangaSource
+import eu.kanade.tachiyomi.data.telegram.source.TelegramMangaSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -58,6 +59,7 @@ class AndroidMangaSourceManager(
                                 Injekt.get(),
                                 Injekt.get(),
                             ),
+                            TelegramMangaSource.ID to TelegramMangaSource(),
                         ),
                     )
                     extensions.forEach { extension ->

@@ -20,6 +20,7 @@ import tachiyomi.domain.source.anime.model.StubAnimeSource
 import tachiyomi.domain.source.anime.repository.AnimeStubSourceRepository
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.source.local.entries.anime.LocalAnimeSource
+import eu.kanade.tachiyomi.data.telegram.source.TelegramAnimeSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -58,6 +59,7 @@ class AndroidAnimeSourceManager(
                                 Injekt.get(),
                                 Injekt.get(),
                             ),
+                            TelegramAnimeSource.ID to TelegramAnimeSource(),
                         ),
                     )
                     extensions.forEach { extension ->
