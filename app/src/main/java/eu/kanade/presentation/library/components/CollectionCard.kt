@@ -25,7 +25,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import eu.kanade.tachiyomi.ui.library.anime.AnimeLibraryItem
 
 data class SubCategorySquare(val id: Long, val name: String, val count: Int)
 
@@ -33,7 +32,7 @@ data class SubCategorySquare(val id: Long, val name: String, val count: Int)
 fun CollectionCard(
     title: String,
     subCategories: List<SubCategorySquare>,
-    previewAnimes: List<AnimeLibraryItem>,
+    previewImages: List<String?>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -51,12 +50,12 @@ fun CollectionCard(
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.weight(1f)) {
-                    MosaicImage(previewAnimes.getOrNull(0))
-                    MosaicImage(previewAnimes.getOrNull(1))
+                    MosaicImage(previewImages.getOrNull(0))
+                    MosaicImage(previewImages.getOrNull(1))
                 }
                 Row(modifier = Modifier.weight(1f)) {
-                    MosaicImage(previewAnimes.getOrNull(2))
-                    MosaicImage(previewAnimes.getOrNull(3))
+                    MosaicImage(previewImages.getOrNull(2))
+                    MosaicImage(previewImages.getOrNull(3))
                 }
             }
         }
@@ -110,10 +109,10 @@ fun CollectionCard(
 }
 
 @Composable
-private fun MosaicImage(anime: AnimeLibraryItem?) {
-    if (anime?.libraryAnime?.anime?.thumbnailUrl != null) {
+private fun MosaicImage(imageUrl: String?) {
+    if (imageUrl != null) {
         AsyncImage(
-            model = anime.libraryAnime.anime.thumbnailUrl,
+            model = imageUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier

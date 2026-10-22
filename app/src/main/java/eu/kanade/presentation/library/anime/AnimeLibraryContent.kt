@@ -133,8 +133,8 @@ fun AnimeLibraryContent(
             ) {
                 items(categoryCollections) { cat ->
                     val pageIndex = categories.indexOf(cat)
-                    val previewAnimes = if (pageIndex != -1) {
-                        getAnimeLibraryForPage(pageIndex).take(4)
+                    val previewImages = if (pageIndex != -1) {
+                        getAnimeLibraryForPage(pageIndex).take(4).map { it.libraryAnime.anime.thumbnailUrl }
                     } else {
                         emptyList()
                     }
@@ -150,7 +150,7 @@ fun AnimeLibraryContent(
                     CollectionCard(
                         title = cat.name,
                         subCategories = subCats,
-                        previewAnimes = previewAnimes,
+                        previewImages = previewImages,
                         onClick = { onCategoryClick(cat) },
                     )
                 }
