@@ -22,12 +22,6 @@ import java.io.Closeable
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/**
- * Gestionnaire unique de la session TDLib de l'utilisateur.
- *
- * Un seul client TDLib doit exister par processus. Utiliser cette classe via Injekt
- * comme singleton applicatif.
- */
 class TelegramAuthManager(
     context: Context,
     private val sessionStorage: TelegramSessionStorage = TelegramSessionStorage(context),
@@ -40,10 +34,6 @@ class TelegramAuthManager(
     private val _currentUser = MutableStateFlow<TelegramUserSummary?>(null)
     val currentUser: StateFlow<TelegramUserSummary?> = _currentUser.asStateFlow()
 
-    /**
-     * Toutes les updates TDLib. Les consommateurs doivent filtrer par type.
-     * Aucun résultat de requête n'est émis ici.
-     */
     private val _updates = MutableSharedFlow<TdApi.Object>(
         extraBufferCapacity = 128,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
@@ -67,11 +57,6 @@ class TelegramAuthManager(
         )
     }
 
-    /**
-     * Démarre TDLib. Idempotent.
-     *
-     * À appeler quand l'écran Telegram est ouvert, pas forcément au démarrage de l'app.
-     */
     @Synchronized
     fun start() {
         if (tdlibClient != null) return
@@ -109,26 +94,24 @@ class TelegramAuthManager(
             return
         }
 
-        val parameters = TdApi.TdlibParameters().apply {
-            useTestDc = false
-            databaseDirectory = sessionStorage.databaseDir.absolutePath
-            filesDirectory = sessionStorage.filesDir.absolutePath
-            databaseEncryptionKey = key.copyOf()
-            useFileDatabase = true
-            useChatInfoDatabase = true
-            useMessageDatabase = true
-            useSecretChats = false
-            apiId = config.apiId
-            apiHash = config.apiHash
-            systemLanguageCode = "en"
-            deviceModel = Build.MODEL
-            systemVersion = Build.VERSION.RELEASE
-            applicationVersion = BuildConfig.VERSION_NAME
-            enableStorageOptimizer = true
-            ignoreFileNames = false
-        }
+        val parameters = TdApi.SetTdlibParameters(
+            false, // useTestDc
+            sessionStorage.databaseDir.absolutePath, // databaseDirectory
+            sessionStorage.filesDir.absolutePath, // filesDirectory
+            key.copyOf(), // databaseEncryptionKey
+            true, // useFileDatabase
+            true, // useChatInfoDatabase
+            true, // useMessageDatabase
+            false, // useSecretChats
+            config.apiId, // apiId
+            config.apiHash, // apiHash
+            "en", // systemLanguageCode
+            Build.MODEL, // deviceModel
+            Build.VERSION.RELEASE, // systemVersion
+            BuildConfig.VERSION_NAME, // applicationVersion
+        )
 
-        send(TdApi.SetTdlibParameters(parameters))
+        send(parameters)
         key.fill(0)
         _authState.value = TelegramAuthState.WaitingTdlibParameters
     }
@@ -136,31 +119,7 @@ class TelegramAuthManager(
     private fun onAuthorizationState(state: TdApi.AuthorizationState) {
         when (state) {
             is TdApi.AuthorizationStateWaitTdlibParameters -> configureTdlib()
-
-            is TdApi.AuthorizationStateWaitEncryptionKey -> {
-                val key = try {
-                    sessionStorage.existingDatabaseKey()
-                } catch (t: Throwable) {
-                    logcat(LogPriority.ERROR, t) { "Clé TDLib absente ou invalide" }
-                    null
-                }
-
-                if (key == null) {
-                    runCatching { sessionStorage.clearSession() }
-                    _authState.value = TelegramAuthState.Error(
-                        "La clé de session TDLib est absente. Reconnectez votre compte.",
-                    )
-                    return
-                }
-
-                send(TdApi.CheckDatabaseEncryptionKey(key))
-                key.fill(0)
-            }
-
-            is TdApi.AuthorizationStateWaitPhoneNumber -> {
-                _authState.value = TelegramAuthState.WaitingPhoneNumber
-            }
-
+            is TdApi.AuthorizationStateWaitPhoneNumber -> _authState.value = TelegramAuthState.WaitingPhoneNumber
             is TdApi.AuthorizationStateWaitCode -> {
                 _authState.value = TelegramAuthState.WaitingCode(
                     phoneNumber = state.codeInfo.phoneNumber,
@@ -168,39 +127,25 @@ class TelegramAuthManager(
                     timeoutSeconds = state.codeInfo.timeout,
                 )
             }
-
             is TdApi.AuthorizationStateWaitPassword -> {
                 _authState.value = TelegramAuthState.WaitingPassword(
                     passwordHint = state.passwordHint,
                 )
             }
-
             is TdApi.AuthorizationStateWaitOtherDeviceConfirmation -> {
                 _authState.value = TelegramAuthState.WaitingOtherDevice(state.link)
             }
-
             is TdApi.AuthorizationStateWaitRegistration -> {
                 _authState.value = TelegramAuthState.WaitingRegistration
             }
-
             is TdApi.AuthorizationStateReady -> onReady()
-
-            is TdApi.AuthorizationStateLoggingOut -> {
-                _authState.value = TelegramAuthState.LoggingOut
-            }
-
-            is TdApi.AuthorizationStateClosing -> {
-                _authState.value = TelegramAuthState.Closing
-            }
-
+            is TdApi.AuthorizationStateLoggingOut -> _authState.value = TelegramAuthState.LoggingOut
+            is TdApi.AuthorizationStateClosing -> _authState.value = TelegramAuthState.Closing
             is TdApi.AuthorizationStateClosed -> {
                 _currentUser.value = null
                 _authState.value = TelegramAuthState.Closed
             }
-
-            else -> {
-                _authState.value = TelegramAuthState.Unknown(state.toString())
-            }
+            else -> _authState.value = TelegramAuthState.Unknown(state.toString())
         }
     }
 
@@ -222,56 +167,35 @@ class TelegramAuthManager(
                 _authState.value = TelegramAuthState.Ready(summary)
             },
             onError = { error ->
-                // Ne pas casser l'état Ready si seul GetMe échoue.
-                logcat(LogPriority.WARNING, error) { "GetMe TDLib a échoué" }
+                logcat(LogPriority.WARN, error) { "GetMe TDLib a échoué" }
             },
         )
     }
 
-    /**
-     * TODO(UI) : appeler cette méthode depuis le formulaire du numéro de téléphone.
-     */
     fun sendPhoneNumber(phoneNumber: String) {
         start()
-
         val normalized = normalizePhoneNumber(phoneNumber)
         if (normalized == null) {
-            _authState.value = TelegramAuthState.Error(
-                "Numéro invalide. Utilisez le format international, par exemple +33612345678.",
-            )
+            _authState.value = TelegramAuthState.Error("Numéro invalide. Utilisez le format international, par exemple +33612345678.")
             return
         }
-
-        send(
-            TdApi.SetAuthenticationPhoneNumber(
-                normalized,
-                TdApi.PhoneNumberAuthenticationSettings(),
-            ),
-        )
+        send(TdApi.SetAuthenticationPhoneNumber(normalized, TdApi.PhoneNumberAuthenticationSettings()))
     }
 
-    /**
-     * TODO(UI) : afficher un champ code quand [authState] vaut WaitingCode.
-     */
     fun sendAuthCode(code: String) {
         val clean = code.trim()
         if (clean.length !in 3..10) {
             _authState.value = TelegramAuthState.Error("Code Telegram invalide.")
             return
         }
-
         send(TdApi.CheckAuthenticationCode(clean))
     }
 
-    /**
-     * TODO(UI) : afficher un champ mot de passe quand [authState] vaut WaitingPassword.
-     */
     fun checkPassword(password: String) {
         if (password.isEmpty()) {
             _authState.value = TelegramAuthState.Error("Mot de passe 2FA vide.")
             return
         }
-
         send(TdApi.CheckAuthenticationPassword(password))
     }
 
@@ -279,18 +203,10 @@ class TelegramAuthManager(
         send(TdApi.ResendAuthenticationCode())
     }
 
-    /**
-     * TODO(UI) : bouton "Se déconnecter" sans effacer immédiatement les données locales.
-     */
     fun logOut() {
         send(TdApi.LogOut())
     }
 
-    /**
-     * Déconnexion complète : TDLib, base de session et clé Keystore.
-     *
-     * TODO(UI) : demander une confirmation explicite avant d'appeler cette méthode.
-     */
     suspend fun logoutAndWipe() = withContext(Dispatchers.IO) {
         val client = tdlibClient
         if (client != null) {
@@ -300,7 +216,6 @@ class TelegramAuthManager(
                 }
             }
         }
-
         close()
         sessionStorage.clearSession()
         _currentUser.value = null
@@ -311,12 +226,8 @@ class TelegramAuthManager(
     override fun close() {
         val client = tdlibClient ?: return
         tdlibClient = null
-
         runCatching {
             client.send(TdApi.Close()) { }
-        }
-        runCatching {
-            client.close()
         }
     }
 
@@ -326,10 +237,7 @@ class TelegramAuthManager(
     }
 
     internal fun requireClient(): Client {
-        return tdlibClient ?: throw TelegramTdlibException(
-            0,
-            "TDLib n'est pas démarré. Appelez start().",
-        )
+        return tdlibClient ?: throw TelegramTdlibException(0, "TDLib n'est pas démarré. Appelez start().")
     }
 
     val isReady: Boolean
@@ -367,7 +275,6 @@ class TelegramAuthManager(
                     is TdApi.Error -> {
                         onError(TelegramTdlibException(result.code, result.message))
                     }
-
                     else -> {
                         @Suppress("UNCHECKED_CAST")
                         onSuccess(result as T)
@@ -409,40 +316,17 @@ data class TelegramUserSummary(
 sealed interface TelegramAuthState {
     data object Starting : TelegramAuthState
     data object WaitingTdlibParameters : TelegramAuthState
-    data object WaitingEncryptionKey : TelegramAuthState
     data object WaitingPhoneNumber : TelegramAuthState
-
-    data class WaitingCode(
-        val phoneNumber: String,
-        val codeType: String,
-        val timeoutSeconds: Int,
-    ) : TelegramAuthState
-
-    data class WaitingPassword(
-        val passwordHint: String,
-    ) : TelegramAuthState
-
+    data class WaitingCode(val phoneNumber: String, val codeType: String, val timeoutSeconds: Int) : TelegramAuthState
+    data class WaitingPassword(val passwordHint: String) : TelegramAuthState
     data object WaitingRegistration : TelegramAuthState
-
-    data class WaitingOtherDevice(
-        val link: String,
-    ) : TelegramAuthState
-
-    data class Ready(
-        val user: TelegramUserSummary?,
-    ) : TelegramAuthState
-
+    data class WaitingOtherDevice(val link: String) : TelegramAuthState
+    data class Ready(val user: TelegramUserSummary?) : TelegramAuthState
     data object LoggingOut : TelegramAuthState
     data object Closing : TelegramAuthState
     data object Closed : TelegramAuthState
-    data class Error(
-        val message: String,
-        val code: Int = 0,
-    ) : TelegramAuthState
-
-    data class Unknown(
-        val description: String,
-    ) : TelegramAuthState
+    data class Error(val message: String, val code: Int = 0) : TelegramAuthState
+    data class Unknown(val description: String) : TelegramAuthState
 }
 
 class TelegramTdlibException(
@@ -450,12 +334,6 @@ class TelegramTdlibException(
     override val message: String,
 ) : Exception(message)
 
-/**
- * Attend le résultat d'une fonction TDLib.
- *
- * Exemple :
- * val chat = client.sendAwait<TdApi.Chat>(TdApi.GetChat(chatId))
- */
 suspend fun <T : TdApi.Object> Client.sendAwait(
     function: TdApi.Function<T>,
 ): T = suspendCancellableCoroutine { continuation ->
@@ -464,12 +342,9 @@ suspend fun <T : TdApi.Object> Client.sendAwait(
             when (result) {
                 is TdApi.Error -> {
                     if (continuation.isActive) {
-                        continuation.resumeWithException(
-                            TelegramTdlibException(result.code, result.message),
-                        )
+                        continuation.resumeWithException(TelegramTdlibException(result.code, result.message))
                     }
                 }
-
                 else -> {
                     @Suppress("UNCHECKED_CAST")
                     if (continuation.isActive) {
