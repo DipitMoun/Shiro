@@ -312,12 +312,12 @@ class TelegramChannelScraper(
     }
     suspend fun getUserChats(limit: Int = 100): List<TelegramChatInfo> = withContext(Dispatchers.IO) {
         val client = authManager.requireClient()
-        
+
         // TDLib API: GetChats(chatList, limit, offsetOrder, offsetChatId, offsetTopicId)
         val chats = client.sendAwait<TdApi.Chats>(
-            TdApi.GetChats(TdApi.ChatListMain(), limit)
+            TdApi.GetChats(TdApi.ChatListMain(), limit),
         )
-        
+
         val result = mutableListOf<TelegramChatInfo>()
         for (chatId in chats.chatIds) {
             runCatching {
@@ -329,14 +329,13 @@ class TelegramChannelScraper(
                             id = chat.id,
                             title = chat.title,
                             isChannel = isChannel,
-                        )
+                        ),
                     )
                 }
             }
         }
         result.sortedBy { it.title }
     }
-
 }
 
 enum class TelegramFileKind {
