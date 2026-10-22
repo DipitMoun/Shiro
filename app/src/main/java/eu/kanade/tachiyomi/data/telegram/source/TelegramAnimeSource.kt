@@ -2,13 +2,13 @@ package eu.kanade.tachiyomi.data.telegram.source
 
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
+import eu.kanade.tachiyomi.animesource.model.AnimesPage
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
+import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import okhttp3.Request
-import eu.kanade.tachiyomi.animesource.model.AnimesPage
-import eu.kanade.tachiyomi.animesource.model.Video
 import okhttp3.Response
 
 class TelegramAnimeSource : AnimeHttpSource() {
@@ -29,7 +29,9 @@ class TelegramAnimeSource : AnimeHttpSource() {
         return AnimesPage(emptyList(), false)
     }
 
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = GET("$baseUrl/search")
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = GET(
+        "$baseUrl/search",
+    )
     override fun searchAnimeParse(response: Response): AnimesPage {
         return AnimesPage(emptyList(), false)
     }
