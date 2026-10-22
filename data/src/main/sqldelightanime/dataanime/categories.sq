@@ -126,3 +126,14 @@ getCategoryWithChildren:
 SELECT *
 FROM categories
 WHERE _id = :id OR parent_id = :id;
+
+deleteCategoryTree:
+WITH RECURSIVE tree(_id) AS (
+    SELECT :categoryId
+    UNION ALL
+    SELECT c._id FROM categories c JOIN tree t ON c.parent_id = t._id
+)
+DELETE FROM categories WHERE _id IN (SELECT _id FROM tree);
+
+updateParent:
+UPDATE categories SET parent_id = :parentId WHERE _id = :categoryId;
