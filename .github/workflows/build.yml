@@ -1,4 +1,4 @@
-﻿name: Build Shiro APK
+name: Build Shiro APK
 
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m" "-Dkotlin.daemon.jvm.options=-Xmx2g"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
