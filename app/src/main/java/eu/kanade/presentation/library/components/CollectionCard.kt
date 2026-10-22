@@ -25,7 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import tachiyomi.domain.library.anime.LibraryAnime
+import eu.kanade.tachiyomi.ui.library.anime.AnimeLibraryItem
 
 data class SubCategorySquare(val id: Long, val name: String, val count: Int)
 
@@ -33,7 +33,7 @@ data class SubCategorySquare(val id: Long, val name: String, val count: Int)
 fun CollectionCard(
     title: String,
     subCategories: List<SubCategorySquare>,
-    previewAnimes: List<LibraryAnime>,
+    previewAnimes: List<AnimeLibraryItem>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -110,10 +110,10 @@ fun CollectionCard(
 }
 
 @Composable
-private fun MosaicImage(anime: LibraryAnime?) {
-    if (anime?.anime?.thumbnailUrl != null) {
+private fun MosaicImage(anime: AnimeLibraryItem?) {
+    if (anime?.libraryAnime?.anime?.thumbnailUrl != null) {
         AsyncImage(
-            model = anime.anime.thumbnailUrl,
+            model = anime.libraryAnime.anime.thumbnailUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
