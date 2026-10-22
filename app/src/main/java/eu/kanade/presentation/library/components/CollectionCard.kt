@@ -34,6 +34,7 @@ fun CollectionCard(
     subCategories: List<SubCategorySquare>,
     previewImages: List<String?>,
     onClick: () -> Unit,
+    onSubCategoryClick: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
