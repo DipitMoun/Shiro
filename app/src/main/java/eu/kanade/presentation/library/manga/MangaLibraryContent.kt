@@ -40,10 +40,13 @@ fun MangaLibraryContent(
     searchQuery: String?,
     selection: List<LibraryManga>,
     contentPadding: PaddingValues,
+    currentCategory: Category?,
     currentPage: () -> Int,
     hasActiveFilters: Boolean,
     showPageTabs: Boolean,
     onChangeCurrentPage: (Int) -> Unit,
+    onCategoryClick: (Category) -> Unit,
+    onNavigateBack: () -> Unit,
     onMangaClicked: (Long) -> Unit,
     onContinueReadingClicked: ((LibraryManga) -> Unit)?,
     onToggleSelection: (LibraryManga) -> Unit,
@@ -62,18 +65,15 @@ fun MangaLibraryContent(
             end = contentPadding.calculateEndPadding(LocalLayoutDirection.current),
         ),
     ) {
-        var navigationStack by remember { mutableStateOf(listOf<Category?>(null)) }
-        val currentCategory = navigationStack.last()
-
         val scope = rememberCoroutineScope()
         var isRefreshing by remember(currentCategory) { mutableStateOf(false) }
 
-        if (navigationStack.size > 1) {
+        if (currentCategory != null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { navigationStack = navigationStack.dropLast(1) }) {
+                IconButton(onClick = onNavigateBack) {
                     Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
-                Text(text = currentCategory?.name ?: "")
+                Text(text = currentCategory.name)
             }
         }
 
@@ -141,7 +141,7 @@ fun MangaLibraryContent(
                 contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
                 selection = selection,
                 onGroupClick = { clickedCategory ->
-                    navigationStack = navigationStack + clickedCategory
+                    onCategoryClick(clickedCategory)
                 },
                 onClickManga = onClickMangaInternal,
                 onLongClickManga = onToggleRangeSelection,
