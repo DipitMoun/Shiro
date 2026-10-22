@@ -1,5 +1,4 @@
 package eu.kanade.tachiyomi.di
-
 import android.app.Application
 import android.os.Build
 import androidx.core.content.ContextCompat
@@ -27,6 +26,10 @@ import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadProvider
 import eu.kanade.tachiyomi.data.saver.ImageSaver
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramAuthManager
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramChannelScraper
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramDownloader
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramSessionStorage
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
@@ -69,11 +72,6 @@ import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
-
-import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramAuthManager
-import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramChannelScraper
-import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramDownloader
-import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramSessionStorage
 
 class AppModule(val app: Application) : InjektModule {
 
@@ -241,7 +239,11 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { ExternalIntents() }
 
         addSingletonFactory { TorrentServerApi(get(), get()) }
-        addSingletonFactory { TorrentServerUtils(get(), get()) }
+        addSingletonFactory { TorrentServerUtils(get(), get()) } // Telegram TDLib
+        addSingletonFactory { TelegramSessionStorage(app) }
+        addSingletonFactory { TelegramAuthManager(app, get()) }
+        addSingletonFactory { TelegramChannelScraper(get()) }
+        addSingletonFactory { TelegramDownloader(get()) }
 
         // Asynchronously init expensive components for a faster cold start
         ContextCompat.getMainExecutor(app).execute {
@@ -257,8 +259,4 @@ class AppModule(val app: Application) : InjektModule {
             get<AnimeDownloadManager>()
         }
     }
-        addSingletonFactory { TelegramSessionStorage(app) }
-        addSingletonFactory { TelegramAuthManager(app, get()) }
-        addSingletonFactory { TelegramChannelScraper(get()) }
-        addSingletonFactory { TelegramDownloader(get()) }
 }

@@ -1,8 +1,8 @@
-import java.util.Properties
 import mihon.buildlogic.Config
 import mihon.buildlogic.getBuildTime
 import mihon.buildlogic.getCommitCount
 import mihon.buildlogic.getGitSha
+import java.util.Properties
 
 plugins {
     id("mihon.android.application")
@@ -28,7 +28,6 @@ android {
     defaultConfig {
         applicationId = "io.github.DipitMoun.shiro"
 
-        
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
         buildConfigField("String", "TELEGRAM_API_HASH", "\"\"")
         versionCode = 132
@@ -121,9 +120,9 @@ android {
     }
 
     packaging {
-    jniLibs {
-        pickFirsts += "**/libtdjson.so"
-    }
+        jniLibs {
+            pickFirsts += "**/libtdjson.so"
+        }
         jniLibs {
             keepDebugSymbols += listOf(
                 "libandroidx.graphics.path",

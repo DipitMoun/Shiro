@@ -205,7 +205,7 @@ class TelegramChannelScraper(
                 } ?: return null
 
                 file = largest.photo
-                fileName = "photo_${id}.jpg"
+                fileName = "photo_$id.jpg"
                 kind = TelegramFileKind.PHOTO
                 mimeType = "image/jpeg"
                 duration = null
@@ -216,7 +216,7 @@ class TelegramChannelScraper(
 
             is TdApi.MessageVideoNote -> {
                 file = content.videoNote.video
-                fileName = "video_note_${id}.mp4"
+                fileName = "video_note_$id.mp4"
                 kind = TelegramFileKind.VIDEO_NOTE
                 mimeType = "video/mp4"
                 duration = content.videoNote.duration
@@ -227,7 +227,7 @@ class TelegramChannelScraper(
 
             is TdApi.MessageVoiceNote -> {
                 file = content.voiceNote.voice
-                fileName = "voice_${id}.ogg"
+                fileName = "voice_$id.ogg"
                 kind = TelegramFileKind.VOICE_NOTE
                 mimeType = "audio/ogg"
                 duration = content.voiceNote.duration
