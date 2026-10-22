@@ -310,6 +310,33 @@ class TelegramChannelScraper(
         val AT_USERNAME = Regex("""^@?([A-Za-z0-9_]{4,32})$""")
         val INVALID_FILENAME_CHARS = Regex("""[\\/:*?"<>|\u0000-\u001F]""")
     }
+    suspend fun getUserChats(limit: Int = 100): List<TelegramChatInfo> = withContext(Dispatchers.IO) {
+        val client = authManager.requireClient()
+        
+        // TDLib API: GetChats(chatList, limit, offsetOrder, offsetChatId, offsetTopicId)
+        val chats = client.sendAwait<TdApi.Chats>(
+            TdApi.GetChats(TdApi.ChatListMain(), limit)
+        )
+        
+        val result = mutableListOf<TelegramChatInfo>()
+        for (chatId in chats.chatIds) {
+            runCatching {
+                val chat = client.sendAwait<TdApi.Chat>(TdApi.GetChat(chatId))
+                if (chat.type is TdApi.ChatTypeSupergroup || chat.type is TdApi.ChatTypeBasicGroup) {
+                    val isChannel = (chat.type as? TdApi.ChatTypeSupergroup)?.isChannel ?: false
+                    result.add(
+                        TelegramChatInfo(
+                            id = chat.id,
+                            title = chat.title,
+                            isChannel = isChannel,
+                        )
+                    )
+                }
+            }
+        }
+        result.sortedBy { it.title }
+    }
+
 }
 
 enum class TelegramFileKind {
@@ -339,4 +366,10 @@ data class TelegramFileMetadata(
 data class TelegramChannelInfo(
     val id: Long,
     val title: String,
+)
+
+data class TelegramChatInfo(
+    val id: Long,
+    val title: String,
+    val isChannel: Boolean,
 )
