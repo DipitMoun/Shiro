@@ -1,10 +1,10 @@
-﻿---
+---
 titre: Projet Shiro - Plan de developpement
-version: 0.3
+version: 0.4
 statut: Actif
 base: Aniyomi (aniyomiorg/aniyomi)
 licence: Apache 2.0
-derniere_revision: a completer
+derniere_revision: 2026-10-23
 ---
 
 # Projet Shiro
@@ -22,6 +22,41 @@ derniere_revision: a completer
 6. [Plan par phases](#plan-par-phases)
 7. [Decisions a trancher](#decisions-a-trancher)
 8. [Veille concurrentielle](#veille-concurrentielle)
+
+---
+
+## Etat d'avancement (2026-10-23)
+
+| Phase | Statut | Commentaire |
+|-------|--------|-------------|
+| Phase 0 - Fondations | TERMINEE | Renommage Shiro, icone, update checker desactive, CI GitHub Actions |
+| Phase 1 - Cherry-picks | TERMINEE | Categories imbriquees + fixes backup multi-origines |
+| Phase 2 - Coeur social Telegram | PARTIELLE (~40%) | Squelette OK, 5 items restants (voir detail) |
+| Phase 2.5 - Refonte UI Spotify-like | TERMINEE | Non prevue au plan initial, ajoutee en cours de route |
+| Phase UI-2 - Outil GIF FFmpeg | REPORTEE | Apres test APK de la refonte UI |
+| Phase 3 - Explorations | NON COMMENCEE | - |
+
+### Detail Phase 2 (Telegram) - Reste a faire
+- Parsing intelligent des noms de fichiers (regroupement par oeuvre via AniList)
+- Branchement du lecteur (videoListParse retourne vide actuellement)
+- Notifications natives (WebSocket en premier plan + WorkManager en arriere-plan)
+- Partage d'extensions entre amis
+- Commentaires et reactions natives dans Shiro
+
+### Detail Phase 2.5 (Refonte UI) - Termine
+- Cartes collection format carre (3 covers + 1 fleche)
+- Clic cover ouvre l'oeuvre, clic fleche/espace ouvre la collection
+- Ecran collection recursif (banniere + desc + stats + sous-collections + oeuvres)
+- Stats Anime : "X titres - Y/Z ep. - Nh vues"
+- Banniere locale (fichier + galerie, chemin stocke en JSON)
+- Edition banniere + description via dialog
+- Carrousel en haut (oeuvres + collections recentes avec %)
+- FAB + BottomSheet navigation rapide
+
+### Detail Phase UI-2 (Outil GIF) - Reporte
+- Scope : FFmpeg deja present dans le projet, picker video, slider 15s, sauvegarde banniere
+- Effort estime : 2-3h
+- Bloque par : test APK de la refonte UI d'abord
 
 ---
 
@@ -167,8 +202,29 @@ Le vrai differenciateur. Le prototype doit etre fait tot pour valider les risque
 | 2.10 | Signature cryptographique des messages pour anti-spoofing du pseudo | Moyenne | Important | Moyen |
 | 2.11 | Commande /revoke accessible depuis l'app | Faible | Important | Moyen |
 
-### Phase 3 - Explorations
+### Phase 2.5 - Refonte UI Spotify-like (Terminee)
 
+| # | Tache | Statut |
+|---|-------|--------|
+| 2.5.1 | Composant CollectionCard (carre 3 covers + fleche) | FAIT |
+| 2.5.2 | Ecran collection recursif (header + sous-cols + oeuvres) | FAIT |
+| 2.5.3 | Stats Anime avec heures vues (via GetEpisodesByAnimeId) | FAIT |
+| 2.5.4 | Banniere locale (fichier dans filesDir/banners/) + galerie | FAIT |
+| 2.5.5 | Edition banniere + description (CollectionEditDialog) | FAIT |
+| 2.5.6 | Carrousel RecentActivityCarousel (oeuvres + coll recentes, %) | FAIT |
+| 2.5.7 | FAB + BottomSheet navigation rapide | FAIT |
+| 2.5.8 | Collections racines en CollectionCard | FAIT |
+
+### Phase UI-2 - Outil GIF (Reportee apres test APK)
+
+| # | Tache | Statut |
+|---|-------|--------|
+| UI-2.1 | Picker video locale (ActivityResultContracts.OpenDocument) | A FAIRE |
+| UI-2.2 | Slider selection 15s (debut + fin) | A FAIRE |
+| UI-2.3 | Extraction GIF via FFmpeg-kit deja present | A FAIRE |
+| UI-2.4 | Sauvegarde comme banniere locale (saveBannerFile) | A FAIRE |
+
+### Phase 3 - Explorations
 | # | Tache | Complexite | Besoin | Impact |
 |---|-------|:----------:|:------:|:------:|
 | 3.1 | PiP avance | Moyenne | Optionnel | Moyen |
@@ -206,10 +262,23 @@ Aucun ne propose de couche sociale ou de partage pair-a-pair. C'est le creneau d
 
 ---
 
-## Historique des revisions
+## Prochains chantiers (priorises)
 
+1. **Test APK** de la refonte UI (bloquant pour valider 2.5)
+2. **Outil GIF FFmpeg** (Phase UI-2) apres validation UI
+3. **Parsing intelligent Telegram** : regrouper `Bleach_01.mkv` + `Bleach_02.mkv` sous un seul anime "Bleach" avec episodes, via FileNameParser d'Aniyomi + AniList
+4. **Branchement lecteur** : `videoListParse` doit retourner les URLs Telegram pour ExoPlayer
+5. **Test reel auth Telegram** : numero + code + 2FA sur telephone (jamais teste)
+6. **Notifications** : WorkManager 15 min en arriere-plan + WebSocket quand app ouverte
+7. **Partage d'extensions entre amis** : format `.shiro`, import/export
+8. **Commentaires/reactions natives** : stockage local + synchro
+
+---
+
+## Historique des revisions
 | Version | Date | Changement |
 |---------|------|------------|
 | 0.1 | (initial) | Plan de base, phases 0-3, decisions a trancher |
 | 0.2 | (precedente) | Renommage Thot -> Shiro, strategie cherry-pick, categorisation A/B/C, non-objectifs, architecture cible, veille concurrentielle |
-| 0.3 | (cette version) | Notifications Android natives (WebSocket + WorkManager) au lieu de Telegram, relais WebSocket optionnel, contrainte UI figee (pas de refonte avant v2), note OEM/Doze, priorite Phase 1 > Phase 2 actee |
+| 0.3 | (precedente) | Notifications Android natives (WebSocket + WorkManager) au lieu de Telegram, relais WebSocket optionnel, contrainte UI figee (pas de refonte avant v2), note OEM/Doze, priorite Phase 1 > Phase 2 actee |
+| 0.4 | (cette version) | Refonte UI Spotify-like terminee (CollectionCard, header recursif, banniere locale + galerie, stats heures, carrousel), outil GIF FFmpeg reporte apres test APK, Phase 2 Telegram documentee comme partielle (~40%) |
