@@ -3,7 +3,6 @@ package eu.kanade.presentation.library.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,25 +24,32 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import java.io.File
 
 @Composable
 fun CollectionDetailHeader(
     title: String,
     description: String,
     bannerUrl: String?,
+    bannerPath: String?,
     statsText: String,
     onBack: () -> Unit,
     onEdit: () -> Unit,
 ) {
+    val bannerModel: Any? = when {
+        !bannerPath.isNullOrBlank() && File(bannerPath).exists() -> File(bannerPath)
+        !bannerUrl.isNullOrBlank() -> bannerUrl
+        else -> null
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(220.dp),
     ) {
-        // 1. L'image de bannière (ou un fond sombre si absente)
-        if (!bannerUrl.isNullOrBlank()) {
+        if (bannerModel != null) {
             AsyncImage(
-                model = bannerUrl,
+                model = bannerModel,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxWidth().height(220.dp),
@@ -57,7 +63,6 @@ fun CollectionDetailHeader(
             )
         }
 
-        // 2. Dégradé noir en bas pour lire le texte
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -70,7 +75,6 @@ fun CollectionDetailHeader(
                 ),
         )
 
-        // 3. Bouton retour flottant
         IconButton(
             onClick = onBack,
             modifier = Modifier
@@ -82,7 +86,6 @@ fun CollectionDetailHeader(
             Icon(Icons.Default.ArrowBack, contentDescription = "Retour", tint = Color.White)
         }
 
-        // Bouton modifier
         IconButton(
             onClick = onEdit,
             modifier = Modifier
@@ -94,7 +97,6 @@ fun CollectionDetailHeader(
             Icon(Icons.Default.Edit, contentDescription = "Modifier", tint = Color.White)
         }
 
-        // 4. Texte par-dessus le dégradé
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)

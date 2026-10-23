@@ -1,5 +1,6 @@
 package eu.kanade.presentation.library.manga
 
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import eu.kanade.core.preference.PreferenceMutableState
@@ -78,6 +80,7 @@ fun MangaLibraryContent(
     getLibraryForPage: (Int) -> List<MangaLibraryItem>,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var isRefreshing by remember(currentCategory) { mutableStateOf(false) }
     var showBottomSheet by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -142,6 +145,7 @@ fun MangaLibraryContent(
                             title = currentCategory.name,
                             description = metadata!!.description,
                             bannerUrl = metadata!!.bannerUrl,
+                            bannerPath = metadata!!.bannerPath,
                             statsText = works.mangaStatsText(),
                             onBack = onNavigateBack,
                             onEdit = { showEditDialog = true },
@@ -301,16 +305,31 @@ fun MangaLibraryContent(
         if (showEditDialog && currentCategory != null && metadata != null) {
             CollectionEditDialog(
                 initialBannerUrl = metadata!!.bannerUrl.orEmpty(),
+                initialBannerPath = metadata!!.bannerPath,
                 initialDescription = metadata!!.description,
                 onDismiss = { showEditDialog = false },
-                onSave = { url, desc ->
-                    metadataManager.updateMetadata(
-                        categoryId = currentCategory.id,
-                        bannerUrl = url.takeIf { it.isNotBlank() },
-                        description = desc,
-                    )
-                    metadata = metadataManager.getMetadata(currentCategory.id)
-                    showEditDialog = false
+                onSave = { url, uri, desc ->
+                    scope.launch {
+                        var finalPath = metadata?.bannerPath
+                        var finalUrl = url
+                        if (uri != null) {
+                            val saved = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                metadataManager.saveBannerFile(currentCategory.id, uri)
+                            }
+                            if (saved != null) {
+                                finalPath = saved
+                                finalUrl = null
+                            }
+                        }
+                        metadataManager.updateMetadata(
+                            categoryId = currentCategory.id,
+                            bannerUrl = finalUrl,
+                            bannerPath = finalPath,
+                            description = desc,
+                        )
+                        metadata = metadataManager.getMetadata(currentCategory.id)
+                        showEditDialog = false
+                    }
                 },
             )
         }

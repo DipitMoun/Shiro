@@ -2,6 +2,7 @@ package eu.kanade.presentation.library.components
 
 import eu.kanade.tachiyomi.ui.library.anime.AnimeLibraryItem
 import eu.kanade.tachiyomi.ui.library.manga.MangaLibraryItem
+import tachiyomi.domain.items.episode.interactor.GetEpisodesByAnimeId
 
 fun AnimeLibraryItem.progressPercent(): Int {
     val total = libraryAnime.totalCount
@@ -17,11 +18,24 @@ fun MangaLibraryItem.progressPercent(): Int {
     return ((read.toFloat() / total) * 100).toInt().coerceIn(0, 100)
 }
 
-fun List<AnimeLibraryItem>.statsText(): String {
-    val titres = size
-    val seen = sumOf { it.libraryAnime.seenCount }
-    val total = sumOf { it.libraryAnime.totalCount }
-    return "$titres titres · $seen / $total épisodes vus"
+suspend fun computeAnimeStats(
+    items: List<AnimeLibraryItem>,
+    getEpisodes: GetEpisodesByAnimeId,
+): String {
+    if (items.isEmpty()) return ""
+
+    var totalSecondsWatched = 0L
+    items.forEach { item ->
+        getEpisodes.await(item.libraryAnime.anime.id).forEach { episode ->
+            totalSecondsWatched += if (episode.seen) episode.totalSeconds else episode.lastSecondSeen
+        }
+    }
+
+    val titres = items.size
+    val seen = items.sumOf { it.libraryAnime.seenCount }
+    val total = items.sumOf { it.libraryAnime.totalCount }
+    val watchedHours = totalSecondsWatched / 3600
+    return "$titres titres · $seen/$total ép. · ${watchedHours}h vues"
 }
 
 fun List<MangaLibraryItem>.mangaStatsText(): String {

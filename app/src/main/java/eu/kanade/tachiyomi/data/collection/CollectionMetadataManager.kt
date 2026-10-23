@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.collection
 
 import android.content.Context
+import android.net.Uri
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -10,11 +11,12 @@ import java.io.File
 data class CollectionMetadata(
     val categoryId: Long,
     val bannerUrl: String? = null,
+    val bannerPath: String? = null,
     val description: String = "",
     val lastOpenedAt: Long = 0L,
 )
 
-class CollectionMetadataManager(context: Context) {
+class CollectionMetadataManager(private val context: Context) {
     private val file = File(context.filesDir, "collection_metadata.json")
     private val json = Json {
         ignoreUnknownKeys = true
@@ -47,10 +49,33 @@ class CollectionMetadataManager(context: Context) {
         return cache[categoryId] ?: CollectionMetadata(categoryId)
     }
 
-    fun updateMetadata(categoryId: Long, bannerUrl: String?, description: String) {
+    fun updateMetadata(
+        categoryId: Long,
+        bannerUrl: String?,
+        bannerPath: String?,
+        description: String,
+    ) {
         val existing = cache[categoryId] ?: CollectionMetadata(categoryId)
-        cache[categoryId] = existing.copy(bannerUrl = bannerUrl, description = description)
+        cache[categoryId] = existing.copy(
+            bannerUrl = bannerUrl,
+            bannerPath = bannerPath,
+            description = description,
+        )
         save()
+    }
+
+    fun saveBannerFile(categoryId: Long, sourceUri: Uri): String? {
+        return runCatching {
+            val dir = File(context.filesDir, "banners").apply { mkdirs() }
+            dir.listFiles { f -> f.name.startsWith("$categoryId.") }?.forEach { it.delete() }
+            val mime = context.contentResolver.getType(sourceUri) ?: "image/jpeg"
+            val ext = if (mime == "image/jpeg") "jpg" else mime.substringAfterLast('/')
+            val target = File(dir, "$categoryId.$ext")
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            target.absolutePath
+        }.getOrNull()
     }
 
     fun markOpened(categoryId: Long) {
