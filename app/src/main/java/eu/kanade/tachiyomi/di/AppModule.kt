@@ -19,6 +19,7 @@ import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
 import eu.kanade.tachiyomi.data.cache.AnimeCoverCache
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.cache.MangaCoverCache
+import eu.kanade.tachiyomi.data.collection.CollectionBootstrap
 import eu.kanade.tachiyomi.data.collection.CollectionMetadataManager
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
@@ -245,6 +246,7 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { TelegramSessionStorage(app) }
         addSingletonFactory { TelegramPreferences(app) }
         addSingletonFactory { CollectionMetadataManager(app) }
+        addSingletonFactory { CollectionBootstrap() }
         addSingletonFactory { TelegramAuthManager(app, get()) }
         addSingletonFactory { TelegramChannelScraper(get()) }
         addSingletonFactory { TelegramDownloader(get()) }
