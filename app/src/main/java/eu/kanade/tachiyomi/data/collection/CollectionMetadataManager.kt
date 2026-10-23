@@ -11,6 +11,7 @@ data class CollectionMetadata(
     val categoryId: Long,
     val bannerUrl: String? = null,
     val description: String = "",
+    val lastOpenedAt: Long = 0L,
 )
 
 class CollectionMetadataManager(context: Context) {
@@ -47,7 +48,22 @@ class CollectionMetadataManager(context: Context) {
     }
 
     fun updateMetadata(categoryId: Long, bannerUrl: String?, description: String) {
-        cache[categoryId] = CollectionMetadata(categoryId, bannerUrl, description)
+        val existing = cache[categoryId] ?: CollectionMetadata(categoryId)
+        cache[categoryId] = existing.copy(bannerUrl = bannerUrl, description = description)
         save()
+    }
+
+    fun markOpened(categoryId: Long) {
+        if (categoryId <= 0L) return
+        val existing = cache[categoryId] ?: CollectionMetadata(categoryId)
+        cache[categoryId] = existing.copy(lastOpenedAt = System.currentTimeMillis())
+        save()
+    }
+
+    fun getRecentCollections(limit: Int = 3): List<CollectionMetadata> {
+        return cache.values
+            .filter { it.lastOpenedAt > 0L }
+            .sortedByDescending { it.lastOpenedAt }
+            .take(limit)
     }
 }

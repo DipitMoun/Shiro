@@ -38,8 +38,13 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.core.preference.PreferenceMutableState
 import eu.kanade.presentation.library.components.CollectionCard
 import eu.kanade.presentation.library.components.CollectionDetailHeader
+import eu.kanade.presentation.library.components.CollectionEditDialog
 import eu.kanade.presentation.library.components.LibraryTabs
+import eu.kanade.presentation.library.components.RecentActivityCarousel
+import eu.kanade.presentation.library.components.RecentCollection
+import eu.kanade.presentation.library.components.RecentWork
 import eu.kanade.presentation.library.components.SubCategorySquare
+import eu.kanade.presentation.library.components.progressPercent
 import eu.kanade.tachiyomi.data.collection.CollectionMetadataManager
 import eu.kanade.tachiyomi.ui.library.anime.AnimeLibraryItem
 import kotlinx.coroutines.delay
@@ -88,7 +93,10 @@ fun AnimeLibraryContent(
 
             if (currentCategory != null) {
                 val metadataManager: CollectionMetadataManager by injectLazy()
-                val metadata = metadataManager.getMetadata(currentCategory.id)
+                var metadata by remember(currentCategory.id) {
+                    mutableStateOf(metadataManager.getMetadata(currentCategory.id))
+                }
+                var showEditDialog by remember { mutableStateOf(false) }
                 val entryCount = if (categories.indexOf(currentCategory) != -1) {
                     getAnimeLibraryForPage(categories.indexOf(currentCategory)).size
                 } else {
@@ -101,6 +109,60 @@ fun AnimeLibraryContent(
                     bannerUrl = metadata.bannerUrl,
                     statsText = "$entryCount titres",
                     onBack = onNavigateBack,
+                    onEdit = { showEditDialog = true },
+                )
+
+                if (showEditDialog) {
+                    CollectionEditDialog(
+                        initialBannerUrl = metadata.bannerUrl.orEmpty(),
+                        initialDescription = metadata.description,
+                        onDismiss = { showEditDialog = false },
+                        onSave = { url, desc ->
+                            metadataManager.updateMetadata(
+                                categoryId = currentCategory.id,
+                                bannerUrl = url.takeIf { it.isNotBlank() },
+                                description = desc,
+                            )
+                            metadata = metadataManager.getMetadata(currentCategory.id)
+                            showEditDialog = false
+                        },
+                    )
+                }
+
+                LaunchedEffect(currentCategory.id) {
+                    metadataManager.markOpened(currentCategory.id)
+                }
+            } else {
+                val metadataManager: CollectionMetadataManager by injectLazy()
+                val recentColls = metadataManager.getRecentCollections()
+                val currentEntries = categories
+                    .filter { it.parentId == null }
+                    .flatMap { getAnimeLibraryForPage(categories.indexOf(it)) }
+                    .filter { it.libraryAnime.lastSeen > 0L }
+                    .sortedByDescending { it.libraryAnime.lastSeen }
+                    .take(3)
+
+                RecentActivityCarousel(
+                    recentWorks = currentEntries.map {
+                        RecentWork(
+                            id = it.libraryAnime.anime.id,
+                            title = it.libraryAnime.anime.title,
+                            coverUrl = it.libraryAnime.anime.thumbnailUrl,
+                            progressPercent = it.progressPercent(),
+                        )
+                    },
+                    recentCollections = recentColls.map { c ->
+                        val cat = categories.find { it.id == c.categoryId }
+                        RecentCollection(
+                            id = c.categoryId,
+                            name = cat?.name ?: "Collection",
+                            bannerUrl = c.bannerUrl,
+                        )
+                    },
+                    onWorkClick = { animeId -> onAnimeClicked(animeId) },
+                    onCollectionClick = { catId ->
+                        categories.find { it.id == catId }?.let { onCategoryClick(it) }
+                    },
                 )
             }
 

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +33,7 @@ fun CollectionDetailHeader(
     bannerUrl: String?,
     statsText: String,
     onBack: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -78,6 +80,18 @@ fun CollectionDetailHeader(
                 .align(Alignment.TopStart),
         ) {
             Icon(Icons.Default.ArrowBack, contentDescription = "Retour", tint = Color.White)
+        }
+
+        // Bouton modifier
+        IconButton(
+            onClick = onEdit,
+            modifier = Modifier
+                .padding(8.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color.Black.copy(alpha = 0.5f))
+                .align(Alignment.TopEnd),
+        ) {
+            Icon(Icons.Default.Edit, contentDescription = "Modifier", tint = Color.White)
         }
 
         // 4. Texte par-dessus le dégradé
