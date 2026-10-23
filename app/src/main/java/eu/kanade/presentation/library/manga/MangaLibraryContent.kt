@@ -174,6 +174,9 @@ fun MangaLibraryContent(
                             subCategories = subCats,
                             previewImages = previewImages,
                             onClick = { onCategoryClick(cat) },
+                            onSubCategoryClick = { subId ->
+                                categories.find { it.id == subId }?.let { onCategoryClick(it) }
+                            },
                         )
                     }
                 }
