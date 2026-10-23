@@ -16,3 +16,17 @@ fun MangaLibraryItem.progressPercent(): Int {
     if (total <= 0L) return 0
     return ((read.toFloat() / total) * 100).toInt().coerceIn(0, 100)
 }
+
+fun List<AnimeLibraryItem>.statsText(): String {
+    val titres = size
+    val seen = sumOf { it.libraryAnime.seenCount }
+    val total = sumOf { it.libraryAnime.totalCount }
+    return "$titres titres · $seen / $total épisodes vus"
+}
+
+fun List<MangaLibraryItem>.mangaStatsText(): String {
+    val titres = size
+    val read = sumOf { it.libraryManga.readCount }
+    val total = sumOf { it.libraryManga.totalChapters }
+    return "$titres titres · $read / $total chapitres lus"
+}

@@ -3,23 +3,21 @@ package eu.kanade.presentation.library.manga
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -39,18 +37,16 @@ import eu.kanade.core.preference.PreferenceMutableState
 import eu.kanade.presentation.library.components.CollectionCard
 import eu.kanade.presentation.library.components.CollectionDetailHeader
 import eu.kanade.presentation.library.components.CollectionEditDialog
-import eu.kanade.presentation.library.components.LibraryTabs
 import eu.kanade.presentation.library.components.RecentActivityCarousel
 import eu.kanade.presentation.library.components.RecentCollection
 import eu.kanade.presentation.library.components.RecentWork
-import eu.kanade.presentation.library.components.SubCategorySquare
+import eu.kanade.presentation.library.components.mangaStatsText
 import eu.kanade.presentation.library.components.progressPercent
 import eu.kanade.tachiyomi.data.collection.CollectionMetadataManager
 import eu.kanade.tachiyomi.ui.library.manga.MangaLibraryItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.library.manga.LibraryManga
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.presentation.core.components.material.PullRefresh
@@ -81,202 +77,167 @@ fun MangaLibraryContent(
     getColumnsForOrientation: (Boolean) -> PreferenceMutableState<Int>,
     getLibraryForPage: (Int) -> List<MangaLibraryItem>,
 ) {
+    val scope = rememberCoroutineScope()
+    var isRefreshing by remember(currentCategory) { mutableStateOf(false) }
+    var showBottomSheet by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
+    val metadataManager: CollectionMetadataManager by injectLazy()
+    var metadata by remember(currentCategory?.id) {
+        mutableStateOf(if (currentCategory != null) metadataManager.getMetadata(currentCategory.id) else null)
+    }
+
+    val notSelectionMode = selection.isEmpty()
+    val childCategories = categories.filter { it.parentId == currentCategory?.id }
+    val rootCategories = categories.filter { it.parentId == null }
+    val works: List<MangaLibraryItem> = if (currentCategory != null) {
+        val pageIndex = categories.indexOf(currentCategory)
+        if (pageIndex != -1) getLibraryForPage(pageIndex) else emptyList()
+    } else {
+        emptyList()
+    }
+
+    if (currentCategory != null) {
+        LaunchedEffect(currentCategory.id) {
+            metadataManager.markOpened(currentCategory.id)
+        }
+    }
+
+    val rootEntries = remember(categories) {
+        rootCategories.flatMap { cat ->
+            val pageIndex = categories.indexOf(cat)
+            if (pageIndex != -1) getLibraryForPage(pageIndex) else emptyList()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.padding(
-                top = contentPadding.calculateTopPadding(),
-                start = contentPadding.calculateStartPadding(LocalLayoutDirection.current),
-                end = contentPadding.calculateEndPadding(LocalLayoutDirection.current),
-            ),
+        PullRefresh(
+            refreshing = isRefreshing,
+            onRefresh = {
+                val started = onRefresh(currentCategory)
+                if (!started) return@PullRefresh
+                scope.launch {
+                    isRefreshing = true
+                    delay(1.seconds)
+                    isRefreshing = false
+                }
+            },
+            enabled = notSelectionMode,
         ) {
-            val scope = rememberCoroutineScope()
-            var isRefreshing by remember(currentCategory) { mutableStateOf(false) }
-
-            if (currentCategory != null) {
-                val metadataManager: CollectionMetadataManager by injectLazy()
-                var metadata by remember(currentCategory.id) {
-                    mutableStateOf(metadataManager.getMetadata(currentCategory.id))
-                }
-                var showEditDialog by remember { mutableStateOf(false) }
-                val entryCount = if (categories.indexOf(currentCategory) != -1) {
-                    getLibraryForPage(categories.indexOf(currentCategory)).size
-                } else {
-                    0
-                }
-
-                CollectionDetailHeader(
-                    title = currentCategory.name,
-                    description = metadata.description,
-                    bannerUrl = metadata.bannerUrl,
-                    statsText = "$entryCount titres",
-                    onBack = onNavigateBack,
-                    onEdit = { showEditDialog = true },
-                )
-
-                if (showEditDialog) {
-                    CollectionEditDialog(
-                        initialBannerUrl = metadata.bannerUrl.orEmpty(),
-                        initialDescription = metadata.description,
-                        onDismiss = { showEditDialog = false },
-                        onSave = { url, desc ->
-                            metadataManager.updateMetadata(
-                                categoryId = currentCategory.id,
-                                bannerUrl = url.takeIf { it.isNotBlank() },
-                                description = desc,
-                            )
-                            metadata = metadataManager.getMetadata(currentCategory.id)
-                            showEditDialog = false
-                        },
-                    )
-                }
-
-                LaunchedEffect(currentCategory.id) {
-                    metadataManager.markOpened(currentCategory.id)
-                }
-            } else {
-                val metadataManager: CollectionMetadataManager by injectLazy()
-                val recentColls = metadataManager.getRecentCollections()
-                val currentEntries = categories
-                    .filter { it.parentId == null }
-                    .flatMap { getLibraryForPage(categories.indexOf(it)) }
-                    .filter { it.libraryManga.lastRead > 0L }
-                    .sortedByDescending { it.libraryManga.lastRead }
-                    .take(3)
-
-                RecentActivityCarousel(
-                    recentWorks = currentEntries.map {
-                        RecentWork(
-                            id = it.libraryManga.manga.id,
-                            title = it.libraryManga.manga.title,
-                            coverUrl = it.libraryManga.manga.thumbnailUrl,
-                            progressPercent = it.progressPercent(),
-                        )
-                    },
-                    recentCollections = recentColls.map { c ->
-                        val cat = categories.find { it.id == c.categoryId }
-                        RecentCollection(
-                            id = c.categoryId,
-                            name = cat?.name ?: "Collection",
-                            bannerUrl = c.bannerUrl,
-                        )
-                    },
-                    onWorkClick = { mangaId -> onMangaClicked(mangaId) },
-                    onCollectionClick = { catId ->
-                        categories.find { it.id == catId }?.let { onCategoryClick(it) }
-                    },
-                )
-            }
-
-            val notSelectionMode = selection.isEmpty()
-            val onClickMangaInternal = { manga: LibraryManga ->
-                if (notSelectionMode) {
-                    onMangaClicked(manga.manga.id)
-                } else {
-                    onToggleSelection(manga)
-                }
-            }
-
-            val childCategories = categories.filter { it.parentId == currentCategory?.id }
-
-            val entries = if (currentCategory != null) {
-                val pageIndex = categories.indexOf(currentCategory)
-                if (pageIndex != -1) getLibraryForPage(pageIndex) else emptyList()
-            } else {
-                val defaultCategory = categories.find { it.id == 0L }
-                if (defaultCategory != null && defaultCategory.parentId == null) {
-                    val pageIndex = categories.indexOf(defaultCategory)
-                    if (pageIndex != -1) getLibraryForPage(pageIndex) else emptyList()
-                } else {
-                    emptyList()
-                }
-            }
-
-            val categoryCollections = remember(categories, currentCategory) {
-                categories.filter { it.parentId == null || it.parentId == currentCategory?.id }
-            }
-
-            PullRefresh(
-                refreshing = isRefreshing,
-                onRefresh = {
-                    val started = onRefresh(currentCategory)
-                    if (!started) return@PullRefresh
-                    scope.launch {
-                        isRefreshing = true
-                        delay(1.seconds)
-                        isRefreshing = false
-                    }
-                },
-                enabled = notSelectionMode,
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                contentPadding = PaddingValues(
+                    top = contentPadding.calculateTopPadding(),
+                    start = contentPadding.calculateStartPadding(LocalLayoutDirection.current),
+                    end = contentPadding.calculateEndPadding(LocalLayoutDirection.current),
+                    bottom = contentPadding.calculateBottomPadding(),
+                ),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxSize(),
             ) {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 160.dp),
-                    contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    items(categoryCollections) { cat ->
-                        val pageIndex = categories.indexOf(cat)
-                        val previewImages = if (pageIndex != -1) {
-                            getLibraryForPage(pageIndex).take(4).map { it.libraryManga.manga.thumbnailUrl }
-                        } else {
-                            emptyList()
-                        }
-                        val subCats = categories
-                            .filter { it.parentId == cat.id }
-                            .map { sub ->
-                                SubCategorySquare(
-                                    id = sub.id,
-                                    name = sub.name,
-                                    count = getNumberOfMangaForCategory(sub) ?: 0,
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    if (currentCategory != null && metadata != null) {
+                        CollectionDetailHeader(
+                            title = currentCategory.name,
+                            description = metadata!!.description,
+                            bannerUrl = metadata!!.bannerUrl,
+                            statsText = works.mangaStatsText(),
+                            onBack = onNavigateBack,
+                            onEdit = { showEditDialog = true },
+                        )
+                    } else if (currentCategory == null) {
+                        val recentColls = metadataManager.getRecentCollections()
+                        val recentWorks = rootEntries
+                            .filter { it.libraryManga.lastRead > 0L }
+                            .sortedByDescending { it.libraryManga.lastRead }
+                            .take(3)
+                        RecentActivityCarousel(
+                            recentWorks = recentWorks.map {
+                                RecentWork(
+                                    id = it.libraryManga.manga.id,
+                                    title = it.libraryManga.manga.title,
+                                    coverUrl = it.libraryManga.manga.thumbnailUrl,
+                                    progressPercent = it.progressPercent(),
                                 )
-                            }
-                        CollectionCard(
-                            title = cat.name,
-                            subCategories = subCats,
-                            previewImages = previewImages,
-                            onClick = { onCategoryClick(cat) },
-                            onSubCategoryClick = { subId ->
-                                categories.find { it.id == subId }?.let { onCategoryClick(it) }
+                            },
+                            recentCollections = recentColls.map { c ->
+                                val cat = categories.find { it.id == c.categoryId }
+                                RecentCollection(
+                                    id = c.categoryId,
+                                    name = cat?.name ?: "Collection",
+                                    bannerUrl = c.bannerUrl,
+                                )
+                            },
+                            onWorkClick = { mangaId -> onMangaClicked(mangaId) },
+                            onCollectionClick = { catId ->
+                                categories.find { it.id == catId }?.let { onCategoryClick(it) }
                             },
                         )
                     }
                 }
-            }
-        }
 
-        var showBottomSheet by remember { mutableStateOf(false) }
-        val sheetState = rememberModalBottomSheetState()
-
-        if (showBottomSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showBottomSheet = false },
-                sheetState = sheetState,
-            ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                    categories.forEach { cat ->
+                if (currentCategory != null && childCategories.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
-                            text = cat.name,
+                            text = "Sous-collections",
                             style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier
-                                .clickable {
-                                    onCategoryClick(cat)
-                                    showBottomSheet = false
-                                }
-                                .padding(vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         )
-                        categories.filter { it.parentId == cat.id }.forEach { sub ->
-                            Text(
-                                text = "  - ${sub.name}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier
-                                    .clickable {
-                                        onCategoryClick(sub)
-                                        showBottomSheet = false
-                                    }
-                                    .padding(start = 16.dp, top = 4.dp),
-                            )
-                        }
+                    }
+                    items(childCategories) { sub ->
+                        val subPageIndex = categories.indexOf(sub)
+                        val subWorks = if (subPageIndex != -1) getLibraryForPage(subPageIndex) else emptyList()
+                        val previewImages = subWorks.take(3).map { it.libraryManga.manga.thumbnailUrl }
+                        CollectionCard(
+                            title = sub.name,
+                            previewImages = previewImages,
+                            onClick = { onCategoryClick(sub) },
+                            onImageClick = { idx ->
+                                subWorks.getOrNull(idx)?.let { onMangaClicked(it.libraryManga.manga.id) }
+                            },
+                        )
+                    }
+                    if (childCategories.size % 2 == 1) {
+                        item { Box(modifier = Modifier.padding(4.dp)) }
+                    }
+                }
+
+                if (currentCategory != null && works.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            text = "Œuvres",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                    items(
+                        items = works,
+                        contentType = { "manga_work_item" },
+                    ) { libraryItem ->
+                        MangaWorkCard(
+                            item = libraryItem,
+                            isSelected = selection.any { it.id == libraryItem.libraryManga.id },
+                            onClick = { onMangaClicked(libraryItem.libraryManga.manga.id) },
+                            onLongClick = { onToggleRangeSelection(libraryItem.libraryManga) },
+                            onClickContinueReading = onContinueReadingClicked,
+                        )
+                    }
+                }
+
+                if (currentCategory == null) {
+                    items(rootCategories) { cat ->
+                        val pageIndex = categories.indexOf(cat)
+                        val previewWorks = if (pageIndex != -1) getLibraryForPage(pageIndex) else emptyList()
+                        val previewImages = previewWorks.take(3).map { it.libraryManga.manga.thumbnailUrl }
+                        CollectionCard(
+                            title = cat.name,
+                            previewImages = previewImages,
+                            onClick = { onCategoryClick(cat) },
+                            onImageClick = { idx ->
+                                previewWorks.getOrNull(idx)?.let { onMangaClicked(it.libraryManga.manga.id) }
+                            },
+                        )
                     }
                 }
             }
@@ -292,5 +253,94 @@ fun MangaLibraryContent(
                 Icon(Icons.Default.Menu, contentDescription = null)
             }
         }
+
+        if (showBottomSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showBottomSheet = false },
+                sheetState = sheetState,
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                ) {
+                    categories.forEach { cat ->
+                        item(key = "cat_${cat.id}") {
+                            Text(
+                                text = cat.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onCategoryClick(cat)
+                                        showBottomSheet = false
+                                    }
+                                    .padding(vertical = 8.dp),
+                            )
+                        }
+                        categories.filter { it.parentId == cat.id }.forEach { sub ->
+                            item(key = "sub_${sub.id}") {
+                                Text(
+                                    text = "  · ${sub.name}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onCategoryClick(sub)
+                                            showBottomSheet = false
+                                        }
+                                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showEditDialog && currentCategory != null && metadata != null) {
+            CollectionEditDialog(
+                initialBannerUrl = metadata!!.bannerUrl.orEmpty(),
+                initialDescription = metadata!!.description,
+                onDismiss = { showEditDialog = false },
+                onSave = { url, desc ->
+                    metadataManager.updateMetadata(
+                        categoryId = currentCategory.id,
+                        bannerUrl = url.takeIf { it.isNotBlank() },
+                        description = desc,
+                    )
+                    metadata = metadataManager.getMetadata(currentCategory.id)
+                    showEditDialog = false
+                },
+            )
+        }
     }
+}
+
+@Composable
+private fun MangaWorkCard(
+    item: MangaLibraryItem,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onClickContinueReading: ((LibraryManga) -> Unit)?,
+) {
+    eu.kanade.presentation.library.components.EntryCompactGridItem(
+        isSelected = isSelected,
+        title = item.libraryManga.manga.title,
+        coverData = tachiyomi.domain.entries.manga.model.MangaCover(
+            mangaId = item.libraryManga.manga.id,
+            sourceId = item.libraryManga.manga.source,
+            isMangaFavorite = item.libraryManga.manga.favorite,
+            url = item.libraryManga.manga.thumbnailUrl,
+            lastModified = item.libraryManga.manga.coverLastModified,
+        ),
+        onClick = onClick,
+        onLongClick = onLongClick,
+        onClickContinueViewing = if (onClickContinueReading != null && item.unreadCount > 0) {
+            { onClickContinueReading(item.libraryManga) }
+        } else {
+            null
+        },
+    )
 }
