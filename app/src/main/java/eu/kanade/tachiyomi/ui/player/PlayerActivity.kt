@@ -123,9 +123,17 @@ import java.io.OutputStream
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.time.Duration.Companion.seconds
+import androidx.compose.runtime.LaunchedEffect
+import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
+import eu.kanade.tachiyomi.data.social.identity.WorkId
+import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
+import eu.kanade.tachiyomi.ui.social.overlay.ConnectionState
+import eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayViewModel
+import eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayViewModelFactory
 
 class PlayerActivity : BaseActivity() {
     private val viewModel by viewModels<PlayerViewModel>(factoryProducer = { PlayerViewModelProviderFactory(this) })
+    private val socialViewModel by viewModels<SocialOverlayViewModel>(factoryProducer = { SocialOverlayViewModelFactory() })
     private val binding by lazy { PlayerLayoutBinding.inflate(layoutInflater) }
     private val playerObserver by lazy { PlayerObserver(this) }
     val player by lazy { binding.player }
@@ -321,6 +329,29 @@ class PlayerActivity : BaseActivity() {
                             }
                         },
                     )
+
+                    val socialState by socialViewModel.state.collectAsState()
+                    LaunchedEffect(showSocialDemo) {
+                        if (showSocialDemo) {
+                            socialViewModel.connect()
+                            val mxid = (socialState.connection as? ConnectionState.Connected)?.account?.userId
+                            val workId = anime?.let { WorkId.parse("local:" + it.id) }
+                            val epKey = episode?.name?.let { EpisodeKey.parse(it) }
+                            if (mxid != null && workId != null && epKey != null) {
+                                socialViewModel.open(ThreadRef(mxid, workId, epKey))
+                            }
+                        } else {
+                            socialViewModel.close()
+                        }
+                    }
+                    LaunchedEffect(socialState) {
+                        android.util.Log.d(
+                            "SocialOverlay",
+                            "connected=" + socialState.isConnected +
+                                " thread=" + socialState.thread +
+                                " error=" + socialState.lastError,
+                        )
+                    }
 
                     if (showSocialDemo) {
                         SocialMomentOverlay(

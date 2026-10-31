@@ -31,6 +31,22 @@ import eu.kanade.tachiyomi.data.multisource.MultiSourceMappingStore
 import eu.kanade.tachiyomi.data.multisource.MultiSourceWorkOpener
 import eu.kanade.tachiyomi.data.multisource.MultiSourceWorkStore
 import eu.kanade.tachiyomi.data.saver.ImageSaver
+import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
+import eu.kanade.tachiyomi.data.social.matrix.RustMatrixClientFactory
+import eu.kanade.tachiyomi.data.social.matrix.SocialCommandDispatcher
+import eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository
+import eu.kanade.tachiyomi.data.social.matrix.command.RustCommandDispatcher
+import eu.kanade.tachiyomi.data.social.matrix.push.PushRegistrar
+import eu.kanade.tachiyomi.data.social.matrix.push.RustPushRegistrar
+import eu.kanade.tachiyomi.data.social.matrix.room.InMemoryRoomBindingStore
+import eu.kanade.tachiyomi.data.social.matrix.room.RoomBindingStore
+import eu.kanade.tachiyomi.data.social.matrix.session.InMemorySessionCredentialStore
+import eu.kanade.tachiyomi.data.social.matrix.MatrixStoreKeyProvider
+import eu.kanade.tachiyomi.data.social.matrix.session.RustMatrixSessionManager
+import eu.kanade.tachiyomi.data.social.matrix.session.RustSessionDelegate
+import eu.kanade.tachiyomi.data.social.matrix.timeline.ProjectingMomentRepository
+import eu.kanade.tachiyomi.data.social.matrix.timeline.RustThreadTimelineSource
+import java.util.Locale
 import eu.kanade.tachiyomi.data.telegram.TelegramPreferences
 import eu.kanade.tachiyomi.data.telegram.index.TelegramIndexManager
 import eu.kanade.tachiyomi.data.telegram.index.TelegramIndexStore
@@ -273,6 +289,40 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { MultiSourceWorkStore(app) }
         addSingletonFactory { MultiSourceMappingStore(app) }
         addSingletonFactory { MultiSourceWorkOpener(get(), get()) }
+
+        // P2-10b - Social Matrix layer
+        addSingletonFactory { MatrixStoreKeyProvider(app) }
+        addSingletonFactory { RustMatrixClientFactory(app, get()) }
+        addSingletonFactory { RustSessionDelegate(get()) }
+        addSingletonFactory<MatrixSessionManager> {
+            RustMatrixSessionManager(
+                delegate = get<RustSessionDelegate>(),
+                credentialStore = InMemorySessionCredentialStore(),
+            )
+        }
+        addSingletonFactory<RoomBindingStore> { InMemoryRoomBindingStore() }
+        addSingletonFactory<SocialThreadRepository> {
+            ProjectingMomentRepository(
+                source = RustThreadTimelineSource(get<RustSessionDelegate>()),
+                bindings = get<RoomBindingStore>(),
+            )
+        }
+        addSingletonFactory<SocialCommandDispatcher> {
+            val delegate = get<RustSessionDelegate>()
+            RustCommandDispatcher(
+                clientProvider = { delegate.clientOrNull() },
+                bindings = get<RoomBindingStore>(),
+            )
+        }
+        addSingletonFactory<PushRegistrar> {
+            val delegate = get<RustSessionDelegate>()
+            RustPushRegistrar(
+                clientProvider = { delegate.clientOrNull() },
+                appId = BuildConfig.APPLICATION_ID,
+                deviceDisplayName = Build.MODEL ?: "Android",
+                lang = Locale.getDefault().language,
+            )
+        }
 
         // Asynchronously init expensive components for a faster cold start
         ContextCompat.getMainExecutor(app).execute {
