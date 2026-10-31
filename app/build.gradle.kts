@@ -29,7 +29,7 @@ android {
         applicationId = "io.github.DipitMoun.shiro"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
-        buildConfigField("String", "TELEGRAM_API_HASH", "\"\"")
+        buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
         versionCode = 132
         versionName = "0.18.2.1"
 
@@ -237,6 +237,15 @@ dependencies {
     implementation(androidx.paging.compose)
 
     implementation(libs.bundles.sqlite)
+
+    // Matrix social SDK
+    implementation(libs.matrix.sdk.android)
+    implementation(libs.jna) {
+        artifact {
+            name = "jna"
+            type = "aar"
+        }
+    }
 
     implementation(kotlinx.reflect)
     implementation(kotlinx.immutables)

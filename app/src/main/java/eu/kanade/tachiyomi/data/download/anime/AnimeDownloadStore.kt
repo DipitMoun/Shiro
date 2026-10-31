@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.data.download.anime
 
 import android.content.Context
 import androidx.core.content.edit
-import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.download.anime.model.AnimeDownload
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
@@ -103,7 +102,7 @@ class AnimeDownloadStore(
                 val anime = cachedAnime.getOrPut(animeId) {
                     runBlocking { getAnime.await(animeId) }
                 } ?: continue
-                val source = sourceManager.get(anime.source) as? AnimeHttpSource ?: continue
+                val source = sourceManager.get(anime.source) ?: continue
                 val episode = runBlocking { getEpisode.await(episodeId) } ?: continue
                 downloads.add(AnimeDownload(source, anime, episode))
             }

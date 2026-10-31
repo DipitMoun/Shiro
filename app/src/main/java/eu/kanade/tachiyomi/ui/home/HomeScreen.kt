@@ -174,11 +174,14 @@ object HomeScreen : Screen() {
                             is Tab.Updates -> UpdatesTab
                             is Tab.History -> HistoriesTab
                             is Tab.Browse -> {
-                                if (it.toExtensions) {
-                                    if (!it.anime) {
-                                        BrowseTab.showExtension()
-                                    } else {
-                                        BrowseTab.showAnimeExtension()
+                                when {
+                                    it.tabIndex != null -> BrowseTab.showTab(it.tabIndex)
+                                    it.toExtensions -> {
+                                        if (!it.anime) {
+                                            BrowseTab.showExtension()
+                                        } else {
+                                            BrowseTab.showAnimeExtension()
+                                        }
                                     }
                                 }
                                 BrowseTab
@@ -337,7 +340,11 @@ object HomeScreen : Screen() {
         data class Library(val mangaIdToOpen: Long? = null) : Tab
         data object Updates : Tab
         data object History : Tab
-        data class Browse(val toExtensions: Boolean = false, val anime: Boolean = false) : Tab
+        data class Browse(
+            val toExtensions: Boolean = false,
+            val anime: Boolean = false,
+            val tabIndex: Int? = null,
+        ) : Tab
         data class More(val toDownloads: Boolean) : Tab
     }
 }

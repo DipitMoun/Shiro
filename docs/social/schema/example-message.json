@@ -1,0 +1,62 @@
+{
+  "type": "m.room.message",
+  "room_id": "!aBcD:matrix.org",
+  "sender": "@alice:matrix.org",
+  "event_id": "$moment1",
+  "origin_server_ts": 1793389331000,
+  "content": {
+    "msgtype": "m.text",
+    "body": "▶ 12:34, 18:02 — Ce plan-là, et la musique juste après. (Sousou no Frieren · S01E003)",
+    "m.relates_to": {
+      "rel_type": "m.thread",
+      "event_id": "$threadRoot",
+      "is_falling_back": true,
+      "m.in_reply_to": { "event_id": "$threadRoot" }
+    },
+    "org.shiro.moment": {
+      "v": 1,
+      "work": {
+        "id": "anilist:154587",
+        "ids": {
+          "anilist": "154587",
+          "mal": "52991",
+          "anidb": "17617"
+        },
+        "title": "Sousou no Frieren",
+        "format": "TV",
+        "year": 2023
+      },
+      "episode": {
+        "key": "S01E003",
+        "number": 3.0,
+        "season": 1,
+        "kind": "regular",
+        "numbering": "season",
+        "title": "Le pays des mages"
+      },
+      "moments": [
+        {
+          "positionMs": 754000
+        },
+        {
+          "positionMs": 1082000,
+          "label": "La musique.",
+          "lang": "fr"
+        }
+      ],
+      "note": "Ce plan-là, et la musique juste après.",
+      "source": {
+        "key": "aniyomi:123456:fr",
+        "kind": "stream",
+        "lang": "fr",
+        "durationMs": 1440000
+      },
+      "capturedAt": "2026-10-30T19:42:11Z",
+      "spoiler": false,
+      "client": {
+        "name": "Shiro",
+        "version": "0.18.2.1"
+      }
+    }
+  }
+}

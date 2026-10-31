@@ -5,12 +5,17 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +40,7 @@ import eu.kanade.presentation.entries.anime.EpisodeOptionsDialogScreen
 import eu.kanade.presentation.entries.anime.EpisodeSettingsDialog
 import eu.kanade.presentation.entries.anime.SeasonSettingsDialog
 import eu.kanade.presentation.entries.anime.components.AnimeImagesDialog
+import eu.kanade.presentation.entries.anime.components.MultiSourceCompatibilityContent
 import eu.kanade.presentation.entries.components.DeleteItemsDialog
 import eu.kanade.presentation.entries.components.SetIntervalDialog
 import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsGesturesScreen.SkipIntroLengthDialog
@@ -45,6 +51,10 @@ import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.data.multisource.MultiSourceAnimeSource
+import eu.kanade.tachiyomi.data.multisource.MultiSourceCompatibility
+import eu.kanade.tachiyomi.data.multisource.MultiSourceMappingState
+import eu.kanade.tachiyomi.data.telegram.source.TelegramAnimeSource
 import eu.kanade.tachiyomi.data.torrent.service.TorrentServerService
 import eu.kanade.tachiyomi.source.anime.isLocalOrStub
 import eu.kanade.tachiyomi.source.anime.isSourceForTorrents
@@ -110,6 +120,46 @@ class AnimeScreen(
 
         val successState = state as AnimeScreenModel.State.Success
         val isAnimeHttpSource = remember { successState.source is AnimeHttpSource }
+        val isMultiSource = successState.anime.source == MultiSourceAnimeSource.ID
+
+        val mappingModel = if (isMultiSource) {
+            rememberScreenModel { MultiSourceMappingScreenModel(successState.anime.url) }
+        } else {
+            null
+        }
+        val mappingState = mappingModel?.state?.collectAsStateWithLifecycle()?.value
+        val isTelegram = successState.anime.source == TelegramAnimeSource.ID
+        val telegramChannels = remember(successState.anime.url, successState.source) {
+            (successState.source as? TelegramAnimeSource)
+                ?.workChannels(successState.anime.url)
+                .orEmpty()
+        }
+        val telegramMappingState = remember(telegramChannels) {
+            val total = telegramChannels.sumOf { it.episodeCount }.coerceAtLeast(0)
+            MultiSourceMappingState(
+                loading = false,
+                totalEpisodes = total,
+                assignedEpisodes = total,
+                complete = telegramChannels.isNotEmpty(),
+                sources = telegramChannels.map { channel ->
+                    MultiSourceCompatibility(
+                        sourceId = channel.chatId,
+                        sourceName = channel.title,
+                        extension = null,
+                        compatibility = 1f,
+                        coveredEpisodes = channel.episodeCount,
+                        assignedEpisodes = channel.episodeCount,
+                    )
+                },
+            )
+        }
+        val shownMapping = if (isTelegram) telegramMappingState else mappingState
+        val canShowSources = isMultiSource || (isTelegram && telegramChannels.isNotEmpty())
+        var showSources by rememberSaveable { mutableStateOf(false) }
+
+        LaunchedEffect(isMultiSource, successState.anime.url) {
+            mappingModel?.load()
+        }
 
         LaunchedEffect(successState.anime, screenModel.source) {
             if (isAnimeHttpSource) {
@@ -134,16 +184,24 @@ class AnimeScreen(
             alwaysUseExternalPlayer = screenModel.alwaysUseExternalPlayer,
             navigateUp = navigator::pop,
             onEpisodeClicked = { episode, alt ->
-                scope.launchIO {
-                    if (screenModel.isTorrentEnabled() && successState.source.isSourceForTorrents()) {
-                        TorrentServerService.start()
+                if (isMultiSource && mappingState?.complete != true) {
+                    scope.launch {
+                        screenModel.snackbarHostState.showSnackbar("Attribution des sources en cours…")
                     }
-                    val extPlayer = screenModel.alwaysUseExternalPlayer != alt
-                    openEpisode(context, episode, extPlayer)
+                } else {
+                    scope.launchIO {
+                        if (screenModel.isTorrentEnabled() && successState.source.isSourceForTorrents()) {
+                            TorrentServerService.start()
+                        }
+                        val extPlayer = screenModel.alwaysUseExternalPlayer != alt
+                        openEpisode(context, screenModel, episode, extPlayer)
+                    }
                 }
             },
             onDownloadEpisode = screenModel::runEpisodeDownloadActions.takeIf {
-                !successState.source.isLocalOrStub() && successState.anime.fetchType == FetchType.Episodes
+                (!isMultiSource || mappingState?.complete == true) &&
+                    !successState.source.isLocalOrStub() &&
+                    successState.anime.fetchType == FetchType.Episodes
             },
             onAddToLibraryClicked = {
                 screenModel.toggleFavorite()
@@ -174,9 +232,15 @@ class AnimeScreen(
             onFilterButtonClicked = screenModel::showSettingsDialog,
             onRefresh = screenModel::fetchAllFromSource,
             onContinueWatching = {
-                scope.launchIO {
-                    val extPlayer = screenModel.alwaysUseExternalPlayer
-                    continueWatching(context, screenModel.getNextUnseenEpisode(), extPlayer)
+                if (isMultiSource && mappingState?.complete != true) {
+                    scope.launch {
+                        screenModel.snackbarHostState.showSnackbar("Attribution des sources en cours…")
+                    }
+                } else {
+                    scope.launchIO {
+                        val extPlayer = screenModel.alwaysUseExternalPlayer
+                        continueWatching(context, screenModel, screenModel.getNextUnseenEpisode(), extPlayer)
+                    }
                 }
             },
             onSearch = { query, global -> scope.launch { performSearch(navigator, query, global) } },
@@ -189,7 +253,9 @@ class AnimeScreen(
                 )
             }.takeIf { isAnimeHttpSource },
             onDownloadActionClicked = screenModel::runDownloadAction.takeIf {
-                !successState.source.isLocalOrStub() && successState.anime.fetchType == FetchType.Episodes
+                (!isMultiSource || mappingState?.complete == true) &&
+                    !successState.source.isLocalOrStub() &&
+                    successState.anime.fetchType == FetchType.Episodes
             },
             onEditCategoryClicked = screenModel::showChangeCategoryDialog.takeIf { successState.anime.favorite },
             onEditFetchIntervalClicked = screenModel::showSetAnimeFetchIntervalDialog.takeIf {
@@ -213,10 +279,16 @@ class AnimeScreen(
                 navigator.push(AnimeScreen(it.id))
             },
             onContinueWatchingClicked = {
-                scope.launchIO {
-                    val episode = screenModel.getNextUnseenEpisode(it.anime)
-                    episode?.let { ep ->
-                        openEpisode(context, ep, screenModel.alwaysUseExternalPlayer)
+                if (isMultiSource && mappingState?.complete != true) {
+                    scope.launch {
+                        screenModel.snackbarHostState.showSnackbar("Attribution des sources en cours…")
+                    }
+                } else {
+                    scope.launchIO {
+                        val episode = screenModel.getNextUnseenEpisode(it.anime)
+                        episode?.let { ep ->
+                            openEpisode(context, screenModel, ep, screenModel.alwaysUseExternalPlayer)
+                        }
                     }
                 }
             },
@@ -227,7 +299,26 @@ class AnimeScreen(
                 navigator.push(GlobalAnimeSearchScreen(relatedAnime.title))
             },
             relatedAnimeDisplayMode = screenModel.relatedAnimeDisplayMode,
+            sourceMapping = shownMapping,
+            onSourcesClicked = if (canShowSources) {
+                { showSources = true }
+            } else {
+                null
+            },
         )
+
+        if (showSources && canShowSources) {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = { showSources = false },
+                sheetState = sheetState,
+            ) {
+                MultiSourceCompatibilityContent(
+                    state = shownMapping ?: MultiSourceMappingState(),
+                    onReload = { mappingModel?.retry() },
+                )
+            }
+        }
 
         val onDismissRequest = {
             screenModel.dismissDialog()
@@ -412,13 +503,21 @@ class AnimeScreen(
 
     private suspend fun continueWatching(
         context: Context,
+        screenModel: AnimeScreenModel,
         unseenEpisode: Episode?,
         useExternalPlayer: Boolean,
     ) {
-        if (unseenEpisode != null) openEpisode(context, unseenEpisode, useExternalPlayer)
+        if (unseenEpisode != null) openEpisode(context, screenModel, unseenEpisode, useExternalPlayer)
     }
 
-    private suspend fun openEpisode(context: Context, episode: Episode, useExternalPlayer: Boolean) {
+    private suspend fun openEpisode(
+        context: Context,
+        screenModel: AnimeScreenModel,
+        episode: Episode,
+        useExternalPlayer: Boolean,
+    ) {
+        if (!screenModel.ensureTelegramEpisodeDownloaded(episode)) return
+
         withIOContext {
             MainActivity.startPlayerActivity(
                 context,

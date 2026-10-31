@@ -69,16 +69,60 @@ class TelegramChannelScraper(
     }
 
     /**
-     * Retourne les informations de base du canal.
+     * Retourne les informations de base du canal, y compris l'appartenance du
+     * compte et le type « forum ».
      */
     suspend fun getChannelInfo(channelId: Long): TelegramChannelInfo = withContext(Dispatchers.IO) {
-        val chat = authManager.requireClient().sendAwait<TdApi.Chat>(
-            TdApi.GetChat(channelId),
-        )
+        val client = authManager.requireClient()
+        val chat = client.sendAwait<TdApi.Chat>(TdApi.GetChat(channelId))
+
+        var isMember = true
+        var isForum = false
+
+        when (val type = chat.type) {
+            is TdApi.ChatTypeSupergroup -> {
+                val supergroup = runCatching {
+                    client.sendAwait<TdApi.Supergroup>(TdApi.GetSupergroup(type.supergroupId))
+                }.getOrNull()
+                if (supergroup != null) {
+                    isMember = supergroup.status.isActiveMember()
+                    isForum = supergroup.isForum
+                }
+            }
+            is TdApi.ChatTypeBasicGroup -> {
+                val group = runCatching {
+                    client.sendAwait<TdApi.BasicGroup>(TdApi.GetBasicGroup(type.basicGroupId))
+                }.getOrNull()
+                if (group != null) {
+                    isMember = group.status.isActiveMember()
+                }
+            }
+            else -> Unit
+        }
+
         TelegramChannelInfo(
             id = chat.id,
             title = chat.title,
+            isChannel = (chat.type as? TdApi.ChatTypeSupergroup)?.isChannel ?: false,
+            isMember = isMember,
+            isForum = isForum,
         )
+    }
+
+    /** Rejoint un canal public (ou un groupe) avec le compte connecté. */
+    suspend fun joinChannel(channelId: Long) = withContext(Dispatchers.IO) {
+        if (channelId == 0L) throw TelegramTdlibException(0, "chatId TDLib invalide.")
+        authManager.requireClient().sendAwait<TdApi.ChatJoinResult>(TdApi.JoinChat(channelId))
+        Unit
+    }
+
+    private fun TdApi.ChatMemberStatus.isActiveMember(): Boolean = when (this) {
+        is TdApi.ChatMemberStatusMember,
+        is TdApi.ChatMemberStatusAdministrator,
+        is TdApi.ChatMemberStatusCreator,
+        -> true
+        is TdApi.ChatMemberStatusRestricted -> isMember
+        else -> false
     }
 
     /**
@@ -86,43 +130,85 @@ class TelegramChannelScraper(
      *
      * @param messageLimit nombre maximum de messages examinés, pas nombre de fichiers.
      *        TDLib limite chaque appel à 100 messages ; la pagination est gérée ici.
+     * @param fromMessageId point de départ ; 0 = message le plus récent. Sert de
+     *        curseur pour reprendre un historique entamé.
+     * @param sinceMessageId arrête le parcours dès qu'un message plus ancien que cet
+     *        identifiant est rencontré (synchronisation incrémentale).
      */
-    suspend fun fetchFiles(
+    suspend fun scan(
         channelId: Long,
         messageLimit: Int = DEFAULT_MESSAGE_LIMIT,
-    ): List<TelegramFileMetadata> = withContext(Dispatchers.IO) {
+        fromMessageId: Long = 0L,
+        sinceMessageId: Long = 0L,
+    ): TelegramScanResult = withContext(Dispatchers.IO) {
         if (channelId == 0L) {
             throw TelegramTdlibException(0, "chatId TDLib invalide.")
         }
         if (messageLimit <= 0) {
-            return@withContext emptyList()
+            return@withContext TelegramScanResult(
+                files = emptyList(),
+                messagesScanned = 0,
+                oldestMessageId = fromMessageId,
+                newestMessageId = fromMessageId,
+                reachedStart = false,
+            )
         }
 
         val client = authManager.requireClient()
         val files = mutableListOf<TelegramFileMetadata>()
         val seenMessageIds = mutableSetOf<Long>()
 
-        var fromMessageId = 0L
-        var scannedMessages = 0
+        // from_message_id = 0 ne renvoie que le dernier message dans cette
+        // version de TDLib : on part explicitement de son identifiant.
+        var cursor = fromMessageId
+        if (cursor == 0L) {
+            val chat = client.sendAwait<TdApi.Chat>(TdApi.GetChat(channelId))
+            cursor = chat.lastMessage?.id ?: 0L
+            if (cursor == 0L) {
+                return@withContext TelegramScanResult(
+                    files = emptyList(),
+                    messagesScanned = 0,
+                    oldestMessageId = 0L,
+                    newestMessageId = 0L,
+                    reachedStart = true,
+                )
+            }
+        }
 
-        while (scannedMessages < messageLimit) {
+        var scannedMessages = 0
+        var oldestMessageId = Long.MAX_VALUE
+        var newestMessageId = 0L
+        var reachedStart = false
+        var reachedKnownHistory = false
+
+        while (scannedMessages < messageLimit && !reachedKnownHistory) {
             val pageSize = minOf(MAX_PAGE_SIZE, messageLimit - scannedMessages)
             val page = client.sendAwait<TdApi.Messages>(
                 TdApi.GetChatHistory(
                     channelId,
-                    fromMessageId,
+                    cursor,
                     0,
                     pageSize,
                     false,
                 ),
             )
 
-            if (page.messages.isEmpty()) break
+            if (page.messages.isEmpty()) {
+                reachedStart = true
+                break
+            }
 
-            var oldestMessageId = Long.MAX_VALUE
+            var pageOldest = Long.MAX_VALUE
 
             for (message in page.messages) {
+                pageOldest = minOf(pageOldest, message.id)
                 oldestMessageId = minOf(oldestMessageId, message.id)
+                newestMessageId = maxOf(newestMessageId, message.id)
+
+                if (sinceMessageId > 0L && message.id <= sinceMessageId) {
+                    reachedKnownHistory = true
+                    break
+                }
 
                 if (!seenMessageIds.add(message.id)) {
                     continue
@@ -132,16 +218,86 @@ class TelegramChannelScraper(
                 message.toFileMetadata()?.let(files::add)
             }
 
-            // Une page incomplète signifie qu'on a atteint le début de l'historique.
-            if (page.messages.size < pageSize) break
+            if (reachedKnownHistory) break
 
+            // Ne pas conclure « début d'historique » sur une page incomplète :
+            // TDLib peut renvoyer moins de messages que demandé alors qu'il en
+            // reste. On continue tant qu'un message plus ancien est renvoyé.
+            //
             // Sécurité anti-boucle : ne pas redemander indéfiniment le même message.
-            if (oldestMessageId == Long.MAX_VALUE || oldestMessageId == fromMessageId) break
+            if (pageOldest == Long.MAX_VALUE || pageOldest == cursor) {
+                reachedStart = true
+                break
+            }
 
-            fromMessageId = oldestMessageId
+            cursor = pageOldest
         }
 
-        files.distinctBy { it.fileId }
+        TelegramScanResult(
+            files = files.distinctBy { it.messageId },
+            messagesScanned = scannedMessages,
+            oldestMessageId = oldestMessageId.takeIf { it != Long.MAX_VALUE } ?: fromMessageId,
+            newestMessageId = newestMessageId,
+            reachedStart = reachedStart,
+        )
+    }
+
+    /**
+     * Recherche les messages contenant [query] dans un canal, via l'index de
+     * recherche de Telegram (pas de parcours d'historique).
+     *
+     * Telegram ne renvoie que des messages correspondants : c'est ce qui
+     * remplace le scan aveugle pour la recherche à la demande.
+     */
+    suspend fun searchFiles(
+        channelId: Long,
+        query: String,
+        limit: Int = SEARCH_LIMIT,
+    ): TelegramSearchResult = withContext(Dispatchers.IO) {
+        if (channelId == 0L || query.isBlank()) {
+            return@withContext TelegramSearchResult(emptyList(), hasMore = false)
+        }
+
+        val client = authManager.requireClient()
+        val files = mutableListOf<TelegramFileMetadata>()
+        var fromMessageId = 0L
+        var fetched = 0
+        var hasMore = false
+
+        while (fetched < limit) {
+            val pageSize = minOf(MAX_PAGE_SIZE, limit - fetched)
+            val page = client.sendAwait<TdApi.FoundChatMessages>(
+                TdApi.SearchChatMessages(
+                    channelId,
+                    null,
+                    query,
+                    null,
+                    fromMessageId,
+                    0,
+                    pageSize,
+                    TdApi.SearchMessagesFilterEmpty(),
+                ),
+            )
+
+            if (page.messages.isEmpty()) break
+
+            fetched += page.messages.size
+            page.messages.forEach { message ->
+                message.toFileMetadata()?.let(files::add)
+            }
+
+            val next = page.nextFromMessageId
+            if (next == 0L || next == fromMessageId) {
+                hasMore = fetched >= limit
+                break
+            }
+            fromMessageId = next
+        }
+
+        TelegramSearchResult(
+            files = files.distinctBy { it.messageId },
+            hasMore = hasMore,
+        )
     }
 
     private fun TdApi.Message.toFileMetadata(): TelegramFileMetadata? {
@@ -253,6 +409,9 @@ class TelegramChannelScraper(
             width = width?.takeIf { it > 0 },
             height = height?.takeIf { it > 0 },
             kind = kind,
+            date = date.toLong(),
+            messageThreadId = (topicId as? TdApi.MessageTopicForum)?.forumTopicId?.toLong() ?: 0L,
+            isChannelPost = isChannelPost,
         )
     }
 
@@ -301,6 +460,7 @@ class TelegramChannelScraper(
     private companion object {
         const val DEFAULT_MESSAGE_LIMIT = 200
         const val MAX_PAGE_SIZE = 100
+        const val SEARCH_LIMIT = 200
         const val MAX_FILENAME_LENGTH = 180
 
         val NUMERIC_CHANNEL_ID = Regex("""^-?\d+$""")
@@ -360,11 +520,38 @@ data class TelegramFileMetadata(
     val width: Int?,
     val height: Int?,
     val kind: TelegramFileKind,
+    val date: Long = 0L,
+    val messageThreadId: Long = 0L,
+    val isChannelPost: Boolean = false,
 )
 
 data class TelegramChannelInfo(
     val id: Long,
     val title: String,
+    val username: String? = null,
+    val isChannel: Boolean = false,
+    val isMember: Boolean = true,
+    val isForum: Boolean = false,
+)
+
+/** Résultat d'une passe de lecture d'historique. */
+data class TelegramScanResult(
+    val files: List<TelegramFileMetadata>,
+    /** Messages réellement examinés (fichiers et posts texte). */
+    val messagesScanned: Int,
+    /** Plus vieux message atteint, à réutiliser comme curseur. */
+    val oldestMessageId: Long,
+    /** Message le plus récent vu (utile pour la synchro incrémentale). */
+    val newestMessageId: Long,
+    /** Vrai si le début de l'historique a été atteint (pas une limite). */
+    val reachedStart: Boolean,
+)
+
+/** Résultat d'une recherche ciblée dans un canal. */
+data class TelegramSearchResult(
+    val files: List<TelegramFileMetadata>,
+    /** Vrai si la limite a été atteinte et qu'il reste des résultats. */
+    val hasMore: Boolean,
 )
 
 data class TelegramChatInfo(

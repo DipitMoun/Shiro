@@ -11,6 +11,11 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.manga.model.MangaDownload
 import eu.kanade.tachiyomi.data.library.manga.MangaLibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
+import eu.kanade.tachiyomi.data.telegram.TelegramUrls
+import eu.kanade.tachiyomi.data.telegram.source.TelegramMangaSource
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramAuthManager
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramDownloadState
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramDownloader
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -66,6 +71,7 @@ import tachiyomi.i18n.aniyomi.AYMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.io.IOException
 import java.util.Locale
 
 /**
@@ -327,6 +333,100 @@ class MangaDownloader(
     }
 
     /**
+     * Télécharge un chapitre Telegram (CBZ/ZIP/PDF/EPUB) tel quel.
+     *
+     * Le fichier est récupéré par TDLib puis copié dans le dossier du manga
+     * sous `<chapitre>.<extension>`. Le lecteur le retrouve via
+     * [MangaDownloadProvider.findChapterDir].
+     */
+    private suspend fun downloadTelegramChapter(
+        download: MangaDownload,
+        mangaDir: UniFile,
+        chapterDirname: String,
+    ) {
+        val ref = TelegramUrls.parseFile(download.chapter.url)
+        if (ref == null) {
+            download.status = MangaDownload.State.ERROR
+            notifier.onError(
+                "Référence Telegram invalide",
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
+            return
+        }
+
+        val extension = ref.extension?.takeIf { it.isNotBlank() } ?: "cbz"
+        val targetName = "$chapterDirname.$extension"
+        val target = mangaDir.findFile(targetName) ?: mangaDir.createFile(targetName)
+
+        if (target == null) {
+            download.status = MangaDownload.State.ERROR
+            notifier.onError(
+                "Impossible de créer $targetName",
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
+            return
+        }
+
+        val downloader: TelegramDownloader = Injekt.get()
+        val authManager: TelegramAuthManager = Injekt.get()
+
+        val fileId = if (ref.messageId > 0L && ref.chatId != null) {
+            downloader.resolveFileId(ref.chatId, ref.messageId) ?: ref.fileId
+        } else {
+            ref.fileId
+        }
+
+        val progressPage = Page(0, download.chapter.url)
+        download.pages = listOf(progressPage)
+
+        try {
+            download.status = MangaDownload.State.DOWNLOADING
+            progressPage.progress = 0
+
+            downloader.downloadToCache(fileId, ref.sizeBytes).collect { state ->
+                when (state) {
+                    is TelegramDownloadState.Downloading -> {
+                        progressPage.progress = (state.fraction * 100).toInt()
+                    }
+                    is TelegramDownloadState.Completed -> {
+                        target.openOutputStream().use { output ->
+                            state.destination.inputStream().use { input ->
+                                input.copyTo(output, 1 shl 20)
+                            }
+                        }
+                    }
+                    is TelegramDownloadState.Failed -> {
+                        throw IOException(state.message, state.cause)
+                    }
+                    else -> Unit
+                }
+            }
+
+            progressPage.progress = 100
+            progressPage.status = Page.State.READY
+            cache.addChapter(targetName, mangaDir, download.manga)
+            download.status = MangaDownload.State.DOWNLOADED
+        } catch (e: Throwable) {
+            if (e is CancellationException) throw e
+            logcat(LogPriority.ERROR, e) { "Téléchargement Telegram échoué : $targetName" }
+            target.delete()
+            download.status = MangaDownload.State.ERROR
+            notifier.onError(
+                e.message,
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
+        } finally {
+            authManager.deleteFile(fileId)
+        }
+    }
+
+    /**
      * Downloads a chapter.
      *
      * @param download the chapter to be downloaded.
@@ -347,6 +447,13 @@ class MangaDownloader(
         }
 
         val chapterDirname = provider.getChapterDirName(download.chapter.name, download.chapter.scanlator)
+
+        // Telegram : un seul fichier (CBZ/ZIP/PDF/EPUB), pas de pages à télécharger.
+        if (download.source.id == TelegramMangaSource.ID) {
+            downloadTelegramChapter(download, mangaDir, chapterDirname)
+            return
+        }
+
         val tmpDir = mangaDir.createDirectory(chapterDirname + TMP_DIR_SUFFIX)!!
 
         try {

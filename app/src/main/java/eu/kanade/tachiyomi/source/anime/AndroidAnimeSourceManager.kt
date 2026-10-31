@@ -4,6 +4,7 @@ import android.content.Context
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.multisource.MultiSourceAnimeSource
 import eu.kanade.tachiyomi.data.telegram.source.TelegramAnimeSource
 import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
 import kotlinx.coroutines.CoroutineScope
@@ -60,7 +61,7 @@ class AndroidAnimeSourceManager(
                                 Injekt.get(),
                             ),
                             TelegramAnimeSource.ID to TelegramAnimeSource(),
-                            TelegramAnimeSource.ID to TelegramAnimeSource(),
+                            MultiSourceAnimeSource.ID to MultiSourceAnimeSource,
                         ),
                     )
                     extensions.forEach { extension ->

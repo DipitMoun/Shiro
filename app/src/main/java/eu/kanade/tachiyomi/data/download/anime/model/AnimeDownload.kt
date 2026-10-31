@@ -1,10 +1,12 @@
 package eu.kanade.tachiyomi.data.download.anime.model
 
+import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.Video
-import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.ProgressListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.anime.interactor.GetAnime
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.items.episode.interactor.GetEpisode
@@ -14,7 +16,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 data class AnimeDownload(
-    val source: AnimeHttpSource,
+    val source: AnimeSource,
     val anime: Anime,
     val episode: Episode,
     val changeDownloader: Boolean = false,
@@ -76,7 +78,13 @@ data class AnimeDownload(
         ): AnimeDownload? {
             val episode = getEpisode.await(episodeId) ?: return null
             val anime = getAnimeById.await(episode.animeId) ?: return null
-            val source = sourceManager.get(anime.source) as? AnimeHttpSource ?: return null
+            val source = sourceManager.get(anime.source)
+            if (source == null) {
+                logcat(LogPriority.ERROR) {
+                    "AnimeDownload: source ${anime.source} introuvable pour ${anime.title}"
+                }
+                return null
+            }
 
             return AnimeDownload(source, anime, episode)
         }

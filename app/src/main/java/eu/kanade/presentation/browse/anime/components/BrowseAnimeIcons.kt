@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
@@ -29,6 +30,7 @@ import coil3.compose.AsyncImage
 import eu.kanade.domain.source.anime.model.icon
 import eu.kanade.presentation.util.rememberResourceBitmapPainter
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.data.telegram.source.TelegramAnimeSource
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import eu.kanade.tachiyomi.extension.anime.util.AnimeExtensionLoader
 import tachiyomi.core.common.util.lang.withIOContext
@@ -67,6 +69,16 @@ fun AnimeSourceIcon(
                 painter = painterResource(R.mipmap.ic_local_source),
                 contentDescription = null,
                 modifier = modifier.then(defaultModifier),
+            )
+        }
+        source.id == TelegramAnimeSource.ID -> {
+            Image(
+                painter = painterResource(R.drawable.telegram_baniere),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = modifier
+                    .then(defaultModifier)
+                    .clip(MaterialTheme.shapes.extraSmall),
             )
         }
         else -> {

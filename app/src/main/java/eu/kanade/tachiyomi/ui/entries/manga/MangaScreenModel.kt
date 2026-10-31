@@ -34,6 +34,7 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.model.MangaDownload
+import eu.kanade.tachiyomi.data.telegram.source.TelegramMangaSource
 import eu.kanade.tachiyomi.data.track.EnhancedMangaTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.network.HttpException
@@ -823,6 +824,37 @@ class MangaScreenModel(
         val manga = successState?.manga ?: return
         downloadManager.downloadChapters(manga, chapters)
         toggleAllSelection(false)
+    }
+
+    /**
+     * Télécharge le chapitre si nécessaire avant lecture.
+     *
+     * Les archives Telegram (CBZ/ZIP/PDF) ne sont pas lisibles en streaming :
+     * il faut d'abord les télécharger localement.
+     *
+     * @return true si la lecture peut continuer.
+     */
+    fun ensureTelegramChapterDownloaded(chapter: Chapter): Boolean {
+        if (source?.id != TelegramMangaSource.ID) return true
+
+        val manga = successState?.manga ?: return false
+        val downloaded = downloadManager.isChapterDownloaded(
+            chapter.name,
+            chapter.scanlator,
+            manga.title,
+            manga.source,
+        )
+        if (downloaded) return true
+
+        if (downloadManager.getQueuedDownloadOrNull(chapter.id) == null) {
+            downloadChapters(listOf(chapter))
+        }
+        screenModelScope.launch {
+            snackbarHostState.showSnackbar(
+                context.stringResource(MR.strings.telegram_download_required_chapter),
+            )
+        }
+        return false
     }
 
     /**

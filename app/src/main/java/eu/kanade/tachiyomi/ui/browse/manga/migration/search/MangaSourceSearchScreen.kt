@@ -129,7 +129,7 @@ data class MangaSourceSearchScreen(
                     onPopScreen = {
                         scope.launch {
                             navigator.popUntilRoot()
-                            HomeScreen.openTab(HomeScreen.Tab.Browse())
+                            HomeScreen.openTab(HomeScreen.Tab.Browse(tabIndex = 1))
                             navigator.push(MangaScreen(dialog.newManga.id))
                         }
                     },

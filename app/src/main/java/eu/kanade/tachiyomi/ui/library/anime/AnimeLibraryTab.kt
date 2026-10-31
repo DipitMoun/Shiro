@@ -1,11 +1,13 @@
 package eu.kanade.tachiyomi.ui.library.anime
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -14,9 +16,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -34,6 +39,7 @@ import eu.kanade.presentation.entries.components.LibraryBottomActionMenu
 import eu.kanade.presentation.library.DeleteLibraryEntryDialog
 import eu.kanade.presentation.library.anime.AnimeLibraryContent
 import eu.kanade.presentation.library.anime.AnimeLibrarySettingsDialog
+import eu.kanade.presentation.library.components.CollectionToolbar
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.more.onboarding.GETTING_STARTED_URL
 import eu.kanade.presentation.util.Tab
@@ -119,6 +125,29 @@ data object AnimeLibraryTab : Tab {
 
         val defaultTitle = stringResource(AYMR.strings.label_anime_library)
 
+        val currentCategory = screenModel.getCurrentCategory()
+            ?.let { categoryId -> state.categories.firstOrNull { it.id == categoryId } }
+        val navigateUpFromCollection: () -> Unit = {
+            screenModel.popCategory()
+            val categoryIndex = screenModel.getCurrentCategory()
+                ?.let { categoryId -> state.categories.indexOfFirst { it.id == categoryId } }
+                ?: -1
+            if (categoryIndex >= 0) {
+                screenModel.activeCategoryIndex = categoryIndex
+            }
+        }
+
+        val gridState = rememberLazyGridState()
+        var showCollectionEdit by remember { mutableStateOf(false) }
+        val isHeaderVisible by remember { derivedStateOf { gridState.firstVisibleItemIndex == 0 } }
+        val collectionBarAlpha by animateFloatAsState(
+            targetValue = if (isHeaderVisible) 0f else 1f,
+            label = "Collection bar alpha",
+        )
+        LaunchedEffect(currentCategory?.id) {
+            showCollectionEdit = false
+        }
+
         Scaffold(
             topBar = { scrollBehavior ->
                 val title = state.getToolbarTitle(
@@ -127,40 +156,66 @@ data object AnimeLibraryTab : Tab {
                     page = screenModel.activeCategoryIndex,
                 )
                 val tabVisible = state.showCategoryTabs && state.categories.size > 1
-                LibraryToolbar(
-                    hasActiveFilters = state.hasActiveFilters,
-                    selectedCount = state.selection.size,
-                    title = title,
-                    onClickUnselectAll = screenModel::clearSelection,
-                    onClickSelectAll = { screenModel.selectAll(screenModel.activeCategoryIndex) },
-                    onClickInvertSelection = {
-                        screenModel.invertSelection(
-                            screenModel.activeCategoryIndex,
-                        )
-                    },
-                    onClickFilter = screenModel::showSettingsDialog,
-                    onClickRefresh = {
-                        onClickRefresh(
-                            state.categories[screenModel.activeCategoryIndex],
-                        )
-                    },
-                    onClickGlobalUpdate = { onClickRefresh(null) },
-                    onClickOpenRandomEntry = {
-                        scope.launch {
-                            val randomItem = screenModel.getRandomAnimelibItemForCurrentCategory()
-                            if (randomItem != null) {
-                                navigator.push(AnimeScreen(randomItem.libraryAnime.anime.id))
-                            } else {
-                                snackbarHostState.showSnackbar(
-                                    context.stringResource(MR.strings.information_no_entries_found),
-                                )
+                if (currentCategory != null && state.selection.isEmpty()) {
+                    CollectionToolbar(
+                        title = currentCategory.name,
+                        titleAlpha = collectionBarAlpha,
+                        hasActiveFilters = state.hasActiveFilters,
+                        navigateUp = navigateUpFromCollection,
+                        onEdit = { showCollectionEdit = true },
+                        onClickFilter = screenModel::showSettingsDialog,
+                        onClickRefresh = { onClickRefresh(currentCategory) },
+                        onClickOpenRandomEntry = {
+                            scope.launch {
+                                val randomItem = screenModel.getRandomAnimelibItemForCurrentCategory()
+                                if (randomItem != null) {
+                                    navigator.push(AnimeScreen(randomItem.libraryAnime.anime.id))
+                                } else {
+                                    snackbarHostState.showSnackbar(
+                                        context.stringResource(MR.strings.information_no_entries_found),
+                                    )
+                                }
                             }
-                        }
-                    },
-                    searchQuery = state.searchQuery,
-                    onSearchQueryChange = screenModel::search,
-                    scrollBehavior = scrollBehavior.takeIf { !tabVisible }, // For scroll overlay when no tab
-                )
+                        },
+                        scrollBehavior = null,
+                    )
+                } else {
+                    LibraryToolbar(
+                        hasActiveFilters = state.hasActiveFilters,
+                        selectedCount = state.selection.size,
+                        title = title,
+                        onClickUnselectAll = screenModel::clearSelection,
+                        onClickSelectAll = { screenModel.selectAll(screenModel.activeCategoryIndex) },
+                        onClickInvertSelection = {
+                            screenModel.invertSelection(
+                                screenModel.activeCategoryIndex,
+                            )
+                        },
+                        onClickFilter = screenModel::showSettingsDialog,
+                        onClickRefresh = {
+                            onClickRefresh(
+                                state.categories[screenModel.activeCategoryIndex],
+                            )
+                        },
+                        onClickGlobalUpdate = { onClickRefresh(null) },
+                        onClickOpenRandomEntry = {
+                            scope.launch {
+                                val randomItem = screenModel.getRandomAnimelibItemForCurrentCategory()
+                                if (randomItem != null) {
+                                    navigator.push(AnimeScreen(randomItem.libraryAnime.anime.id))
+                                } else {
+                                    snackbarHostState.showSnackbar(
+                                        context.stringResource(MR.strings.information_no_entries_found),
+                                    )
+                                }
+                            }
+                        },
+                        searchQuery = state.searchQuery,
+                        onSearchQueryChange = screenModel::search,
+                        scrollBehavior = scrollBehavior.takeIf { !tabVisible }, // For scroll overlay when no tab
+                        navigateUp = if (currentCategory != null) navigateUpFromCollection else null,
+                    )
+                }
             },
             bottomBar = {
                 LibraryBottomActionMenu(
@@ -193,8 +248,6 @@ data object AnimeLibraryTab : Tab {
                     )
                 }
                 else -> {
-                    val currentCategory = screenModel.getCurrentCategory()
-                        ?.let { categoryId -> state.categories.firstOrNull { it.id == categoryId } }
                     AnimeLibraryContent(
                         categories = state.categories,
                         searchQuery = state.searchQuery,
@@ -207,8 +260,13 @@ data object AnimeLibraryTab : Tab {
                         onChangeCurrentPage = { newPage ->
                             screenModel.activeCategoryIndex = newPage
                         },
-                        onCategoryClick = { screenModel.pushCategory(it.id) },
-                        onNavigateBack = { screenModel.popCategory() },
+                        onCategoryClick = { category ->
+                            val index = state.categories.indexOf(category)
+                            if (index >= 0) {
+                                screenModel.activeCategoryIndex = index
+                            }
+                            screenModel.pushCategory(category.id)
+                        },
                         onAnimeClicked = { navigator.push(AnimeScreen(it)) },
                         onContinueWatchingClicked = { it: LibraryAnime ->
                             scope.launchIO {
@@ -235,7 +293,11 @@ data object AnimeLibraryTab : Tab {
                                 it,
                             )
                         },
-                    ) { state.getAnimelibItemsByPage(it) }
+                        gridState = gridState,
+                        showEditDialog = showCollectionEdit,
+                        onDismissEditDialog = { showCollectionEdit = false },
+                        getAnimeLibraryForPage = { state.getAnimelibItemsByPage(it) },
+                    )
                 }
             }
         }

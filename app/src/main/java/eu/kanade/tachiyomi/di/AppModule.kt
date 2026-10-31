@@ -27,8 +27,19 @@ import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadProvider
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadProvider
+import eu.kanade.tachiyomi.data.multisource.MultiSourceMappingStore
+import eu.kanade.tachiyomi.data.multisource.MultiSourceWorkOpener
+import eu.kanade.tachiyomi.data.multisource.MultiSourceWorkStore
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.telegram.TelegramPreferences
+import eu.kanade.tachiyomi.data.telegram.index.TelegramIndexManager
+import eu.kanade.tachiyomi.data.telegram.index.TelegramIndexStore
+import eu.kanade.tachiyomi.data.telegram.index.TelegramLibraryImporter
+import eu.kanade.tachiyomi.data.telegram.index.TelegramWorkOverrideStore
+import eu.kanade.tachiyomi.data.telegram.index.TelegramWorkResolver
+import eu.kanade.tachiyomi.data.telegram.saved.TelegramExternalMetadataResolver
+import eu.kanade.tachiyomi.data.telegram.saved.TelegramSavedWorkManager
+import eu.kanade.tachiyomi.data.telegram.saved.TelegramSavedWorkStore
 import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramAuthManager
 import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramChannelScraper
 import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramDownloader
@@ -250,6 +261,18 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { TelegramAuthManager(app, get()) }
         addSingletonFactory { TelegramChannelScraper(get()) }
         addSingletonFactory { TelegramDownloader(get()) }
+        addSingletonFactory { TelegramIndexStore(app) }
+        addSingletonFactory { TelegramWorkOverrideStore(app) }
+        addSingletonFactory { TelegramSavedWorkStore(app) }
+        addSingletonFactory { TelegramWorkResolver(get(), get()) }
+        addSingletonFactory { TelegramIndexManager(get(), get(), get(), get()) }
+        addSingletonFactory { TelegramLibraryImporter(get()) }
+        addSingletonFactory { TelegramExternalMetadataResolver(get()) }
+        addSingletonFactory { TelegramSavedWorkManager(get(), get(), get(), get(), get()) }
+
+        addSingletonFactory { MultiSourceWorkStore(app) }
+        addSingletonFactory { MultiSourceMappingStore(app) }
+        addSingletonFactory { MultiSourceWorkOpener(get(), get()) }
 
         // Asynchronously init expensive components for a faster cold start
         ContextCompat.getMainExecutor(app).execute {

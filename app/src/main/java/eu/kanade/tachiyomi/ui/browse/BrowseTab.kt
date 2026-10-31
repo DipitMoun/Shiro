@@ -20,7 +20,6 @@ import eu.kanade.tachiyomi.ui.browse.anime.extension.AnimeExtensionsScreenModel
 import eu.kanade.tachiyomi.ui.browse.anime.extension.animeExtensionsTab
 import eu.kanade.tachiyomi.ui.browse.anime.migration.sources.migrateAnimeSourceTab
 import eu.kanade.tachiyomi.ui.browse.anime.source.animeSourcesTab
-import eu.kanade.tachiyomi.ui.browse.anime.source.globalsearch.GlobalAnimeSearchScreen
 import eu.kanade.tachiyomi.ui.browse.manga.extension.MangaExtensionsScreenModel
 import eu.kanade.tachiyomi.ui.browse.manga.extension.mangaExtensionsTab
 import eu.kanade.tachiyomi.ui.browse.manga.migration.sources.migrateMangaSourceTab
@@ -48,9 +47,9 @@ data object BrowseTab : Tab {
             )
         }
 
-    // TODO: Find a way to let it open Global Anime/Manga Search depending on what Tab(e.g. Anime/Manga Source Tab) is open
+    // Reselecting Explorer returns to the first tab (Anime Sources).
     override suspend fun onReselect(navigator: Navigator) {
-        navigator.push(GlobalAnimeSearchScreen())
+        switchToTabNumberChannel.trySend(0)
     }
 
     private val switchToTabNumberChannel = Channel<Int>(1, BufferOverflow.DROP_OLDEST)
@@ -61,6 +60,10 @@ data object BrowseTab : Tab {
 
     fun showAnimeExtension() {
         switchToTabNumberChannel.trySend(2) // Anime extensions: tab no. 2
+    }
+
+    fun showTab(index: Int) {
+        switchToTabNumberChannel.trySend(index)
     }
 
     @Composable

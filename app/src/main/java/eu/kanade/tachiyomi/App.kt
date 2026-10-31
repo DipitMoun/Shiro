@@ -38,6 +38,8 @@ import eu.kanade.tachiyomi.data.coil.MangaCoverKeyer
 import eu.kanade.tachiyomi.data.coil.MangaKeyer
 import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.data.telegram.index.TelegramIndexManager
+import eu.kanade.tachiyomi.data.telegram.index.TelegramSyncJob
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.di.PreferenceModule
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -52,6 +54,7 @@ import eu.kanade.tachiyomi.util.system.notify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import logcat.AndroidLogcatLogger
 import logcat.LogPriority
 import logcat.LogcatLogger
@@ -162,6 +165,16 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         initializeMigrator()
+
+        TelegramSyncJob.setupTask(this)
+
+        // Met à niveau les index Telegram produits par un ancien parseur.
+        scope.launch(Dispatchers.IO) {
+            runCatching { Injekt.get<TelegramIndexManager>().rebuildIfNeeded() }
+                .onFailure {
+                    logcat(LogPriority.WARN, it) { "Reconstruction de l'index Telegram impossible" }
+                }
+        }
     }
 
     private fun initializeMigrator() {

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.outlined.PeopleAlt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -52,6 +53,9 @@ fun TopRightPlayerControls(
     // video
     onQualityClick: () -> Unit,
     isEpisodeOnline: Boolean?,
+
+    // social
+    onSocialClick: (() -> Unit)? = null,
 
     // more
     onMoreClick: () -> Unit,
@@ -88,6 +92,14 @@ fun TopRightPlayerControls(
                 icon = Icons.Default.HighQuality,
                 onClick = onQualityClick,
                 onLongClick = onQualityClick,
+                horizontalSpacing = MaterialTheme.padding.mediumSmall,
+            )
+        }
+        if (onSocialClick != null) {
+            ControlsButton(
+                icon = Icons.Outlined.PeopleAlt,
+                onClick = onSocialClick,
+                title = "Fils sociaux",
                 horizontalSpacing = MaterialTheme.padding.mediumSmall,
             )
         }

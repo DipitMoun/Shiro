@@ -47,6 +47,47 @@ class TelegramDownloader(
     }
 
     /**
+     * Retrouve l'identifiant TDLib actuel du fichier d'un message. Les
+     * identifiants de fichier peuvent changer entre deux sessions : le
+     * messageId, lui, est stable.
+     */
+    suspend fun resolveFileId(chatId: Long, messageId: Long): Int? = withContext(Dispatchers.IO) {
+        if (chatId == 0L || messageId <= 0L) return@withContext null
+        val client = runCatching { authManager.requireClient() }.getOrNull()
+            ?: return@withContext null
+        runCatching {
+            val message = client.sendAwait<TdApi.Message>(TdApi.GetMessage(chatId, messageId))
+            message.content.fileIdOrNull()
+        }.getOrNull()
+    }
+
+    private fun TdApi.MessageContent.fileIdOrNull(): Int? = when (this) {
+        is TdApi.MessageVideo -> video.video.id
+        is TdApi.MessageDocument -> document.document.id
+        is TdApi.MessageAnimation -> animation.animation.id
+        is TdApi.MessageAudio -> audio.audio.id
+        is TdApi.MessageVideoNote -> videoNote.video.id
+        is TdApi.MessageVoiceNote -> voiceNote.voice.id
+        is TdApi.MessagePhoto -> photo.sizes.maxByOrNull {
+            it.width.toLong() * it.height.toLong()
+        }?.photo?.id
+        else -> null
+    }
+
+    /**
+     * Télécharge un fichier TDLib dans son cache local sans le copier.
+     * L'état [TelegramDownloadState.Completed] expose alors le chemin TDLib,
+     * que l'appelant copie vers sa propre destination (SAF, carte SD…).
+     */
+    fun downloadToCache(
+        fileId: Int,
+        expectedSize: Long,
+        priority: Int = DEFAULT_PRIORITY,
+    ): Flow<TelegramDownloadState> {
+        return download(fileId, expectedSize, destination = null, priority = priority)
+    }
+
+    /**
      * TODO(UI) : collecter ce Flow dans un ViewModel/notifier et afficher la progression.
      * TODO(Phase 3) : déplacer le téléchargement dans un ForegroundService pour les gros fichiers.
      */
@@ -54,7 +95,7 @@ class TelegramDownloader(
     fun download(
         fileId: Int,
         expectedSize: Long,
-        destination: File,
+        destination: File?,
         priority: Int = DEFAULT_PRIORITY,
     ): Flow<TelegramDownloadState> = channelFlow {
         if (priority !in 1..32) {
@@ -160,7 +201,7 @@ class TelegramDownloader(
 
     private suspend fun ProducerScope<TelegramDownloadState>.completeDownload(
         file: TdApi.File,
-        destination: File,
+        destination: File?,
     ) {
         val sourcePath = file.local.path
         val source = sourcePath
@@ -187,6 +228,12 @@ class TelegramDownloader(
         }
 
         send(TelegramDownloadState.Copying(0, totalBytes))
+
+        // Pas de destination : l'appelant copie lui-même le fichier local TDLib.
+        if (destination == null) {
+            send(TelegramDownloadState.Completed(source, totalBytes))
+            return
+        }
 
         try {
             val copied = copyToDestination(source, destination) { copiedBytes, total ->

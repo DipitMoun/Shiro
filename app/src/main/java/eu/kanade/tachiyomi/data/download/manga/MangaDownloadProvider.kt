@@ -165,12 +165,17 @@ class MangaDownloadProvider(
      */
     fun getValidChapterDirNames(chapterName: String, chapterScanlator: String?): List<String> {
         val chapterDirName = getChapterDirName(chapterName, chapterScanlator)
-        return buildList(2) {
+        return buildList(5) {
             // Folder of images
             add(chapterDirName)
 
             // Archived chapters
             add("$chapterDirName.cbz")
+
+            // Documents Telegram (lecteur dédié ou archive)
+            add("$chapterDirName.pdf")
+            add("$chapterDirName.zip")
+            add("$chapterDirName.epub")
         }
     }
 }

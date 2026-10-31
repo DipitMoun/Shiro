@@ -86,3 +86,11 @@
 -keep class org.drinkless.tdlib.** { *; }
 -keepclassmembers class org.drinkless.tdlib.** { *; }
 -dontwarn org.drinkless.tdlib.**
+
+# Matrix Rust SDK / UniFFI / JNA
+-keep class org.matrix.rustcomponents.sdk.** { *; }
+-keep class uniffi.** { *; }
+-keep class com.sun.jna.** { *; }
+-keepclassmembers class * extends com.sun.jna.* { public *; }
+-dontwarn com.sun.jna.**
+-dontwarn java.awt.**

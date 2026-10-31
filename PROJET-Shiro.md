@@ -4,7 +4,7 @@ version: 0.4
 statut: Actif
 base: Aniyomi (aniyomiorg/aniyomi)
 licence: Apache 2.0
-derniere_revision: 2026-10-23
+derniere_revision: 2026-10-29
 ---
 
 # Projet Shiro
@@ -33,7 +33,7 @@ derniere_revision: 2026-10-23
 | Phase 1 - Cherry-picks | TERMINEE | Categories imbriquees + fixes backup multi-origines |
 | Phase 2 - Coeur social Telegram | PARTIELLE (~40%) | Squelette OK, 5 items restants (voir detail) |
 | Phase 2.5 - Refonte UI Spotify-like | TERMINEE | Non prevue au plan initial, ajoutee en cours de route |
-| Phase UI-2 - Outil GIF FFmpeg | REPORTEE | Apres test APK de la refonte UI |
+| Phase UI-2 - Outil GIF FFmpeg | IMPLEMENTEE | Compile, a tester sur telephone |
 | Phase 3 - Explorations | NON COMMENCEE | - |
 
 ### Detail Phase 2 (Telegram) - Reste a faire
@@ -42,6 +42,63 @@ derniere_revision: 2026-10-23
 - Notifications natives (WebSocket en premier plan + WorkManager en arriere-plan)
 - Partage d'extensions entre amis
 - Commentaires et reactions natives dans Shiro
+
+### Chantier Telegram source native - a faire
+
+- [x] Header de la page Telegram aligne sur une source d'animés :
+  - loupe : recherche des oeuvres vidéo ;
+  - icône 3 traits : ouvre la modale des canaux à ajouter (même logique que la sélection des extensions multi-source) ;
+  - menu 3 points : `Synchroniser`, `Partager` (phase 3), `Déconnexion`.
+- [x] Canaux = collections virtuelles internes à Telegram, jamais des catégories globales de la bibliothèque.
+- [x] Une oeuvre peut être répartie sur plusieurs canaux : agrégation par titre, conservation des canaux contributeurs.
+- [x] Collection globale `Telegram` unique pour les oeuvres importées dans la bibliothèque.
+- [x] Synchro à l'entrée d'un canal, en delta, avec backfill manuel.
+- [ ] Supprimer ou rendre opt-in la synchro globale automatique par défaut.
+- [x] Corriger `rebuildLocked()` pour ne plus charger tous les index lors d'une synchro mono-canal.
+- [x] Corriger le crash de navigation : plus de `EmptyScreen` scrollable dans une `LazyColumn`.
+- [x] Detail d'œuvre natif : entrée technique `favorite = false` puis `AnimeScreen`, épisodes agrégés multi-canaux.
+- [x] Modal Sources dans `AnimeScreen` : liste les canaux contributeurs d'une œuvre Telegram.
+- [x] Cartes canaux au style collection de bibliothèque (mosaïque de covers).
+- [x] Intérieur d'un canal au style collection : bannière, stats, sous-collections, œuvres.
+- [x] Menu 3 points canal : importer dans la bibliothèque, rescanner l'historique, retirer le canal.
+- [x] Sous-collection « Non reconnus » réelle : ouvre sa propre page collection, les œuvres non reconnues n'ont pas servi de filtre.
+- [x] Récupération des épisodes orphelins du type « Black Clover 84 » : re-parsing local et rattachement à l'œuvre principale.
+- [x] Indicateur de chargement pendant la recherche.
+- [x] Actions manuelles sur une œuvre source : fusion de variantes, séparation, renommage, réinitialisation et masquage.
+- [x] Sélection multiple d’œuvres et fusion vers une cible choisie depuis une barre de sélection.
+- [x] Fusion intelligente : dédoublonnage des fichiers identiques, conservation des fichiers différents et compteur d’épisodes par famille.
+- [x] Corrections manuelles persistantes dans `telegram-work-overrides.json`, appliquées à l’agrégation et aux épisodes.
+- [x] Test réel de fusion/séparation sur les deux variantes de `The Exiled Cheating Magician`.
+- [x] Fiche d’actions compacte avec sous-pages Organisation et Reconnaissance.
+- [x] Correction des clés dupliquées dans toutes les listes Lazy Telegram (source, recherche, canaux, fusion, ancien écran).
+- [x] Reconnaissance manuelle par fournisseur : AniList, OMDb/IMDb, MyAnimeList, Kitsu et Shikimori.
+- [x] Mise à jour profonde des fiches après reconnaissance (description, genres, couverture, statut, rechargement des détails).
+- [x] Recherche Telegram avec état visible : prêt, en cours, canaux parcourus, terminé, relance.
+- [x] Filtrage des vidéos Telegram génériques (`generic video expires`) sans métadonnées.
+- [x] Fiche d’actions en bottom sheet, sélecteur de fusion avec recherche/couvertures, et compteur d’épisodes uniques.
+- [x] Correction du crash de clés dupliquées dans les listes Lazy (source, recherche, canal, fusion).
+- [ ] Mise à jour UI vraiment incrémentale canal par canal.
+
+### Audit Telegram - donnees reelles (2026-10-28)
+
+- 39 canaux, 83 869 fichiers, index principal ~25 Mo.
+- 463 entrees Anime Telegram en base : 12 agregees, 439 anciennes par canal, 12 validees.
+- 85 favoris ; aucune duplication exacte de favoris par titre.
+- Causes d'anomalies confirmees :
+  - archives `.cbz/.cbr` classees VIDEO quand le canal etait en mode Video ;
+  - suffixes de canaux (`Japanimation`, `Episode suivant`, `Version suivante`,
+    `VOSTFRNON`, `VFCONVERTIE`, `.mp4`) laisses dans les titres ;
+  - oeuvres vides conservees dans l'index ;
+  - anciennes entrees bibliotheque par canal melangees aux nouvelles agregees.
+- Correctifs : classification document prioritaire sur le mode du canal, nettoyage
+  des suffixes, suppression des oeuvres vides, re-parsing complet versionne,
+  reparation locale canal par canal sans reseau, source anime filtree VIDEO.
+- Filtrage APK/executables confirme : 215 fichiers APK/publicitaires, 73 oeuvres
+  parasites supprimees, 73 oeuvres vides supprimees.
+- Apres simulation sur l'index copie : 15 023 oeuvres -> 5 199 oeuvres video,
+  9 678 oeuvres document, 146 entrees parasites/vides retirees.
+- Politique de securite : aucune suppression de favori/historique automatique ;
+  copie de sauvegarde de la base et des index sur PC avant audit.
 
 ### Detail Phase 2.5 (Refonte UI) - Termine
 - Cartes collection format carre (3 covers + 1 fleche)
@@ -53,10 +110,11 @@ derniere_revision: 2026-10-23
 - Carrousel en haut (oeuvres + collections recentes avec %)
 - FAB + BottomSheet navigation rapide
 
-### Detail Phase UI-2 (Outil GIF) - Reporte
-- Scope : FFmpeg deja present dans le projet, picker video, slider 15s, sauvegarde banniere
-- Effort estime : 2-3h
-- Bloque par : test APK de la refonte UI d'abord
+### Detail Phase UI-2 (Outil GIF) - Implemente
+- Picker video locale, sliders debut/fin, extrait limite a 15 s
+- Conversion GIF via FFmpeg-kit (palette optimisee, largeur 480 px)
+- Sauvegarde via `saveBannerFile` et apercu FileProvider/Coil
+- Reste : test sur telephone et validation visuelle de la banniere animee
 
 ---
 
@@ -215,14 +273,14 @@ Le vrai differenciateur. Le prototype doit etre fait tot pour valider les risque
 | 2.5.7 | FAB + BottomSheet navigation rapide | FAIT |
 | 2.5.8 | Collections racines en CollectionCard | FAIT |
 
-### Phase UI-2 - Outil GIF (Reportee apres test APK)
+### Phase UI-2 - Outil GIF (Implemente)
 
 | # | Tache | Statut |
 |---|-------|--------|
-| UI-2.1 | Picker video locale (ActivityResultContracts.OpenDocument) | A FAIRE |
-| UI-2.2 | Slider selection 15s (debut + fin) | A FAIRE |
-| UI-2.3 | Extraction GIF via FFmpeg-kit deja present | A FAIRE |
-| UI-2.4 | Sauvegarde comme banniere locale (saveBannerFile) | A FAIRE |
+| UI-2.1 | Picker video locale (ActivityResultContracts.OpenDocument) | FAIT |
+| UI-2.2 | Slider selection 15s (debut + fin) | FAIT |
+| UI-2.3 | Extraction GIF via FFmpeg-kit deja present | FAIT |
+| UI-2.4 | Sauvegarde comme banniere locale (saveBannerFile) | FAIT |
 
 ### Phase 3 - Explorations
 | # | Tache | Complexite | Besoin | Impact |
@@ -264,14 +322,13 @@ Aucun ne propose de couche sociale ou de partage pair-a-pair. C'est le creneau d
 
 ## Prochains chantiers (priorises)
 
-1. **Test APK** de la refonte UI (bloquant pour valider 2.5)
-2. **Outil GIF FFmpeg** (Phase UI-2) apres validation UI
-3. **Parsing intelligent Telegram** : regrouper `Bleach_01.mkv` + `Bleach_02.mkv` sous un seul anime "Bleach" avec episodes, via FileNameParser d'Aniyomi + AniList
-4. **Branchement lecteur** : `videoListParse` doit retourner les URLs Telegram pour ExoPlayer
-5. **Test reel auth Telegram** : numero + code + 2FA sur telephone (jamais teste)
-6. **Notifications** : WorkManager 15 min en arriere-plan + WebSocket quand app ouverte
-7. **Partage d'extensions entre amis** : format `.shiro`, import/export
-8. **Commentaires/reactions natives** : stockage local + synchro
+1. **Test APK** de la refonte UI et de l'outil GIF (bloquant pour valider 2.5 et UI-2)
+2. **Parsing intelligent Telegram** : regrouper `Bleach_01.mkv` + `Bleach_02.mkv` sous un seul anime "Bleach" avec episodes, via FileNameParser d'Aniyomi + AniList
+3. **Branchement lecteur** : `videoListParse` doit retourner les URLs Telegram pour ExoPlayer
+4. **Test reel auth Telegram** : numero + code + 2FA sur telephone (jamais teste)
+5. **Notifications** : WorkManager 15 min en arriere-plan + WebSocket quand app ouverte
+6. **Partage d'extensions entre amis** : format `.shiro`, import/export
+7. **Commentaires/reactions natives** : stockage local + synchro
 
 ---
 
@@ -281,4 +338,7 @@ Aucun ne propose de couche sociale ou de partage pair-a-pair. C'est le creneau d
 | 0.1 | (initial) | Plan de base, phases 0-3, decisions a trancher |
 | 0.2 | (precedente) | Renommage Thot -> Shiro, strategie cherry-pick, categorisation A/B/C, non-objectifs, architecture cible, veille concurrentielle |
 | 0.3 | (precedente) | Notifications Android natives (WebSocket + WorkManager) au lieu de Telegram, relais WebSocket optionnel, contrainte UI figee (pas de refonte avant v2), note OEM/Doze, priorite Phase 1 > Phase 2 actee |
-| 0.4 | (cette version) | Refonte UI Spotify-like terminee (CollectionCard, header recursif, banniere locale + galerie, stats heures, carrousel), outil GIF FFmpeg reporte apres test APK, Phase 2 Telegram documentee comme partielle (~40%) |
+| 0.4 | (precedente) | Refonte UI Spotify-like terminee (CollectionCard, header recursif, banniere locale + galerie, stats heures, carrousel), outil GIF FFmpeg reporte apres test APK, Phase 2 Telegram documentee comme partielle (~40%) |
+| 0.5 | (precedente) | Outil GIF FFmpeg implemente (picker video, extrait 15 s, conversion FFmpeg, banniere locale), mapping multi-source fiabilise (invalidation lors du changement d'extensions participantes) et resolver WebView allege (mutex + fermeture des qu'un media est capture) |
+| 0.6 | (precedente) | Mapping non destructif : fusion avec l'ancien mapping, sources prioritaires par usage, timeout par source et logs `[mapping]`. Reparation locale des oeuvres Telegram : re-analyse des fichiers, ancrage par messageId/workId, alias de titres JoJo, detection des exports generiques via leur legende (Steel Ball Run) et rechargement force des listes d'episodes |
+| 0.7 | (cette version) | Seuil commun de 50 Mo minimum pour les episodes Telegram et multi-source, rejet des URLs image/GIF avant lecture ou telechargement, validation de la taille finale des fichiers et nettoyage des anciens fichiers trop petits |

@@ -38,6 +38,7 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.download.anime.model.AnimeDownload
+import eu.kanade.tachiyomi.data.telegram.source.TelegramAnimeSource
 import eu.kanade.tachiyomi.data.torrent.service.TorrentServerService
 import eu.kanade.tachiyomi.data.track.EnhancedAnimeTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
@@ -106,6 +107,7 @@ import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.track.anime.interactor.GetAnimeTracks
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.source.local.entries.anime.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -246,8 +248,13 @@ class AnimeScreenModel(
             }
 
             val needRefreshInfo = !anime.initialized
-            val needRefreshEpisode = episodes.isEmpty() && anime.fetchType == FetchType.Episodes
-            val needRefreshSeason = seasons.isEmpty() && anime.fetchType == FetchType.Seasons
+            // Une œuvre Telegram réparée peut déjà avoir d'anciens épisodes en
+            // base (ex. 1 épisode Steel Ball Run) tout en étant `initialized=false`.
+            // Il faut alors recharger la liste, pas seulement quand elle est vide.
+            val needRefreshEpisode = anime.fetchType == FetchType.Episodes &&
+                (episodes.isEmpty() || !anime.initialized)
+            val needRefreshSeason = anime.fetchType == FetchType.Seasons &&
+                (seasons.isEmpty() || !anime.initialized)
 
             // Show what we have earlier
             mutableState.update {
@@ -942,6 +949,37 @@ class AnimeScreenModel(
         val anime = successState?.anime ?: return
         downloadManager.downloadEpisodes(anime, episodes, true, alt, video)
         toggleAllSelection(false)
+    }
+
+    /**
+     * Télécharge l'épisode si nécessaire avant lecture.
+     *
+     * Les fichiers Telegram ne sont pas diffusables : la lecture exige un
+     * téléchargement local préalable.
+     *
+     * @return true si la lecture peut continuer.
+     */
+    fun ensureTelegramEpisodeDownloaded(episode: Episode): Boolean {
+        if (source?.id != TelegramAnimeSource.ID) return true
+
+        val anime = successState?.anime ?: return false
+        val downloaded = downloadManager.isEpisodeDownloaded(
+            episode.name,
+            episode.scanlator,
+            anime.title,
+            anime.source,
+        )
+        if (downloaded) return true
+
+        if (downloadManager.getQueuedDownloadOrNull(episode.id) == null) {
+            startDownload(listOf(episode), false)
+        }
+        screenModelScope.launch {
+            snackbarHostState.showSnackbar(
+                context.stringResource(MR.strings.telegram_download_required_episode),
+            )
+        }
+        return false
     }
 
     /**

@@ -60,7 +60,6 @@ class AndroidMangaSourceManager(
                                 Injekt.get(),
                             ),
                             TelegramMangaSource.ID to TelegramMangaSource(),
-                            TelegramMangaSource.ID to TelegramMangaSource(),
                         ),
                     )
                     extensions.forEach { extension ->

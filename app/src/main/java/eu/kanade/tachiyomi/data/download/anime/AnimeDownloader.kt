@@ -16,6 +16,7 @@ import com.arthenica.ffmpegkit.LogCallback
 import com.arthenica.ffmpegkit.LogRedirectionStrategy
 import com.arthenica.ffmpegkit.StatisticsCallback
 import com.hippo.unifile.UniFile
+import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.UnmeteredSource
 import eu.kanade.tachiyomi.animesource.model.HttpServer
 import eu.kanade.tachiyomi.animesource.model.Track
@@ -23,7 +24,13 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.download.anime.model.AnimeDownload
 import eu.kanade.tachiyomi.data.library.anime.AnimeLibraryUpdateNotifier
+import eu.kanade.tachiyomi.data.media.EpisodeMediaValidator
+import eu.kanade.tachiyomi.data.multisource.MultiSourceDebugLog
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
+import eu.kanade.tachiyomi.data.telegram.TelegramUrls
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramAuthManager
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramDownloadState
+import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramDownloader
 import eu.kanade.tachiyomi.data.torrent.service.TorrentServerService
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.player.loader.EpisodeLoader
@@ -53,6 +60,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.storage.extension
@@ -68,6 +76,7 @@ import tachiyomi.i18n.aniyomi.AYMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -290,7 +299,13 @@ class AnimeDownloader(
     ) {
         if (episodes.isEmpty()) return
 
-        val source = sourceManager.get(anime.source) as? AnimeHttpSource ?: return
+        val source = sourceManager.get(anime.source)
+        if (source == null) {
+            logcat(LogPriority.ERROR) {
+                "AnimeDownloader: source ${anime.source} introuvable pour ${anime.title}"
+            }
+            return
+        }
         val wasEmpty = queueState.value.isEmpty()
 
         val episodesToQueue = episodes.asSequence()
@@ -307,8 +322,9 @@ class AnimeDownloader(
         if (episodesToQueue.isNotEmpty()) {
             addAllToQueue(episodesToQueue)
 
-            // Start downloader if needed
-            if (autoStart && wasEmpty) {
+            // Start downloader if needed. A new request should also restart a
+            // queue that was stopped or paused, not only an empty one.
+            if (autoStart && (wasEmpty || !isRunning)) {
                 val queuedDownloads =
                     queueState.value.count { it: AnimeDownload -> it.source !is UnmeteredSource }
                 val maxDownloadsFromSource = queueState.value
@@ -375,7 +391,14 @@ class AnimeDownloader(
             }
 
             if (!isDownloadSuccessful(download, tmpDir)) {
+                tmpDir.listFiles()?.forEach { it.delete() }
                 download.status = AnimeDownload.State.ERROR
+                notifier.onError(
+                    "Épisode rejeté : fichier inférieur à 50 Mo ou média non valide.",
+                    download.episode.name,
+                    download.anime.title,
+                    download.anime.id,
+                )
                 return
             }
 
@@ -391,6 +414,12 @@ class AnimeDownloader(
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             // If the video threw, it will resume here
+            MultiSourceDebugLog.log(
+                "download",
+                "échec ${download.anime.title} / ${download.episode.name} " +
+                    "url=${download.video?.videoUrl}",
+                error,
+            )
             logcat(LogPriority.ERROR, error)
             download.status = AnimeDownload.State.ERROR
             notifier.onError(
@@ -449,7 +478,9 @@ class AnimeDownloader(
 
                         // Start and set http server if needed
                         if (video.usesHttpServer()) {
-                            httpServer = download.source.createHttpServer()
+                            val httpSource = download.source as? AnimeHttpSource
+                                ?: throw Exception("Serveur HTTP indisponible pour cette source")
+                            httpServer = httpSource.createHttpServer()
                             httpServer?.start()
                             download.video = download.video?.copyHttpServer(httpServer?.listeningPort ?: 0)
                         }
@@ -457,6 +488,9 @@ class AnimeDownloader(
                         downloadVideo(download, tmpDir, filename)
                     } else {
                         if (download.video!!.usesHttpServer()) {
+                            if (download.source !is AnimeHttpSource) {
+                                throw Exception("Serveur HTTP indisponible pour cette source")
+                            }
                             val (success, port) = MainActivity.startHttpServerService(context, download.source.id)
                             if (!success) throw Exception("Failed to start server")
                             download.video = download.video!!.copyHttpServer(port)
@@ -501,6 +535,10 @@ class AnimeDownloader(
         tmpDir: UniFile,
         filename: String,
     ): UniFile {
+        TelegramUrls.parseFile(download.video?.videoUrl)?.let { ref ->
+            return downloadTelegramVideo(download, tmpDir, filename, ref)
+        }
+
         return flow {
             tmpDir.findFile("$filename.tmp")?.delete()
             val videoFile = tmpDir.createFile("$filename.tmp")!!
@@ -528,6 +566,69 @@ class AnimeDownloader(
             }
             .flowOn(Dispatchers.IO)
             .first()
+    }
+
+    /**
+     * Téléchargement Telegram : le fichier est d'abord récupéré par TDLib, puis
+     * copié vers le dossier temporaire de l'épisode. Aucun streaming.
+     */
+    private suspend fun downloadTelegramVideo(
+        download: AnimeDownload,
+        tmpDir: UniFile,
+        filename: String,
+        ref: TelegramUrls.FileRef,
+    ): UniFile = withContext(Dispatchers.IO) {
+        val downloader: TelegramDownloader = Injekt.get()
+        val authManager: TelegramAuthManager = Injekt.get()
+
+        tmpDir.findFile("$filename.tmp")?.delete()
+        val tmpFile = tmpDir.createFile("$filename.tmp")
+            ?: throw IOException("Impossible de créer le fichier temporaire Telegram")
+
+        // Le fileId TDLib peut changer entre deux sessions : on le résout à
+        // partir du message, qui est stable, pour ne jamais lire un autre post.
+        val fileId = if (ref.messageId > 0L && ref.chatId != null) {
+            downloader.resolveFileId(ref.chatId, ref.messageId) ?: ref.fileId
+        } else {
+            ref.fileId
+        }
+
+        try {
+            downloader.downloadToCache(fileId, ref.sizeBytes).collect { state ->
+                when (state) {
+                    is TelegramDownloadState.Downloading -> {
+                        download.progress = (state.fraction * 100).toInt()
+                    }
+                    is TelegramDownloadState.Completed -> {
+                        tmpFile.openOutputStream().use { output ->
+                            state.destination.inputStream().use { input ->
+                                input.copyTo(output, 1 shl 20)
+                            }
+                        }
+                    }
+                    is TelegramDownloadState.Failed -> {
+                        throw IOException(state.message, state.cause)
+                    }
+                    else -> Unit
+                }
+            }
+
+            val extension = ref.extension?.takeIf { it.isNotBlank() } ?: "mp4"
+            val finalName = "$filename.$extension"
+            tmpDir.findFile(finalName)?.delete()
+            tmpFile.renameTo(finalName)
+            val finalFile = tmpDir.findFile(finalName) ?: tmpFile
+            if (finalFile.length() < EpisodeMediaValidator.MIN_EPISODE_BYTES) {
+                finalFile.delete()
+                throw IOException("Fichier Telegram inférieur à 50 Mo")
+            }
+            finalFile
+        } catch (e: Throwable) {
+            tmpFile.delete()
+            throw e
+        } finally {
+            authManager.deleteFile(fileId)
+        }
     }
 
     private fun isTorrent(video: Video?): Boolean {
@@ -575,10 +676,17 @@ class AnimeDownloader(
 
         val ffmpegFilename = { videoFile.uri.toFFmpegString(context) }
 
-        val headers = video.headers ?: download.source.headers
-        val headerOptions = headers.joinToString("", "-headers '", "'") {
-            "${it.first}: ${it.second}\r\n"
-        }
+        val headerOptions = (video.headers ?: (download.source as? AnimeHttpSource)?.headers)
+            ?.joinToString("", "-headers '", "'") {
+                "${it.first}: ${it.second}\r\n"
+            }
+            .orEmpty()
+
+        MultiSourceDebugLog.log(
+            "ffmpeg",
+            "start url=${video.videoUrl} " +
+                "headers=${video.headers?.map { it.first }.orEmpty()}",
+        )
 
         FFmpegKitConfig.setLogRedirectionStrategy(LogRedirectionStrategy.ALWAYS_PRINT_LOGS)
         val ffmpegOptions = getFFmpegOptions(video, headerOptions, ffmpegFilename())
@@ -607,7 +715,13 @@ class AnimeDownloader(
             }
         }
 
-        duration = getDuration(ffprobeCommand(video.videoUrl, headerOptions))?.toLong() ?: 0L
+        duration = runCatching { getDuration(ffprobeCommand(video.videoUrl, headerOptions)) }
+            .onFailure {
+                MultiSourceDebugLog.log("ffmpeg", "ffprobe échoué url=${video.videoUrl}", it)
+            }
+            .getOrNull()
+            ?.toLong()
+            ?: 0L
 
         suspendCancellableCoroutine { continuation ->
             val session = FFmpegKit.executeWithArgumentsAsync(
@@ -619,7 +733,14 @@ class AnimeDownloader(
                         }
                         continuation.resume(it)
                     } else {
-                        continuation.resumeWithException(Exception("Error in ffmpeg!"))
+                        val output = it.output?.take(4_000).orEmpty()
+                        MultiSourceDebugLog.log(
+                            "ffmpeg",
+                            "failed url=${video.videoUrl} output=$output",
+                        )
+                        continuation.resumeWithException(
+                            Exception("FFmpeg : ${output.ifBlank { "échec de conversion" }}"),
+                        )
                     }
                 },
                 logCallback,
@@ -665,9 +786,18 @@ class AnimeDownloader(
             "-$key \"$value\""
         }
 
+        val isHls = video.videoUrl
+            .substringBefore('?')
+            .endsWith(".m3u8", ignoreCase = true)
+
         val videoInput = buildList {
             if (video.videoUrl.startsWith("http")) {
                 add(headerOptions)
+            }
+            if (isHls) {
+                add("-protocol_whitelist file,http,https,tcp,tls,crypto")
+                add("-allowed_extensions ALL")
+                add("-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5")
             }
             add(sourceStreamOptions)
             add("-i")
@@ -710,7 +840,7 @@ class AnimeDownloader(
      */
     private suspend fun downloadVideoExternal(
         video: Video,
-        source: AnimeHttpSource,
+        source: AnimeSource,
         tmpDir: UniFile,
         filename: String,
     ): UniFile {
@@ -724,6 +854,7 @@ class AnimeDownloader(
             // start download with intent
             val pm = context.packageManager
             val pkgName = preferences.externalDownloaderSelection().get()
+            val headers = video.headers ?: (source as? AnimeHttpSource)?.headers
             val intent: Intent
             if (pkgName.isNotEmpty()) {
                 intent = pm.getLaunchIntentForPackage(pkgName) ?: throw Exception(
@@ -732,9 +863,9 @@ class AnimeDownloader(
                 when {
                     // 1DM
                     pkgName.startsWith("idm.internet.download.manager") -> {
-                        val headers = (video.headers ?: source.headers).toMap()
+                        val headersMap = headers?.toMap().orEmpty()
                         val bundle = Bundle()
-                        for ((key, value) in headers) {
+                        for ((key, value) in headersMap) {
                             bundle.putString(key, value)
                         }
 
@@ -752,9 +883,9 @@ class AnimeDownloader(
                     }
                     // ADM
                     pkgName.startsWith("com.dv.adm") -> {
-                        val headers = (video.headers ?: source.headers).toList()
+                        val headersList = headers?.toList().orEmpty()
                         val bundle = Bundle()
-                        headers.forEach { a ->
+                        headersList.forEach { a ->
                             bundle.putString(
                                 a.first,
                                 a.second.replace("http", "h_ttp"),
@@ -815,7 +946,8 @@ class AnimeDownloader(
         tmpDir: UniFile,
     ): Boolean {
         val downloadedVideo = tmpDir.listFiles().orEmpty().filterNot { it.extension == ".tmp" }
-        return downloadedVideo.size == 1
+        return downloadedVideo.size == 1 &&
+            downloadedVideo.first().length() >= EpisodeMediaValidator.MIN_EPISODE_BYTES
     }
 
     /**
@@ -835,7 +967,9 @@ class AnimeDownloader(
         // Ensure that the episode folder has the full video
         val downloadedVideo = tmpDir.listFiles().orEmpty().filterNot { it.extension == ".tmp" }
 
-        download.status = if (downloadedVideo.size == 1) {
+        val validSize = downloadedVideo.size == 1 &&
+            downloadedVideo.first().length() >= EpisodeMediaValidator.MIN_EPISODE_BYTES
+        download.status = if (validSize) {
             // Only rename the directory if it's downloaded
             val filename = DiskUtil.buildValidFilename("${download.anime.title} - ${download.episode.name}")
             tmpDir.findFile("${filename}_tmp.mkv")?.delete()
@@ -846,7 +980,8 @@ class AnimeDownloader(
             DiskUtil.createNoMediaFile(tmpDir, context)
             AnimeDownload.State.DOWNLOADED
         } else {
-            throw Exception("Unable to finalize download")
+            downloadedVideo.forEach { it.delete() }
+            throw Exception("Fichier inférieur à 50 Mo ou média non valide")
         }
     }
 

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -88,6 +89,7 @@ fun AnimeExtensionScreen(
     onUpdateExtension: (AnimeExtension.Installed) -> Unit,
     onTrustExtension: (AnimeExtension.Untrusted) -> Unit,
     onOpenExtension: (AnimeExtension.Installed) -> Unit,
+    onBrowseExtension: (AnimeExtension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -130,6 +132,7 @@ fun AnimeExtensionScreen(
                     onUpdateExtension = onUpdateExtension,
                     onTrustExtension = onTrustExtension,
                     onOpenExtension = onOpenExtension,
+                    onBrowseExtension = onBrowseExtension,
                     onClickUpdateAll = onClickUpdateAll,
                 )
             }
@@ -149,6 +152,7 @@ private fun AnimeExtensionContent(
     onUpdateExtension: (AnimeExtension.Installed) -> Unit,
     onTrustExtension: (AnimeExtension.Untrusted) -> Unit,
     onOpenExtension: (AnimeExtension.Installed) -> Unit,
+    onBrowseExtension: (AnimeExtension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -254,6 +258,7 @@ private fun AnimeExtensionContent(
                             }
                         }
                     },
+                    onBrowseExtension = onBrowseExtension,
                 )
             }
         }
@@ -282,6 +287,7 @@ private fun AnimeExtensionItem(
     onLongClickItem: (AnimeExtension) -> Unit,
     onClickItemCancel: (AnimeExtension) -> Unit,
     onClickItemAction: (AnimeExtension) -> Unit,
+    onBrowseExtension: (AnimeExtension.Installed) -> Unit,
     modifier: Modifier = Modifier,
     onClickItemSecondaryAction: (AnimeExtension) -> Unit,
 ) {
@@ -327,6 +333,7 @@ private fun AnimeExtensionItem(
                 onClickItemCancel = onClickItemCancel,
                 onClickItemAction = onClickItemAction,
                 onClickItemSecondaryAction = onClickItemSecondaryAction,
+                onBrowseExtension = onBrowseExtension,
             )
         },
     ) {
@@ -437,6 +444,7 @@ private fun AnimeExtensionItemActions(
     onClickItemCancel: (AnimeExtension) -> Unit = {},
     onClickItemAction: (AnimeExtension) -> Unit = {},
     onClickItemSecondaryAction: (AnimeExtension) -> Unit = {},
+    onBrowseExtension: (AnimeExtension.Installed) -> Unit = {},
 ) {
     val isIdle = installStep.isCompleted()
 
@@ -469,6 +477,15 @@ private fun AnimeExtensionItemActions(
                                 imageVector = Icons.Outlined.Settings,
                                 contentDescription = stringResource(MR.strings.action_settings),
                             )
+                        }
+
+                        if (extension.sources.isNotEmpty()) {
+                            IconButton(onClick = { onBrowseExtension(extension) }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.TravelExplore,
+                                    contentDescription = stringResource(MR.strings.browse),
+                                )
+                            }
                         }
 
                         if (extension.hasUpdate) {

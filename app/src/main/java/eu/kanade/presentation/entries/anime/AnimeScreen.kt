@@ -80,6 +80,7 @@ import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.download.anime.model.AnimeDownload
+import eu.kanade.tachiyomi.data.multisource.MultiSourceMappingState
 import eu.kanade.tachiyomi.source.anime.getNameForAnimeInfo
 import eu.kanade.tachiyomi.ui.browse.anime.extension.details.AnimeSourcePreferencesScreen
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreenModel
@@ -166,6 +167,8 @@ fun AnimeScreen(
     onRelatedAnimeClicked: (Anime) -> Unit,
     onRelatedAnimeLongClicked: (Anime) -> Unit,
     relatedAnimeDisplayMode: LibraryDisplayMode,
+    sourceMapping: MultiSourceMappingState? = null,
+    onSourcesClicked: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val onCopyTagToClipboard: (tag: String) -> Unit = {
@@ -223,6 +226,8 @@ fun AnimeScreen(
             onRelatedAnimeClicked = onRelatedAnimeClicked,
             onRelatedAnimeLongClicked = onRelatedAnimeLongClicked,
             relatedAnimeDisplayMode = relatedAnimeDisplayMode,
+            sourceMapping = sourceMapping,
+            onSourcesClicked = onSourcesClicked,
         )
     } else {
         AnimeScreenLargeImpl(
@@ -268,6 +273,8 @@ fun AnimeScreen(
             onRelatedAnimeClicked = onRelatedAnimeClicked,
             onRelatedAnimeLongClicked = onRelatedAnimeLongClicked,
             relatedAnimeDisplayMode = relatedAnimeDisplayMode,
+            sourceMapping = sourceMapping,
+            onSourcesClicked = onSourcesClicked,
         )
     }
 }
@@ -334,6 +341,8 @@ private fun AnimeScreenSmallImpl(
     onRelatedAnimeClicked: (Anime) -> Unit,
     onRelatedAnimeLongClicked: (Anime) -> Unit,
     relatedAnimeDisplayMode: LibraryDisplayMode,
+    sourceMapping: MultiSourceMappingState? = null,
+    onSourcesClicked: (() -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val offsetGridPaddingPx = with(density) { GRID_PADDING.roundToPx() }
@@ -513,6 +522,8 @@ private fun AnimeScreenSmallImpl(
                             onTrackingClicked = onTrackingClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
+                            sourceMapping = sourceMapping,
+                            onSourcesClicked = onSourcesClicked,
                             modifier = Modifier.ignorePadding(offsetGridPaddingPx),
                         )
                     }
@@ -688,6 +699,8 @@ fun AnimeScreenLargeImpl(
     onRelatedAnimeClicked: (Anime) -> Unit,
     onRelatedAnimeLongClicked: (Anime) -> Unit,
     relatedAnimeDisplayMode: LibraryDisplayMode,
+    sourceMapping: MultiSourceMappingState? = null,
+    onSourcesClicked: (() -> Unit)? = null,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
@@ -844,6 +857,8 @@ fun AnimeScreenLargeImpl(
                                 onTrackingClicked = onTrackingClicked,
                                 onEditIntervalClicked = onEditIntervalClicked,
                                 onEditCategory = onEditCategoryClicked,
+                                sourceMapping = sourceMapping,
+                                onSourcesClicked = onSourcesClicked,
                             )
                             ExpandableAnimeDescription(
                                 defaultExpandState = true,
@@ -1105,7 +1120,7 @@ private fun LazyGridScope.sharedEpisodeItems(
                     fillermark = episodeItem.episode.fillermark,
                     selected = episodeItem.selected,
                     isAnyEpisodeSelected = isAnyEpisodeSelected,
-                    downloadIndicatorEnabled = !isAnyEpisodeSelected && !anime.isLocal(),
+                    downloadIndicatorEnabled = !isAnyEpisodeSelected && !anime.isLocal() && onDownloadEpisode != null,
                     downloadStateProvider = { episodeItem.downloadState },
                     downloadProgressProvider = { episodeItem.downloadProgress },
                     episodeSwipeStartAction = episodeSwipeStartAction,

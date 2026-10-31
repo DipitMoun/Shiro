@@ -53,6 +53,12 @@ object Notifications {
     const val GROUP_NEW_EPISODES = "eu.kanade.tachiyomi.NEW_EPISODES"
 
     /**
+     * Notification channel and id used by the Telegram synchronizer.
+     */
+    const val CHANNEL_TELEGRAM_SYNC = "telegram_sync_channel"
+    const val ID_TELEGRAM_SYNC = -1001
+
+    /**
      * Notification channel and ids used by the backup/restore system.
      */
     private const val GROUP_BACKUP_RESTORE = "group_backup_restore"
@@ -151,6 +157,10 @@ object Notifications {
                 },
                 buildNotificationChannel(CHANNEL_NEW_CHAPTERS_EPISODES, IMPORTANCE_DEFAULT) {
                     setName(context.stringResource(AYMR.strings.channel_new_chapters_episodes))
+                },
+                buildNotificationChannel(CHANNEL_TELEGRAM_SYNC, IMPORTANCE_DEFAULT) {
+                    setName(context.stringResource(MR.strings.telegram))
+                    setGroup(GROUP_LIBRARY)
                 },
                 buildNotificationChannel(CHANNEL_DOWNLOADER_PROGRESS, IMPORTANCE_LOW) {
                     setName(context.stringResource(MR.strings.channel_progress))

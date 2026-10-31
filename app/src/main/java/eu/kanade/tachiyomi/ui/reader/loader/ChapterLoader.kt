@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.loader
 import android.content.Context
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadProvider
+import eu.kanade.tachiyomi.data.telegram.source.TelegramMangaSource
 import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -88,13 +89,31 @@ class ChapterLoader(
             skipCache = true,
         )
         return when {
-            isDownloaded -> DownloadPageLoader(
-                chapter,
-                manga,
-                source,
-                downloadManager,
-                downloadProvider,
-            )
+            isDownloaded -> {
+                val chapterPath = downloadProvider.findChapterDir(
+                    dbChapter.name,
+                    dbChapter.scanlator,
+                    manga.title,
+                    source,
+                )
+                when {
+                    chapterPath?.isFile == true && chapterPath.name?.endsWith(".pdf", true) == true -> {
+                        PdfPageLoader(chapterPath)
+                    }
+                    chapterPath?.isFile == true && chapterPath.name?.endsWith(".epub", true) == true -> {
+                        EpubPageLoader(chapterPath.epubReader(context))
+                    }
+                    else -> {
+                        DownloadPageLoader(
+                            chapter,
+                            manga,
+                            source,
+                            downloadManager,
+                            downloadProvider,
+                        )
+                    }
+                }
+            }
             source is LocalMangaSource -> source.getFormat(chapter.chapter).let { format ->
                 when (format) {
                     is Format.Directory -> DirectoryPageLoader(format.file)
@@ -103,6 +122,9 @@ class ChapterLoader(
                 }
             }
             source is HttpSource -> HttpPageLoader(chapter, source)
+            source is TelegramMangaSource -> error(
+                context.stringResource(MR.strings.telegram_source_needs_download),
+            )
             source is StubMangaSource -> error(
                 context.stringResource(MR.strings.source_not_installed, source.toString()),
             )

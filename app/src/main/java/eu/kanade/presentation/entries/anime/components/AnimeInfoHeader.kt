@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AttachMoney
 import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.DoneAll
@@ -40,6 +41,8 @@ import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -84,6 +87,7 @@ import eu.kanade.presentation.entries.components.ItemCover
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.coil.useBackground
+import eu.kanade.tachiyomi.data.multisource.MultiSourceMappingState
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.AnimeRelationGroup
@@ -177,6 +181,8 @@ fun AnimeActionRow(
     onTrackingClicked: (() -> Unit)?,
     onEditIntervalClicked: (() -> Unit)?,
     onEditCategory: (() -> Unit)?,
+    sourceMapping: MultiSourceMappingState? = null,
+    onSourcesClicked: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val defaultActionButtonColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
@@ -227,6 +233,35 @@ fun AnimeActionRow(
                 icon = if (trackingCount == 0) Icons.Outlined.Sync else Icons.Outlined.Done,
                 color = if (trackingCount == 0) defaultActionButtonColor else MaterialTheme.colorScheme.primary,
                 onClick = onTrackingClicked,
+            )
+        }
+
+        if (onSourcesClicked != null) {
+            val loading = sourceMapping?.loading == true
+            val complete = sourceMapping?.complete == true
+            val percent = if (sourceMapping != null && sourceMapping.totalEpisodes > 0) {
+                (sourceMapping.assignedEpisodes * 100 / sourceMapping.totalEpisodes).coerceIn(0, 100)
+            } else {
+                0
+            }
+            AnimeActionButton(
+                title = when {
+                    loading -> "Sources…"
+                    complete -> "Sources"
+                    else -> "Sources $percent%"
+                },
+                icon = when {
+                    loading -> Icons.Outlined.Sync
+                    complete -> Icons.Outlined.CheckCircle
+                    else -> Icons.Outlined.WarningAmber
+                },
+                color = when {
+                    complete -> MaterialTheme.colorScheme.primary
+                    loading -> defaultActionButtonColor
+                    else -> MaterialTheme.colorScheme.error
+                },
+                onClick = onSourcesClicked,
+                loading = loading,
             )
         }
 
@@ -705,6 +740,7 @@ private fun RowScope.AnimeActionButton(
     color: Color,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    loading: Boolean = false,
 ) {
     TextButton(
         onClick = onClick,
@@ -712,12 +748,20 @@ private fun RowScope.AnimeActionButton(
         onLongClick = onLongClick,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(20.dp),
-            )
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = color,
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 text = title,

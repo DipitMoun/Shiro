@@ -1,29 +1,30 @@
 package eu.kanade.presentation.library.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import eu.kanade.tachiyomi.R
 import java.io.File
 
 @Composable
@@ -33,8 +34,6 @@ fun CollectionDetailHeader(
     bannerUrl: String?,
     bannerPath: String?,
     statsText: String,
-    onBack: () -> Unit,
-    onEdit: () -> Unit,
 ) {
     val bannerModel: Any? = when {
         !bannerPath.isNullOrBlank() && File(bannerPath).exists() -> File(bannerPath)
@@ -52,50 +51,40 @@ fun CollectionDetailHeader(
                 model = bannerModel,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().height(220.dp),
+                modifier = Modifier.fillMaxSize(),
             )
         } else {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
+                    .fillMaxSize()
                     .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(110.dp)
+                        .alpha(0.45f),
+                )
+            }
         }
 
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
+                .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
-                        startY = 100f,
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.25f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.85f),
+                        ),
+                        startY = 0f,
                     ),
                 ),
         )
-
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier
-                .padding(8.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color.Black.copy(alpha = 0.5f))
-                .align(Alignment.TopStart),
-        ) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Retour", tint = Color.White)
-        }
-
-        IconButton(
-            onClick = onEdit,
-            modifier = Modifier
-                .padding(8.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color.Black.copy(alpha = 0.5f))
-                .align(Alignment.TopEnd),
-        ) {
-            Icon(Icons.Default.Edit, contentDescription = "Modifier", tint = Color.White)
-        }
 
         Column(
             modifier = Modifier
@@ -115,11 +104,18 @@ fun CollectionDetailHeader(
                     color = Color.LightGray,
                     maxLines = 2,
                 )
+            } else {
+                Text(
+                    text = "Ajoutez une description pour cette collection",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
+                    color = Color.LightGray.copy(alpha = 0.7f),
+                    maxLines = 1,
+                )
             }
             Text(
                 text = statsText,
                 style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.7f),
+                color = Color.White.copy(alpha = 0.75f),
                 modifier = Modifier.padding(top = 4.dp),
             )
         }

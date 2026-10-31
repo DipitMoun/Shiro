@@ -376,8 +376,8 @@ class MangaDownloadCache(
                                         it.name?.endsWith(MangaDownloader.TMP_DIR_SUFFIX) == true -> null
                                         // Folder of images
                                         it.isDirectory -> it.name
-                                        // CBZ files
-                                        it.isFile && it.extension == "cbz" -> it.nameWithoutExtension
+                                        // Archives et documents (CBZ, PDF, ZIP, EPUB)
+                                        it.isFile && it.extension in ARCHIVE_EXTENSIONS -> it.nameWithoutExtension
                                         // Anything else is irrelevant
                                         else -> null
                                     }
@@ -490,3 +490,5 @@ private object UniFileAsStringSerializer : KSerializer<UniFile?> {
         }
     }
 }
+
+private val ARCHIVE_EXTENSIONS = setOf("cbz", "zip", "pdf", "epub")

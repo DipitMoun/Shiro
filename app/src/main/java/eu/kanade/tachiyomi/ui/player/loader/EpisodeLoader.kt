@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.multisource.MultiSourceAnimeSource
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.HosterState
 import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.entries.anime.model.Anime
@@ -35,6 +36,7 @@ class EpisodeLoader {
             return when {
                 isDownloaded -> getHostersOnDownloaded(episode, anime, source)
                 source is AnimeHttpSource -> getHostersOnHttp(episode, source)
+                source is MultiSourceAnimeSource -> source.getHosterList(episode.toSEpisode())
                 source is LocalAnimeSource -> getHostersOnLocal(episode)
                 else -> error("source not supported")
             }

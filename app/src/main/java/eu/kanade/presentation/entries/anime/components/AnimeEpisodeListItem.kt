@@ -480,14 +480,17 @@ private fun BookmarkDownloadIcons(
             )
         }
 
-        EpisodeDownloadIndicator(
-            enabled = downloadIndicatorEnabled,
-            modifier = Modifier
-                .padding(start = 4.dp),
-            downloadStateProvider = downloadStateProvider,
-            downloadProgressProvider = downloadProgressProvider,
-            onClick = { onDownloadClick?.invoke(it) },
-        )
+        val downloadState = downloadStateProvider()
+        if (downloadIndicatorEnabled || downloadState != AnimeDownload.State.NOT_DOWNLOADED) {
+            EpisodeDownloadIndicator(
+                enabled = downloadIndicatorEnabled,
+                modifier = Modifier
+                    .padding(start = 4.dp),
+                downloadStateProvider = downloadStateProvider,
+                downloadProgressProvider = downloadProgressProvider,
+                onClick = { onDownloadClick?.invoke(it) },
+            )
+        }
     }
 }
 

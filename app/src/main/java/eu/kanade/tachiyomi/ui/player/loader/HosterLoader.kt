@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.data.media.EpisodeMediaValidator
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.HosterState
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.getChangedAt
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +31,9 @@ class HosterLoader {
 
             // Check for first preferred
             val isPreferred: (Pair<Video, Video.State>) -> Boolean = { (v, s) ->
-                v.preferred && (s == Video.State.READY || s == Video.State.QUEUE)
+                v.preferred &&
+                    v.hasPlayableUrl() &&
+                    (s == Video.State.READY || s == Video.State.QUEUE)
             }
             val prefHosterIdx = availableHosters.indexOfFirst {
                 (it.value as HosterState.Ready).let { hoster ->
@@ -47,7 +50,7 @@ class HosterLoader {
 
             // Check for first video with non-empty url
             val firstValid: (Pair<Video, Video.State>) -> Boolean = { (v, s) ->
-                v.videoUrl.isNotEmpty() && (s == Video.State.READY || s == Video.State.QUEUE)
+                v.hasPlayableUrl() && (s == Video.State.READY || s == Video.State.QUEUE)
             }
             val firstAvailableHosterIdx = availableHosters.indexOfFirst {
                 (it.value as HosterState.Ready).let { hoster ->
@@ -86,7 +89,9 @@ class HosterLoader {
                             hosterStates[hosterIdx] = hosterState
 
                             if (hosterState is HosterState.Ready) {
-                                val prefIndex = hosterState.videoList.indexOfFirst { it.preferred && !it.initialized }
+                                val prefIndex = hosterState.videoList.indexOfFirst {
+                                    it.preferred && !it.initialized && it.hasPlayableUrl()
+                                }
                                 if (prefIndex != -1) {
                                     val video = hosterState.videoList[prefIndex]
                                     hosterStates[hosterIdx] =
@@ -97,7 +102,7 @@ class HosterLoader {
                                         )
 
                                     val resolvedVideo = getResolvedVideo(source, video)
-                                    if (resolvedVideo?.videoUrl?.isNotEmpty() == true) {
+                                    if (resolvedVideo?.hasPlayableUrl() == true) {
                                         coroutineContext.cancelChildren()
                                         throw EarlyReturnException(resolvedVideo)
                                     }
@@ -125,7 +130,7 @@ class HosterLoader {
                             )
 
                         val resolvedVideo = getResolvedVideo(source, video)
-                        if (resolvedVideo?.videoUrl?.isNotEmpty() == true) {
+                        if (resolvedVideo?.hasPlayableUrl() == true) {
                             coroutineContext.cancelChildren()
                             return@withContext resolvedVideo
                         }
@@ -165,6 +170,10 @@ class HosterLoader {
             }
 
             return resolvedVideo?.copy(initialized = true)
+        }
+
+        private fun Video.hasPlayableUrl(): Boolean {
+            return videoUrl.isNotBlank() && EpisodeMediaValidator.isAcceptableVideoUrl(videoUrl)
         }
     }
 }

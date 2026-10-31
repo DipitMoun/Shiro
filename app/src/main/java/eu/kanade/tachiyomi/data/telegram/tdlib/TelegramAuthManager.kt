@@ -208,6 +208,21 @@ class TelegramAuthManager(
         send(TdApi.LogOut())
     }
 
+    /**
+     * Supprime un fichier du cache local TDLib (après copie vers le stockage
+     * Aniyomi). L'échec est ignoré : le cache sera purgé par TDLib.
+     */
+    suspend fun deleteFile(fileId: Int) {
+        runCatching {
+            val client = requireClient()
+            withTimeoutOrNull(10_000) {
+                client.sendAwait<TdApi.Ok>(TdApi.DeleteFile(fileId))
+            }
+        }.onFailure {
+            logcat(LogPriority.WARN, it) { "Suppression du fichier TDLib $fileId impossible" }
+        }
+    }
+
     suspend fun logoutAndWipe() = withContext(Dispatchers.IO) {
         val client = tdlibClient
         if (client != null) {

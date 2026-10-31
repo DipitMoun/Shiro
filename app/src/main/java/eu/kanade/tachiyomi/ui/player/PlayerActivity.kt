@@ -45,6 +45,13 @@ import android.view.View
 import android.view.WindowManager
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -70,11 +77,15 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.torrent.service.TorrentServerService
 import eu.kanade.tachiyomi.databinding.PlayerLayoutBinding
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.player.controls.PlayerControls
+import eu.kanade.tachiyomi.ui.social.SocialMomentContext
+import eu.kanade.tachiyomi.ui.social.SocialMomentOverlay
+import eu.kanade.tachiyomi.ui.social.loopWindow
 import eu.kanade.tachiyomi.ui.player.settings.AdvancedPlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
@@ -267,27 +278,90 @@ class PlayerActivity : BaseActivity() {
 
         binding.controls.setContent {
             TachiyomiTheme {
-                PlayerControls(
-                    viewModel = viewModel,
-                    onBackPress = {
-                        if (isPipSupportedAndEnabled && player.paused == false && playerPreferences.pipOnExit().get()) {
-                            enterPictureInPictureMode(createPipParams())
+                var showSocialDemo by remember { mutableStateOf(false) }
+                val anime by viewModel.currentAnime.collectAsState()
+                val episode by viewModel.currentEpisode.collectAsState()
+                val position by viewModel.pos.collectAsState()
+                val duration by viewModel.duration.collectAsState()
+                val socialDurationMs = (duration * 1000).toLong().takeIf { it > 0L } ?: 1_440_000L
+
+                fun clearSocialLoop() {
+                    MPVLib.setPropertyString("ab-loop-a", "no")
+                    MPVLib.setPropertyString("ab-loop-b", "no")
+                    MPVLib.setPropertyBoolean("mute", false)
+                }
+
+                Box(Modifier.fillMaxSize()) {
+                    PlayerControls(
+                        viewModel = viewModel,
+                        onBackPress = {
+                            if (isPipSupportedAndEnabled && player.paused == false && playerPreferences.pipOnExit().get()) {
+                                enterPictureInPictureMode(createPipParams())
+                            } else {
+                                finish()
+                            }
+                        },
+                        onSocialClick = if (BuildConfig.DEBUG) {
+                            {
+                                viewModel.pause()
+                                showSocialDemo = true
+                            }
                         } else {
-                            finish()
-                        }
-                    },
-                    modifier = Modifier.onGloballyPositioned {
-                        pipRect = run {
-                            val boundsInWindow = it.boundsInWindow()
-                            Rect(
-                                boundsInWindow.left.toInt(),
-                                boundsInWindow.top.toInt(),
-                                boundsInWindow.right.toInt(),
-                                boundsInWindow.bottom.toInt(),
-                            )
-                        }
-                    },
-                )
+                            null
+                        },
+                        modifier = Modifier.onGloballyPositioned {
+                            pipRect = run {
+                                val boundsInWindow = it.boundsInWindow()
+                                Rect(
+                                    boundsInWindow.left.toInt(),
+                                    boundsInWindow.top.toInt(),
+                                    boundsInWindow.right.toInt(),
+                                    boundsInWindow.bottom.toInt(),
+                                )
+                            }
+                        },
+                    )
+
+                    if (showSocialDemo) {
+                        SocialMomentOverlay(
+                            posterUrl = anime?.thumbnailUrl,
+                            context = SocialMomentContext(
+                                workTitle = anime?.title ?: "Frieren",
+                                episodeLabel = episode?.name ?: "S01E001",
+                                positionMs = (position * 1000).toLong(),
+                                durationMs = socialDurationMs,
+                            ),
+                            onClose = { showSocialDemo = false },
+                            onResume = { positionMs ->
+                                showSocialDemo = false
+                                clearSocialLoop()
+                                val targetSeconds = (positionMs / 1000).toInt()
+                                val durationSeconds = duration.toInt()
+                                if (durationSeconds <= 0 || targetSeconds in 0..durationSeconds) {
+                                    viewModel.seekTo(targetSeconds)
+                                }
+                                viewModel.unpause()
+                            },
+                            onPreviewStart = { anchorMs ->
+                                val window = loopWindow(anchorMs, socialDurationMs)
+                                MPVLib.setPropertyDouble("ab-loop-a", window.first / 1000.0)
+                                MPVLib.setPropertyDouble("ab-loop-b", window.last / 1000.0)
+                                MPVLib.setPropertyBoolean("mute", true)
+                                viewModel.seekTo((window.first / 1000).toInt())
+                                viewModel.unpause()
+                            },
+                            onPreviewStop = { anchorMs ->
+                                clearSocialLoop()
+                                viewModel.pause()
+                                viewModel.seekTo((anchorMs / 1000).toInt())
+                            },
+                            onPreviewMute = { muted ->
+                                MPVLib.setPropertyBoolean("mute", muted)
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             }
         }
 
