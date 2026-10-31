@@ -93,7 +93,7 @@ fun SocialLoginDialog(
 
             if (error != null) {
                 Text(
-                    text = "Erreur : " + error.javaClass.simpleName,
+                    text = "Erreur : " + error.toString(),
                     color = Color(0xFFEF5350),
                     style = MaterialTheme.typography.bodySmall,
                 )
