@@ -39,6 +39,10 @@ import eu.kanade.tachiyomi.data.social.matrix.command.RustCommandDispatcher
 import eu.kanade.tachiyomi.data.social.matrix.push.PushRegistrar
 import eu.kanade.tachiyomi.data.social.matrix.push.RustPushRegistrar
 import eu.kanade.tachiyomi.data.social.matrix.room.InMemoryRoomBindingStore
+import eu.kanade.tachiyomi.data.social.matrix.room.MatrixRoomTransport
+import eu.kanade.tachiyomi.data.social.matrix.room.RustMatrixRoomTransport
+import eu.kanade.tachiyomi.data.social.matrix.room.SocialRoomService
+import eu.kanade.tachiyomi.data.social.matrix.room.DefaultSocialRoomService
 import eu.kanade.tachiyomi.data.social.matrix.room.RoomBindingStore
 import eu.kanade.tachiyomi.data.social.matrix.session.InMemorySessionCredentialStore
 import eu.kanade.tachiyomi.data.social.matrix.MatrixStoreKeyProvider
@@ -301,6 +305,16 @@ class AppModule(val app: Application) : InjektModule {
             )
         }
         addSingletonFactory<RoomBindingStore> { InMemoryRoomBindingStore() }
+        addSingletonFactory<MatrixRoomTransport> {
+            val delegate = get<RustSessionDelegate>()
+            RustMatrixRoomTransport(clientProvider = { delegate.clientOrNull() })
+        }
+        addSingletonFactory<SocialRoomService> {
+            DefaultSocialRoomService(
+                transport = get<MatrixRoomTransport>(),
+                bindings = get<RoomBindingStore>(),
+            )
+        }
         addSingletonFactory<SocialThreadRepository> {
             ProjectingMomentRepository(
                 source = RustThreadTimelineSource(get<RustSessionDelegate>()),

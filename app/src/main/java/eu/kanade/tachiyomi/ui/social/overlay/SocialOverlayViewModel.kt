@@ -7,6 +7,10 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialCommandDispatcher
 import eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository
 import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
 import eu.kanade.tachiyomi.data.social.matrix.push.PushRegistrar
+import eu.kanade.tachiyomi.data.social.matrix.room.SocialRoomService
+import eu.kanade.tachiyomi.data.social.matrix.SocialRoomKey
+import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
+import eu.kanade.tachiyomi.data.social.identity.WorkIdentity
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -26,7 +30,10 @@ class SocialOverlayViewModel(
     timelineRepo: SocialThreadRepository,
     dispatcher: SocialCommandDispatcher,
     push: PushRegistrar,
+    roomService: SocialRoomService,
 ) : ViewModel() {
+
+    private val roomService: SocialRoomService = roomService
 
     private val controller = SocialOverlayController(
         session = session,
@@ -39,6 +46,47 @@ class SocialOverlayViewModel(
     val state: StateFlow<SocialOverlayState> = controller.state
 
     fun connect() = controller.connect()
+
+    fun bootstrap(
+        mxid: String,
+        work: WorkIdentity,
+        episodeKey: String,
+        workTitle: String?,
+    ) {
+        viewModelScope.launch {
+            android.util.Log.d("SocialOverlay", "bootstrap: ensureRoom work=${'$'}{work.id.value}")
+            val roomResult = roomService.ensureRoom(
+                authorMxid = mxid,
+                authorDisplayName = null,
+                selfMxid = mxid,
+                work = work,
+                friends = emptyList(),
+            )
+            if (roomResult is eu.kanade.tachiyomi.data.social.matrix.SocialResult.Failure) {
+                android.util.Log.e("SocialOverlay", "bootstrap: ensureRoom FAILED: " + roomResult.error.toString())
+                return@launch
+            }
+            val ensured = (roomResult as eu.kanade.tachiyomi.data.social.matrix.SocialResult.Success).value
+            android.util.Log.d("SocialOverlay", "bootstrap: roomId=${'$'}{ensured.roomId} created=${'$'}{ensured.created}")
+
+            val roomKey = SocialRoomKey(authorMxid = mxid, workId = work.id)
+            val threadResult = roomService.ensureThreadRoot(roomKey, episodeKey, workTitle)
+            if (threadResult is eu.kanade.tachiyomi.data.social.matrix.SocialResult.Failure) {
+                android.util.Log.e("SocialOverlay", "bootstrap: ensureThreadRoot FAILED: " + threadResult.error.toString())
+                return@launch
+            }
+            val rootId = (threadResult as eu.kanade.tachiyomi.data.social.matrix.SocialResult.Success).value
+            android.util.Log.d("SocialOverlay", "bootstrap: threadRoot=${'$'}rootId")
+
+            val epKey = EpisodeKey.parse(episodeKey)
+            if (epKey == null) {
+                android.util.Log.e("SocialOverlay", "bootstrap: EpisodeKey.parse failed for ${'$'}episodeKey")
+                return@launch
+            }
+            android.util.Log.d("SocialOverlay", "bootstrap: opening thread")
+            open(eu.kanade.tachiyomi.data.social.matrix.ThreadRef(mxid, work.id, epKey))
+        }
+    }
 
     fun login(homeserverUrl: String, userId: String, password: String) {
         viewModelScope.launch { controller.login(homeserverUrl, userId, password) }

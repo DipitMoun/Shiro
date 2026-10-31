@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
 import eu.kanade.tachiyomi.data.social.matrix.SocialCommandDispatcher
 import eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository
 import eu.kanade.tachiyomi.data.social.matrix.push.PushRegistrar
+import eu.kanade.tachiyomi.data.social.matrix.room.SocialRoomService
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -22,11 +23,13 @@ class SocialOverlayViewModelFactory : ViewModelProvider.Factory {
         val timelineRepo: SocialThreadRepository = Injekt.get()
         val dispatcher: SocialCommandDispatcher = Injekt.get()
         val push: PushRegistrar = Injekt.get()
+        val roomService: SocialRoomService = Injekt.get()
         return SocialOverlayViewModel(
             session = session,
             timelineRepo = timelineRepo,
             dispatcher = dispatcher,
             push = push,
+            roomService = roomService,
         ) as T
     }
 }

@@ -346,7 +346,17 @@ class PlayerActivity : BaseActivity() {
                                 )
                             }
                             if (mxid != null && workId != null && epKey != null) {
-                                socialViewModel.open(ThreadRef(mxid, workId, epKey))
+                                val work = eu.kanade.tachiyomi.data.social.identity.WorkIdentity(
+                                    id = workId,
+                                    ids = anime?.id?.let { mapOf("local" to it.toString()) } ?: emptyMap(),
+                                    title = anime?.title,
+                                )
+                                socialViewModel.bootstrap(
+                                    mxid = mxid,
+                                    work = work,
+                                    episodeKey = epKey.value,
+                                    workTitle = anime?.title,
+                                )
                             }
                         } else {
                             socialViewModel.close()
