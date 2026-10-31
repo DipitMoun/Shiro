@@ -128,6 +128,7 @@ import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
 import eu.kanade.tachiyomi.data.social.identity.WorkId
 import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
 import eu.kanade.tachiyomi.ui.social.overlay.ConnectionState
+import eu.kanade.tachiyomi.ui.social.overlay.SocialLoginDialog
 import eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayViewModel
 import eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayViewModelFactory
 
@@ -331,12 +332,19 @@ class PlayerActivity : BaseActivity() {
                     )
 
                     val socialState by socialViewModel.state.collectAsState()
-                    LaunchedEffect(showSocialDemo) {
+                    LaunchedEffect(Unit) { socialViewModel.restore() }
+                    LaunchedEffect(showSocialDemo, socialState.isConnected) {
                         if (showSocialDemo) {
                             socialViewModel.connect()
                             val mxid = (socialState.connection as? ConnectionState.Connected)?.account?.userId
                             val workId = anime?.let { WorkId.parse("local:" + it.id) }
-                            val epKey = episode?.name?.let { EpisodeKey.parse(it) }
+                            val epKey = episode?.let { ep ->
+                                val number = ep.episode_number?.toDouble() ?: 1.0
+                                EpisodeKey.of(
+                                    season = (anime?.seasonNumber ?: 1).toInt(),
+                                    number = number,
+                                )
+                            }
                             if (mxid != null && workId != null && epKey != null) {
                                 socialViewModel.open(ThreadRef(mxid, workId, epKey))
                             }

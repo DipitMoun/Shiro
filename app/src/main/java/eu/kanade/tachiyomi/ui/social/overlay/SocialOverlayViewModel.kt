@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository
 import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
 import eu.kanade.tachiyomi.data.social.matrix.push.PushRegistrar
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /**
  * P2-10b: Android [ViewModel] wrapper around [SocialOverlayController].
@@ -38,6 +39,14 @@ class SocialOverlayViewModel(
     val state: StateFlow<SocialOverlayState> = controller.state
 
     fun connect() = controller.connect()
+
+    fun login(homeserverUrl: String, userId: String, password: String) {
+        viewModelScope.launch { controller.login(homeserverUrl, userId, password) }
+    }
+
+    fun restore() {
+        viewModelScope.launch { controller.restore() }
+    }
     fun disconnect() = controller.disconnect()
     fun open(thread: ThreadRef) = controller.open(thread)
     fun close() = controller.close()

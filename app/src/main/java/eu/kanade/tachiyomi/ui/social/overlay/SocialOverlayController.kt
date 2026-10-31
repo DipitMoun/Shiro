@@ -123,6 +123,36 @@ class SocialOverlayController(
     suspend fun publish(payload: MomentPayload): SocialResult<String> =
         dispatch(SocialCommand.PublishToMyThread(payload))
 
+    /** P2-10c: forwards a password login to the underlying [MatrixSessionManager]. */
+    suspend fun login(
+        homeserverUrl: String,
+        userId: String,
+        password: String,
+    ): SocialResult<eu.kanade.tachiyomi.data.social.matrix.SocialAccount> {
+        _state.value = _state.value.copy(connection = ConnectionState.Connecting, lastError = null)
+        val result = session.login(homeserverUrl, userId, password, deviceDisplayName = null)
+        if (result is SocialResult.Failure) {
+            _state.value = _state.value.copy(
+                connection = ConnectionState.Error(result.error),
+                lastError = result.error,
+            )
+        }
+        return result
+    }
+
+    /** P2-10c: restores a persisted session, if any. Safe on fresh install. */
+    suspend fun restore(): SocialResult<eu.kanade.tachiyomi.data.social.matrix.SocialAccount?> {
+        _state.value = _state.value.copy(connection = ConnectionState.Connecting)
+        val result = session.restore()
+        if (result is SocialResult.Failure) {
+            _state.value = _state.value.copy(
+                connection = ConnectionState.Error(result.error),
+                lastError = result.error,
+            )
+        }
+        return result
+    }
+
     suspend fun registerPush(endpoint: String): SocialResult<Unit> =
         push.register(endpoint)
 
