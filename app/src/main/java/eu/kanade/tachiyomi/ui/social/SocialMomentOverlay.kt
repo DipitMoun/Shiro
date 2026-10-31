@@ -102,8 +102,10 @@ internal enum class DemoMode(val label: String) {
 }
 
 internal class SocialUiState(private val context: SocialMomentContext) {
-    val authors = SocialDemoData.authors()
-    private val myThreadId = SocialDemoData.myThread(context).id
+    var onSendMatrix: ((String) -> Unit)? = null
+    var onReactMatrix: ((String, String) -> Unit)? = null
+    var authors = SocialDemoData.authors()
+    private var myThreadId = SocialDemoData.myThread(context).id
 
     var demoMode by mutableStateOf(DemoMode.Normal)
         private set
@@ -128,6 +130,66 @@ internal class SocialUiState(private val context: SocialMomentContext) {
     val selectedAuthor: SocialAuthor?
         get() = authors.firstOrNull { it.id == selectedThread?.authorId }
             ?: authors.firstOrNull { it.id == SocialDemoData.ME }
+
+    fun applyMatrixState(matrixState: eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayState) {
+        val timelineItems = matrixState.timeline?.items ?: emptyList()
+        if (timelineItems.isEmpty()) return
+
+        val myMxid = matrixState.thread?.authorMxid ?: matrixState.account?.userId ?: "Moi"
+        
+        // 1. Extraire tous les auteurs uniques des messages
+        val matrixAuthors = timelineItems.mapNotNull { item ->
+            val sender = item.sender
+            if (sender == null) return@mapNotNull null
+            val initial = if (sender.startsWith("@")) sender.substring(1).take(1).uppercase() else sender.take(1).uppercase()
+            SocialAuthor(
+                id = sender,
+                name = if (sender == myMxid) "Moi" else sender.substringBefore(":").removePrefix("@"),
+                initials = initial,
+                colorArgb = 0xFF64B5F6 // Couleur bleue par défaut
+            )
+        }.distinctBy { it.id }
+        
+        authors = matrixAuthors
+
+        // 2. Convertir les items en SocialMessage
+        val messages = timelineItems.mapNotNull { item ->
+            when (item) {
+                is eu.kanade.tachiyomi.data.social.matrix.SocialTimelineItem.MomentItem -> {
+                    SocialMessage(
+                        id = item.eventId,
+                        authorId = item.sender ?: myMxid,
+                        text = item.payload.note ?: "<Moment>",
+                        positionMs = item.payload.moments.firstOrNull()?.positionMs,
+                        reactions = item.reactions.associate { it.key to it.count },
+                        pinned = item.pinned
+                    )
+                }
+                is eu.kanade.tachiyomi.data.social.matrix.SocialTimelineItem.ReplyItem -> {
+                    SocialMessage(
+                        id = item.eventId,
+                        authorId = item.sender ?: myMxid,
+                        text = item.body,
+                        reactions = item.reactions.associate { it.key to it.count },
+                        pinned = false
+                    )
+                }
+            }
+        }.sortedBy { it.id } // Tri basique
+
+        // 3. Créer le thread principal
+        val thread = SocialThread(
+            id = "matrix_thread",
+            authorId = myMxid,
+            audienceLabel = "Mes amis",
+            messages = messages,
+            moments = emptyList()
+        )
+        
+        myThreadId = thread.id
+        threads = listOf(thread)
+        selectedThreadId = thread.id
+    }
 
     fun reload(mode: DemoMode) {
         demoMode = mode
@@ -182,6 +244,7 @@ internal class SocialUiState(private val context: SocialMomentContext) {
     }
 
     fun send(text: String, publish: Boolean) {
+        onSendMatrix?.invoke(text)
         val body = text.trim()
         if (body.isEmpty()) return
 
@@ -227,12 +290,23 @@ fun SocialMomentOverlay(
     posterUrl: String? = null,
     onClose: () -> Unit,
     onResume: (positionMs: Long) -> Unit,
+    matrixState: eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayState? = null,
+    onSendMatrix: ((String) -> Unit)? = null,
+    onReactMatrix: ((String, String) -> Unit)? = null,
     onPreviewStart: (positionMs: Long) -> Unit = {},
     onPreviewStop: (positionMs: Long) -> Unit = {},
     onPreviewMute: (muted: Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val state = remember(context) { SocialUiState(context) }
+    
+    LaunchedEffect(matrixState) {
+        if (matrixState != null) {
+            state.onSendMatrix = onSendMatrix
+            state.onReactMatrix = onReactMatrix
+            state.applyMatrixState(matrixState)
+        }
+    }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val scrimInteraction = remember { MutableInteractionSource() }
