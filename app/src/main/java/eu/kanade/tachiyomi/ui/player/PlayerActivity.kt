@@ -341,7 +341,7 @@ class PlayerActivity : BaseActivity() {
                             val epKey = episode?.let { ep ->
                                 val number = ep.episode_number?.toDouble() ?: 1.0
                                 EpisodeKey.of(
-                                    season = (anime?.seasonNumber ?: 1).toInt(),
+                                    season = ((anime?.seasonNumber ?: 1.0).toInt()).coerceIn(0, 99),
                                     number = number,
                                 )
                             }
