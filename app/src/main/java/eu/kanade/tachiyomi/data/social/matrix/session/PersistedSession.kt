@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.data.social.matrix.session
 
+import kotlinx.serialization.Serializable
+
 /**
  * Serialisable snapshot of an authenticated Matrix session (P2-05c).
  *
@@ -10,6 +12,7 @@ package eu.kanade.tachiyomi.data.social.matrix.session
  * `slidingSyncVersion` is a string ("NONE"/"NATIVE") rather than an enum to keep
  * this type stable across minor SDK upgrades.
  */
+@Serializable
 data class PersistedSession(
     val userId: String,
     val deviceId: String,

@@ -45,6 +45,7 @@ import eu.kanade.tachiyomi.data.social.matrix.room.SocialRoomService
 import eu.kanade.tachiyomi.data.social.matrix.room.DefaultSocialRoomService
 import eu.kanade.tachiyomi.data.social.matrix.room.RoomBindingStore
 import eu.kanade.tachiyomi.data.social.matrix.session.InMemorySessionCredentialStore
+import eu.kanade.tachiyomi.data.social.matrix.session.PersistentSessionCredentialStore
 import eu.kanade.tachiyomi.data.social.matrix.MatrixStoreKeyProvider
 import eu.kanade.tachiyomi.data.social.matrix.session.RustMatrixSessionManager
 import eu.kanade.tachiyomi.data.social.matrix.session.RustSessionDelegate
@@ -301,7 +302,7 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory<MatrixSessionManager> {
             RustMatrixSessionManager(
                 delegate = get<RustSessionDelegate>(),
-                credentialStore = InMemorySessionCredentialStore(),
+                credentialStore = PersistentSessionCredentialStore(app),
             )
         }
         addSingletonFactory<RoomBindingStore> { InMemoryRoomBindingStore() }
