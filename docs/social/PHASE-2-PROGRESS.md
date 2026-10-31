@@ -2,7 +2,7 @@
 
 > Checkpoint : 2026-10-31
 > Branche : phase2-matrix (base : merge b07a58e63)
-> Dernier commit : f79670914 P2-06b
+> Dernier commit : cff5c3544 P2-07b
 
 ## Resume
 
@@ -10,7 +10,7 @@ Phase 2 demarree. La couche SDK Matrix est en place et testee (session, salles,
 fils) derriere des interfaces SDK-free. Il reste le sync, l'envoi, l'audience
 et l'UI branchee.
 
-Avancement estime : ~50 %.
+Avancement estime : ~60 % (P2-07 done).
 
 ## Etat par ticket
 
@@ -27,7 +27,8 @@ Avancement estime : ~50 %.
 | P2-05c-3a RustSessionDelegate | OK | 2053d0fdc |
 | P2-06a SocialRoomService | OK | ea092a0c1 + 11 tests |
 | P2-06b RustMatrixRoomTransport | OK | f79670914 |
-| P2-07 Sync + timeline | TODO prochain | - |
+| P2-07a ProjectingMomentRepository | OK | 68338856d + 8 tests |
+| P2-07b RustThreadTimelineSource | OK | cff5c3544 |
 | P2-08 Envoi / reactions | TODO | - |
 | P2-09 Audience + push | TODO | - |
 | P2-10 UI overlay branchee | TODO | - |
