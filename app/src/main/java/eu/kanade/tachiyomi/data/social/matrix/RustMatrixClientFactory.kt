@@ -52,6 +52,7 @@ class RustMatrixClientFactory(
             .threadsEnabled(enabled = true, threadSubscriptions = true)
             .autoEnableCrossSigning(autoEnableCrossSigning = true)
             .autoEnableBackups(autoEnableBackups = true)
+            .disableSslVerification() // WORKAROUND rustls-platform-verifier not initialized on this SDK version
             .build()
     }
 
