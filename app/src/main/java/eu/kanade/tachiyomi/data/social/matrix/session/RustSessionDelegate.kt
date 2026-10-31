@@ -93,6 +93,14 @@ class RustSessionDelegate(
 
     override fun transportOrNull(): MatrixTransport? = null
 
+    /**
+     * Exposes the live [Client] to sibling transports (room, sync) without
+     * leaking it to the rest of the app. Returns null when no session is active.
+     *
+     * Kept `internal`: only the `data.social.matrix.*` package should see it.
+     */
+    internal fun clientOrNull(): Client? = client
+
     private fun mapLoginError(t: Throwable): SocialError {
         val msg = t.message.orEmpty()
         val lower = msg.lowercase()
