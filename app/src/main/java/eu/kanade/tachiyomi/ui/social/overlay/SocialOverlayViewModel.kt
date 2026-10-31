@@ -47,6 +47,10 @@ class SocialOverlayViewModel(
 
     fun connect() = controller.connect()
 
+    fun react(eventId: String, key: String) {
+        viewModelScope.launch { controller.react(eventId, key) }
+    }
+
     fun send(text: String) {
         viewModelScope.launch { controller.reply(text) }
     }
