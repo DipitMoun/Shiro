@@ -47,6 +47,10 @@ class SocialOverlayViewModel(
 
     fun connect() = controller.connect()
 
+    fun send(text: String) {
+        viewModelScope.launch { controller.reply(text) }
+    }
+
     fun bootstrap(
         mxid: String,
         work: WorkIdentity,

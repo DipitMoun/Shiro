@@ -382,6 +382,18 @@ class PlayerActivity : BaseActivity() {
                     }
 
                     if (showSocialDemo && socialState.isConnected) {
+                        eu.kanade.tachiyomi.ui.social.overlay.SocialMomentOverlayMatrix(
+                            state = socialState,
+                            onClose = { showSocialDemo = false },
+                            onSend = { text ->
+                                socialViewModel.send(text)
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    // DEMO overlay (garde pour la phase 1)
+                    if (showSocialDemo && !socialState.isConnected && false) {
                         SocialMomentOverlay(
                             posterUrl = anime?.thumbnailUrl,
                             context = SocialMomentContext(
