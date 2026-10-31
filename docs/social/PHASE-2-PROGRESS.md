@@ -2,7 +2,7 @@
 
 > Checkpoint : 2026-10-31
 > Branche : phase2-matrix (base : merge b07a58e63)
-> Dernier commit : a019d3c34 P2-10b
+> Dernier commit : HEAD (P2-10 UI Bridged)
 
 ## Resume
 
@@ -10,7 +10,7 @@ Phase 2 demarree. La couche SDK Matrix est en place et testee (session, salles,
 fils) derriere des interfaces SDK-free. Il reste le sync, l'envoi, l'audience
 et l'UI branchee.
 
-Avancement estime : ~85 % (P2-10b done; P2-10c UI rebind + P2-11/P2-12 a faire).
+Avancement estime : ~90 % (P2-10 validee sur device. Reste : sync temps reel, P2-11/P2-12).
 
 ## Etat par ticket
 
