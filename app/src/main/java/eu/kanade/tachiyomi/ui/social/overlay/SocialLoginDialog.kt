@@ -6,10 +6,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -29,8 +33,11 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
 
 /**
- * P2-10c: debug-grade Matrix login screen. Shown by the social overlay only in
- * BuildConfig.DEBUG builds (the overlay entry point itself is debug-only).
+ * P2-10c: debug-grade Matrix login screen.
+ *
+ * The dialog lives inside the landscape player overlay, so the keyboard can
+ * cover most of the available height. The content is scrollable and respects
+ * the IME insets, so every field stays reachable on a phone in landscape.
  *
  * TODO(P2-10e): remove this dialog and add a proper Settings > Social > Matrix
  * account screen with logout, MXID display and homeserver change.
@@ -54,15 +61,18 @@ fun SocialLoginDialog(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0B0F11)),
+            .background(Color(0xFF0B0F11))
+            .imePadding(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
                 .widthIn(max = 420.dp)
                 .fillMaxWidth()
-                .padding(24.dp)
+                .heightIn(max = 320.dp)
+                .padding(horizontal = 24.dp)
                 .background(Color(0xFF131A1E), RoundedCornerShape(20.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
