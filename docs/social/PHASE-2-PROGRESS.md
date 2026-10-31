@@ -2,7 +2,7 @@
 
 > Checkpoint : 2026-10-31
 > Branche : phase2-matrix (base : merge b07a58e63)
-> Dernier commit : 2e8beaac0 P2-10a
+> Dernier commit : a019d3c34 P2-10b
 
 ## Resume
 
@@ -10,7 +10,7 @@ Phase 2 demarree. La couche SDK Matrix est en place et testee (session, salles,
 fils) derriere des interfaces SDK-free. Il reste le sync, l'envoi, l'audience
 et l'UI branchee.
 
-Avancement estime : ~80 % (P2-10a done; P2-10b wiring Android a faire).
+Avancement estime : ~85 % (P2-10b done; P2-10c UI rebind + P2-11/P2-12 a faire).
 
 ## Etat par ticket
 
@@ -34,7 +34,8 @@ Avancement estime : ~80 % (P2-10a done; P2-10b wiring Android a faire).
 | P2-09a AudiencePolicy (deja P2-02/06) | OK | 6 tests |
 | P2-09b PushRegistrar (UnifiedPush+ntfy) | OK | 7c7d48920 + 4 tests |
 | P2-10a SocialOverlayController | OK | 2e8beaac0 + 8 tests |
-| P2-10b UI wiring (Compose + Injekt + APK) | TODO prochain | - |
+| P2-10b ViewModel + Injekt + PlayerActivity hook | OK | a019d3c34 |
+| P2-10c UI rebind (SocialMomentOverlay Matrix data) | TODO prochain | - |
 | P2-11 Tests integration | TODO | - |
 | P2-12 Build R8 + durcissement | TODO | - |
 
