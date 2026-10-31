@@ -361,7 +361,17 @@ class PlayerActivity : BaseActivity() {
                         )
                     }
 
-                    if (showSocialDemo) {
+                    if (showSocialDemo && !socialState.isConnected) {
+                        SocialLoginDialog(
+                            isBusy = socialState.connection is ConnectionState.Connecting,
+                            error = (socialState.connection as? ConnectionState.Error)?.error,
+                            onLogin = { url, user, pass -> socialViewModel.login(url, user, pass) },
+                            onDismiss = { showSocialDemo = false },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    if (showSocialDemo && socialState.isConnected) {
                         SocialMomentOverlay(
                             posterUrl = anime?.thumbnailUrl,
                             context = SocialMomentContext(
