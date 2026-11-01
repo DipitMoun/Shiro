@@ -6,7 +6,13 @@ import eu.kanade.tachiyomi.data.social.matrix.RustMatrixClientFactory
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.matrix.rustcomponents.sdk.Client
+import org.matrix.rustcomponents.sdk.SyncService
+import org.matrix.rustcomponents.sdk.SyncServiceState
 
 /**
  * Production [SessionDelegate] wrapping the Rust Matrix SDK (P2-05c-3a).
@@ -27,6 +33,9 @@ class RustSessionDelegate(
 
     @Volatile
     private var client: Client? = null
+
+    private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var syncService: SyncService? = null
 
     override suspend fun login(
         homeserverUrl: String,
@@ -49,6 +58,7 @@ class RustSessionDelegate(
                 deviceId = null,
             )
             client = newClient
+            startSync(newClient)
             SocialResult.Success(newClient.session().toPersisted(deviceDisplayName))
         } catch (c: CancellationException) {
             newClient.close()
@@ -70,6 +80,7 @@ class RustSessionDelegate(
         return try {
             newClient.restoreSession(session.toSdk())
             client = newClient
+            startSync(newClient)
             SocialResult.Success(newClient.session().toPersisted(session.displayName))
         } catch (c: CancellationException) {
             newClient.close()
@@ -82,12 +93,53 @@ class RustSessionDelegate(
 
     override suspend fun close(): SocialResult<Unit> {
         val current = client ?: return SocialResult.Success(Unit)
+        stopSync()
         client = null
         return try {
             current.close()
             SocialResult.Success(Unit)
         } catch (t: Throwable) {
             SocialResult.Failure(SocialError.Unknown("Rust client close failed: ${t.message}", t))
+        }
+    }
+
+    private fun startSync(client: Client) {
+        syncScope.launch {
+            try {
+                android.util.Log.e("SocialOverlay", "startSync: building SyncService")
+                val service = client.syncService().finish()
+                android.util.Log.e("SocialOverlay", "startSync: calling start()")
+                service.start()
+                syncService = service
+                android.util.Log.e("SocialOverlay", "startSync: SUCCESS (state loop starting)")
+
+                syncScope.launch {
+                    try {
+                        service.state(object : org.matrix.rustcomponents.sdk.SyncServiceStateObserver {
+                            override fun onUpdate(state: SyncServiceState) {
+                                android.util.Log.e("SocialOverlay", "Sync state: $state")
+                            }
+                        })
+                    } catch (t: Throwable) {
+                        android.util.Log.e("SocialOverlay", "state observer failed", t)
+                    }
+                }
+            } catch (t: Throwable) {
+                android.util.Log.e("SocialOverlay", "startSync FAILED", t)
+            }
+        }
+    }
+
+    private fun stopSync() {
+        val svc = syncService ?: return
+        syncService = null
+        syncScope.launch {
+            try {
+                svc.stop()
+                android.util.Log.e("SocialOverlay", "stopSync: stopped")
+            } catch (t: Throwable) {
+                android.util.Log.e("SocialOverlay", "stopSync FAILED", t)
+            }
         }
     }
 
