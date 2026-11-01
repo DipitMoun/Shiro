@@ -133,9 +133,15 @@ internal class SocialUiState(private val context: SocialMomentContext) {
 
     fun applyMatrixState(matrixState: eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayState) {
         val timelineItems = matrixState.timeline?.items ?: emptyList()
-        if (timelineItems.isEmpty()) return
-
         val myMxid = matrixState.thread?.authorMxid ?: matrixState.account?.userId ?: "Moi"
+
+        if (timelineItems.isEmpty()) {
+            authors = listOf(SocialAuthor(myMxid, "Moi", "M", 0xFF64B5F6))
+            threads = listOf(SocialThread("matrix_thread", myMxid, "Mes amis", emptyList(), emptyList()))
+            myThreadId = "matrix_thread"
+            selectedThreadId = "matrix_thread"
+            return
+        }
         
         // 1. Extraire tous les auteurs uniques des messages
         val matrixAuthors = timelineItems.mapNotNull { item ->
