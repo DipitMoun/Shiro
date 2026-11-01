@@ -39,6 +39,7 @@ import eu.kanade.tachiyomi.data.social.matrix.command.RustCommandDispatcher
 import eu.kanade.tachiyomi.data.social.matrix.push.PushRegistrar
 import eu.kanade.tachiyomi.data.social.matrix.push.RustPushRegistrar
 import eu.kanade.tachiyomi.data.social.matrix.room.InMemoryRoomBindingStore
+import eu.kanade.tachiyomi.data.social.matrix.room.PersistentRoomBindingStore
 import eu.kanade.tachiyomi.data.social.matrix.room.MatrixRoomTransport
 import eu.kanade.tachiyomi.data.social.matrix.room.RustMatrixRoomTransport
 import eu.kanade.tachiyomi.data.social.matrix.room.SocialRoomService
@@ -305,7 +306,7 @@ class AppModule(val app: Application) : InjektModule {
                 credentialStore = PersistentSessionCredentialStore(app),
             )
         }
-        addSingletonFactory<RoomBindingStore> { InMemoryRoomBindingStore() }
+        addSingletonFactory<RoomBindingStore> { PersistentRoomBindingStore(app) }
         addSingletonFactory<MatrixRoomTransport> {
             val delegate = get<RustSessionDelegate>()
             RustMatrixRoomTransport(clientProvider = { delegate.clientOrNull() })
