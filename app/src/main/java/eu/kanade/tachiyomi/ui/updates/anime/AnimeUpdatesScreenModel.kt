@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -37,6 +38,10 @@ import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.anime.interactor.GetAnime
+import eu.kanade.tachiyomi.ui.browse.catalog.AiringEvent
+import eu.kanade.tachiyomi.ui.browse.catalog.CatalogRepository
+import eu.kanade.tachiyomi.ui.browse.catalog.CatalogType
+import tachiyomi.domain.track.anime.repository.AnimeTrackRepository
 import tachiyomi.domain.items.episode.interactor.GetEpisode
 import tachiyomi.domain.items.episode.interactor.UpdateEpisode
 import tachiyomi.domain.items.episode.model.EpisodeUpdate
@@ -56,6 +61,8 @@ class AnimeUpdatesScreenModel(
     private val setSeenStatus: SetSeenStatus = Injekt.get(),
     private val getUpdates: GetAnimeUpdates = Injekt.get(),
     private val getAnime: GetAnime = Injekt.get(),
+    private val catalogRepository: CatalogRepository = CatalogRepository(Injekt.get(), CatalogType.ANIME),
+    private val trackRepository: AnimeTrackRepository = Injekt.get(),
     private val getEpisode: GetEpisode = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
@@ -74,6 +81,16 @@ class AnimeUpdatesScreenModel(
     private val selectedEpisodeIds: HashSet<Long> = HashSet()
 
     init {
+        screenModelScope.launch {
+            runCatching {
+                val tracks = trackRepository.getAnimeTracksAsFlow().first()
+                val anilistIds = tracks.filter { it.trackerId == 2L }.mapNotNull { it.remoteId?.toInt() }
+                if (anilistIds.isNotEmpty()) {
+                    val sched = catalogRepository.getAiringSchedule(anilistIds)
+                    mutableState.update { it.copy(upcoming = sched) }
+                }
+            }
+        }
         screenModelScope.launchIO {
             // Set date limit for recent episodes
 
@@ -397,6 +414,7 @@ class AnimeUpdatesScreenModel(
     data class State(
         val isLoading: Boolean = true,
         val items: PersistentList<AnimeUpdatesItem> = persistentListOf(),
+        val upcoming: List<eu.kanade.tachiyomi.ui.browse.catalog.AiringEvent> = emptyList(),
         val dialog: Dialog? = null,
     ) {
         val selected = items.filter { it.selected }

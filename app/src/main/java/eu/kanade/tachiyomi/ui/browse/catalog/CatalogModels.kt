@@ -84,6 +84,14 @@ fun CatalogWork.preferredTitle(): String {
 }
 
 /** Source qui propose un épisode précis pour une œuvre du catalogue. */
+data class AiringEvent(
+    val mediaId: Int,
+    val episode: Int,
+    val airingAt: Long,
+    val title: String,
+    val coverUrl: String?,
+)
+
 data class CatalogSourceMatch(
     val sourceName: String,
     val animeTitle: String? = null,

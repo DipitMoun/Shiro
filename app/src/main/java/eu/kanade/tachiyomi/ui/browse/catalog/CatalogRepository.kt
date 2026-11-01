@@ -9,6 +9,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
@@ -114,6 +116,71 @@ class CatalogRepository(
         fetched
     }
 
+    suspend fun getAiringSchedule(anilistIds: List<Int>): List<AiringEvent> = withContext(Dispatchers.IO) {
+        if (anilistIds.isEmpty()) return@withContext emptyList()
+
+        val now = System.currentTimeMillis() / 1000L
+        val nextWeek = now + 7 * 24 * 3600
+
+        val query = """
+            query (${'$'}ids: [Int], ${'$'}from: Int, ${'$'}to: Int) {
+              Page(perPage: 50) {
+                media(id_in: ${'$'}ids, type: ANIME) {
+                  id
+                  title { romaji english }
+                  coverImage { large }
+                  airingSchedule(airingAt_greater: ${'$'}from, airingAt_lesser: ${'$'}to) {
+                    nodes {
+                      episode
+                      airingAt
+                    }
+                  }
+                }
+              }
+            }
+        """
+
+        val vars = buildJsonObject {
+            put("ids", JsonArray(anilistIds.map { JsonPrimitive(it) }))
+            put("from", JsonPrimitive(now))
+            put("to", JsonPrimitive(nextWeek))
+        }
+
+        val response = anilistRequest(query, vars) ?: return@withContext emptyList()
+        val data = runCatching {
+            json.decodeFromString<AiringScheduleResponse>(response).data?.Page?.media
+        }.getOrNull() ?: return@withContext emptyList()
+
+        data.flatMap { media ->
+            media.airingSchedule?.nodes.orEmpty().map { node ->
+                AiringEvent(
+                    mediaId = media.id,
+                    episode = node.episode,
+                    airingAt = node.airingAt,
+                    title = media.title?.english ?: media.title?.romaji ?: "Sans titre",
+                    coverUrl = media.coverImage?.large,
+                )
+            }
+        }.sortedBy { it.airingAt }
+    }
+
+    @Serializable
+    private data class AiringScheduleResponse(val data: AiringScheduleData? = null)
+    @Serializable
+    private data class AiringScheduleData(val Page: AiringSchedulePage? = null)
+    @Serializable
+    private data class AiringSchedulePage(val media: List<AiringScheduleMedia> = emptyList())
+    @Serializable
+    private data class AiringScheduleMedia(
+        val id: Int,
+        val title: AniListTitle? = null,
+        val coverImage: AniListCover? = null,
+        val airingSchedule: AiringScheduleNodes? = null,
+    )
+    @Serializable
+    private data class AiringScheduleNodes(val nodes: List<AiringScheduleNode> = emptyList())
+    @Serializable
+    private data class AiringScheduleNode(val episode: Int, val airingAt: Long)
     suspend fun recommendations(
         seedTitle: String,
         force: Boolean = false,
