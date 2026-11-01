@@ -110,7 +110,7 @@ fun Screen.mangaSourcesTab(): TabContent {
                 contentPadding = contentPadding,
                 onRetry = screenModel::retry,
                 onOpenTelegramSource = { /* TODO Phase B: navigator.push(TelegramSourceScreen()) */ },
-                onOpenLocalSource = {
+                onOpenLocalMangaSource = {
                     navigator.push(
                         BrowseMangaSourceScreen(
                             sourceId = LocalMangaSource.ID,
