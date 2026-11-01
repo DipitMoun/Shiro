@@ -349,7 +349,7 @@ class PlayerActivity : BaseActivity() {
                                 val work = eu.kanade.tachiyomi.data.social.identity.WorkIdentity(
                                     id = workId,
                                     ids = anime?.id?.let { mapOf("local" to it.toString()) } ?: emptyMap(),
-                                    title = anime?.title,
+                                    title = anime?.title ?: "Anime Inconnu",
                                 )
                                 socialViewModel.bootstrap(
                                     mxid = mxid,

@@ -88,6 +88,7 @@ class RustThreadTimelineSource(
 
         val listener = object : TimelineListener {
             override fun onUpdate(diff: List<TimelineDiff>) {
+                android.util.Log.d("SocialOverlay", "Timeline onUpdate: ${'$'}{diff.size} diffs")
                 accumulator.apply(diff)
                 state.value = accumulator.snapshot()
                 trySend(SocialResult.Success(state.value))
