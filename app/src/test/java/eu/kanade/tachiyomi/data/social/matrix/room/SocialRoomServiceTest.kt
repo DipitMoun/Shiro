@@ -104,7 +104,7 @@ class SocialRoomServiceTest {
         val second = service.ensureThreadRoot(roomKey, "S01E003", work.title)
         assertTrue(first is SocialResult.Success)
         assertTrue(second is SocialResult.Success)
-        assertEquals(1, transport.sendStateEventCalls)
+        assertEquals(1, transport.sendMessageCalls)
         assertEquals((first as SocialResult.Success).value, (second as SocialResult.Success).value)
     }
 
@@ -116,10 +116,12 @@ class SocialRoomServiceTest {
         assertTrue(state.contains("\"v\":1") || state.contains("\"v\": 1"), "actual state: $state")
     }
 
-    @Test fun `thread root type is org shiro thread`() = runBlocking {
+    @Test fun `thread root is a message containing org shiro thread`() = runBlocking {
         service.ensureRoom(alice, "Alice", alice, work, emptyList())
         service.ensureThreadRoot(SocialRoomKey(alice, work.id), "S01E003", work.title)
-        assertEquals("org.shiro.thread", transport.lastSendStateType)
+        val sentContent = transport.lastSendMessageContent ?: ""
+        assertTrue(sentContent.contains("org.shiro.thread"), "actual content: $sentContent")
+        assertTrue(sentContent.contains("S01E003"), "actual content: $sentContent")
     }
 
     @Test fun `bindRoom failure stops the ensureRoom flow`() = runBlocking {
