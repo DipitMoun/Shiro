@@ -69,6 +69,23 @@ class RustMatrixRoomTransport(
         }
     }
 
+    override suspend fun sendMessage(
+        roomId: String,
+        contentJson: String,
+    ): SocialResult<String> {
+        val client = clientProvider() ?: return notAuthenticated()
+        return try {
+            val room = client.getRoom(roomId)
+                ?: return SocialResult.Failure(SocialError.Unknown("Room $roomId not found"))
+            val eventId = room.sendRaw("m.room.message", contentJson, null)
+            SocialResult.Success(eventId)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            SocialResult.Failure(mapError(t, "sendMessage"))
+        }
+    }
+
     override suspend fun sendStateEvent(
         roomId: String,
         type: String,

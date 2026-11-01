@@ -37,6 +37,11 @@ interface MatrixRoomTransport {
      * Used for `org.shiro.room` (already sent at creation) and any future
      * room-level metadata update.
      */
+    suspend fun sendMessage(
+        roomId: String,
+        contentJson: String,
+    ): SocialResult<String>
+
     suspend fun sendStateEvent(
         roomId: String,
         type: String,

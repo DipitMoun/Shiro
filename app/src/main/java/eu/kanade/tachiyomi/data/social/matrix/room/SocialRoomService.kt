@@ -94,11 +94,10 @@ class DefaultSocialRoomService(
             )
 
         val body = SocialSchemaKeys.threadRootBody(workTitle, roomKey.workId, threadKey.episodeKey)
-        val contentJson = "{\"msgtype\":\"m.text\",\"body\":${jsonString(body)}}"
+        val contentJson = "{\"msgtype\":\"m.text\",\"body\":${jsonString(body)},\"org.shiro.thread\":{\"v\":1,\"workId\":${jsonString(roomKey.workId.value)},\"episodeKey\":${jsonString(threadKey.episodeKey.value)}}}"
 
-        val sent = transport.sendStateEvent(
+        val sent = transport.sendMessage(
             roomId = roomId,
-            type = "org.shiro.thread",
             contentJson = contentJson,
         )
         if (sent is SocialResult.Failure) return sent
