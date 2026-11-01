@@ -425,43 +425,7 @@ class PlayerActivity : BaseActivity() {
 
                     // DEMO overlay (garde pour la phase 1)
                     if (showSocialDemo && !socialState.isConnected && false) {
-                        SocialMomentOverlay(
-                            posterUrl = anime?.thumbnailUrl,
-                            context = SocialMomentContext(
-                                workTitle = anime?.title ?: "Frieren",
-                                episodeLabel = episode?.name ?: "S01E001",
-                                positionMs = (position * 1000).toLong(),
-                                durationMs = socialDurationMs,
-                            ),
-                            onClose = { showSocialDemo = false },
-                            onResume = { positionMs ->
-                                showSocialDemo = false
-                                clearSocialLoop()
-                                val targetSeconds = (positionMs / 1000).toInt()
-                                val durationSeconds = duration.toInt()
-                                if (durationSeconds <= 0 || targetSeconds in 0..durationSeconds) {
-                                    viewModel.seekTo(targetSeconds)
-                                }
-                                viewModel.unpause()
-                            },
-                            onPreviewStart = { anchorMs ->
-                                val window = loopWindow(anchorMs, socialDurationMs)
-                                MPVLib.setPropertyDouble("ab-loop-a", window.first / 1000.0)
-                                MPVLib.setPropertyDouble("ab-loop-b", window.last / 1000.0)
-                                MPVLib.setPropertyBoolean("mute", true)
-                                viewModel.seekTo((window.first / 1000).toInt())
-                                viewModel.unpause()
-                            },
-                            onPreviewStop = { anchorMs ->
-                                clearSocialLoop()
-                                viewModel.pause()
-                                viewModel.seekTo((anchorMs / 1000).toInt())
-                            },
-                            onPreviewMute = { muted ->
-                                MPVLib.setPropertyBoolean("mute", muted)
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+
                     }
                 }
             }
