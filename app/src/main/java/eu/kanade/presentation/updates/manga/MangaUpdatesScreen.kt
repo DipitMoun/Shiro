@@ -70,6 +70,22 @@ fun MangaUpdateScreen(
                 val scope = rememberCoroutineScope()
                 var isRefreshing by remember { mutableStateOf(false) }
 
+                      var selectedDate by remember { mutableStateOf<java.time.LocalDate?>(null) }
+                      val models = state.getUiModel()
+                      val filteredModels = if (selectedDate == null) models else {
+                          val result = mutableListOf<MangaUpdatesUiModel>()
+                          var currentDate: java.time.LocalDate? = null
+                          for (m in models) {
+                              if (m is MangaUpdatesUiModel.Header) {
+                                  currentDate = m.date
+                                  if (m.date == selectedDate) result.add(m)
+                              } else if (m is MangaUpdatesUiModel.Item && currentDate == selectedDate) {
+                                  result.add(m)
+                              }
+                          }
+                          result
+                      }
+
                 PullRefresh(
                     refreshing = isRefreshing,
                     onRefresh = {
@@ -88,10 +104,16 @@ fun MangaUpdateScreen(
                     FastScrollLazyColumn(
                         contentPadding = contentPadding,
                     ) {
+                          item(key = "calendar") {
+                              eu.kanade.presentation.updates.components.HorizontalWeekCalendar(
+                                  selectedDate = selectedDate,
+                                  onDateSelected = { selectedDate = if (selectedDate == it) null else it }
+                              )
+                          }
                         mangaUpdatesLastUpdatedItem(lastUpdated)
 
                         mangaUpdatesUiItems(
-                            uiModels = state.getUiModel(),
+                            uiModels = filteredModels,
                             selectionMode = state.selectionMode,
                             onUpdateSelected = onUpdateSelected,
                             onClickCover = onClickCover,
