@@ -18,6 +18,7 @@ import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.more.settings.screen.browse.MangaExtensionReposScreen
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.ui.browse.manga.extension.details.MangaExtensionDetailsScreen
+import eu.kanade.tachiyomi.ui.browse.manga.source.browse.BrowseMangaSourceScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import eu.kanade.tachiyomi.util.system.isPackageInstalled
 import kotlinx.collections.immutable.persistentListOf
@@ -87,6 +88,11 @@ fun mangaExtensionsTab(
                 onUninstallExtension = { extensionsScreenModel.uninstallExtension(it) },
                 onUpdateExtension = extensionsScreenModel::updateExtension,
                 onRefresh = extensionsScreenModel::findAvailableExtensions,
+                onBrowseExtension = { ext ->
+                    ext.sources.firstOrNull()?.let { source ->
+                        navigator.push(BrowseMangaSourceScreen(source.id, null))
+                    }
+                },
             )
 
             privateExtensionToUninstall?.let { extension ->

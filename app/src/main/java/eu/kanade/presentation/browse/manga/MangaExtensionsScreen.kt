@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -85,6 +86,7 @@ fun MangaExtensionScreen(
     onOpenExtension: (MangaExtension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
+    onBrowseExtension: (MangaExtension.Installed) -> Unit,
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
@@ -126,6 +128,7 @@ fun MangaExtensionScreen(
                     onTrustExtension = onTrustExtension,
                     onOpenExtension = onOpenExtension,
                     onClickUpdateAll = onClickUpdateAll,
+                    onBrowseExtension = onBrowseExtension,
                 )
             }
         }
@@ -145,6 +148,7 @@ private fun ExtensionContent(
     onTrustExtension: (MangaExtension.Untrusted) -> Unit,
     onOpenExtension: (MangaExtension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
+    onBrowseExtension: (MangaExtension.Installed) -> Unit,
 ) {
     val context = LocalContext.current
     var trustState by remember { mutableStateOf<MangaExtension.Untrusted?>(null) }
@@ -249,6 +253,7 @@ private fun ExtensionContent(
                             }
                         }
                     },
+                    onBrowseExtension = onBrowseExtension,
                 )
             }
         }
@@ -279,6 +284,7 @@ private fun ExtensionItem(
     onClickItemAction: (MangaExtension) -> Unit,
     onClickItemSecondaryAction: (MangaExtension) -> Unit,
     modifier: Modifier = Modifier,
+    onBrowseExtension: (MangaExtension.Installed) -> Unit,
 ) {
     val (extension, installStep) = item
     BaseBrowseItem(
@@ -322,6 +328,7 @@ private fun ExtensionItem(
                 onClickItemCancel = onClickItemCancel,
                 onClickItemAction = onClickItemAction,
                 onClickItemSecondaryAction = onClickItemSecondaryAction,
+                onBrowseExtension = onBrowseExtension,
             )
         },
     ) {
@@ -408,6 +415,7 @@ private fun ExtensionItemActions(
     onClickItemCancel: (MangaExtension) -> Unit = {},
     onClickItemAction: (MangaExtension) -> Unit = {},
     onClickItemSecondaryAction: (MangaExtension) -> Unit = {},
+    onBrowseExtension: (MangaExtension.Installed) -> Unit = {},
 ) {
     val isIdle = installStep.isCompleted()
 
@@ -442,6 +450,15 @@ private fun ExtensionItemActions(
                             )
                         }
 
+
+                        if (extension.sources.isNotEmpty()) {
+                            IconButton(onClick = { onBrowseExtension(extension) }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.TravelExplore,
+                                    contentDescription = stringResource(MR.strings.browse),
+                                )
+                            }
+                        }
                         if (extension.hasUpdate) {
                             IconButton(onClick = { onClickItemAction(extension) }) {
                                 Icon(
