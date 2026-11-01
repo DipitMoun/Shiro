@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit
  */
 class CatalogRepository(
     private val network: NetworkHelper,
+    private val type: CatalogType = CatalogType.ANIME,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -146,7 +147,7 @@ class CatalogRepository(
 
     private fun anilist(query: String): List<CatalogWork> {
         val response = anilistRequest(
-            ANILIST_QUERY,
+            ANILIST_QUERY.replace("type: ANIME", "type: " + type.name),
             buildJsonObject { put("search", query) },
         ) ?: return emptyList()
 
@@ -158,7 +159,7 @@ class CatalogRepository(
     }
 
     private fun anilistDiscover(): DiscoverFeed {
-        val response = anilistRequest(DISCOVER_QUERY) ?: return DiscoverFeed()
+        val response = anilistRequest(DISCOVER_QUERY.replace("type: ANIME", "type: " + type.name)) ?: return DiscoverFeed()
         val data = runCatching {
             json.decodeFromString<AniListDiscoverResponse>(response).data
         }.getOrNull() ?: return DiscoverFeed()
@@ -172,7 +173,7 @@ class CatalogRepository(
 
     private fun anilistRecommendations(seedTitle: String): List<CatalogWork> {
         val response = anilistRequest(
-            RECOMMENDATIONS_QUERY,
+            RECOMMENDATIONS_QUERY.replace("type: ANIME", "type: " + type.name),
             buildJsonObject { put("search", seedTitle) },
         ) ?: return emptyList()
 
@@ -217,10 +218,14 @@ class CatalogRepository(
             synopsis = item.description?.let(::stripHtml),
             year = item.seasonYear,
             format = item.format,
-            episodes = item.episodes
-                ?: item.nextAiringEpisode?.episode
-                    ?.minus(1)
-                    ?.takeIf { it > 0 },
+            episodes = if (type == CatalogType.MANGA) {
+                item.chapters
+            } else {
+                item.episodes
+                    ?: item.nextAiringEpisode?.episode
+                        ?.minus(1)
+                        ?.takeIf { it > 0 }
+            },
             genres = item.genres,
             providers = listOf("AniList"),
         )
@@ -231,7 +236,7 @@ class CatalogRepository(
     // ------------------------------------------------------------------
 
     private fun kitsu(query: String): List<CatalogWork> {
-        val url = "https://kitsu.io/api/edge/anime?filter%5Btext%5D=${encode(query)}" +
+        val url = "https://kitsu.io/api/edge/" + type.slug + "?filter%5Btext%5D=${encode(query)}" +
             "&page%5Blimit%5D=10"
         val body = get(url, "application/vnd.api+json") ?: return emptyList()
         val items = json.decodeFromString<KitsuResponse>(body).data
@@ -255,7 +260,7 @@ class CatalogRepository(
     // ------------------------------------------------------------------
 
     private fun jikan(query: String): List<CatalogWork> {
-        val url = "https://api.jikan.moe/v4/anime?q=${encode(query)}&limit=10&sfw"
+        val url = "https://api.jikan.moe/v4/" + type.slug + "?q=${encode(query)}&limit=10&sfw"
         val body = get(url, client = jikanClient) ?: return emptyList()
         val items = json.decodeFromString<JikanResponse>(body).data
         return items.mapNotNull { item ->
@@ -403,6 +408,7 @@ class CatalogRepository(
         val bannerImage: String? = null,
         val description: String? = null,
         val episodes: Int? = null,
+    val chapters: Int? = null,
         val nextAiringEpisode: AniListNextEpisode? = null,
         val format: String? = null,
         val seasonYear: Int? = null,
@@ -475,6 +481,7 @@ class CatalogRepository(
         val synopsis: String? = null,
         val year: Int? = null,
         val episodes: Int? = null,
+    val chapters: Int? = null,
         val type: String? = null,
         val genres: List<JikanGenre> = emptyList(),
         val aired: JikanAired? = null,
@@ -531,6 +538,7 @@ class CatalogRepository(
                   coverImage { extraLarge large }
                   description
                   episodes
+                  chapters
                   nextAiringEpisode { episode }
                   format
                   seasonYear
@@ -566,6 +574,7 @@ class CatalogRepository(
               bannerImage
               description
               episodes
+              chapters
               nextAiringEpisode { episode }
               format
               seasonYear
@@ -588,6 +597,7 @@ class CatalogRepository(
                         bannerImage
                         description
                         episodes
+                        chapters
                         nextAiringEpisode { episode }
                         format
                         seasonYear

@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.manga.source
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.runtime.Composable
@@ -16,6 +17,7 @@ import eu.kanade.presentation.browse.manga.MangaSourcesScreen
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.tachiyomi.ui.browse.manga.source.browse.BrowseMangaSourceScreen
+import eu.kanade.tachiyomi.ui.browse.manga.source.discover.MangaDiscoverScreenRoute
 import eu.kanade.tachiyomi.ui.browse.manga.source.globalsearch.GlobalMangaSearchScreen
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.collectLatest
@@ -33,6 +35,11 @@ fun Screen.mangaSourcesTab(): TabContent {
     return TabContent(
         titleRes = AYMR.strings.label_manga_sources,
         actions = persistentListOf(
+            AppBar.Action(
+                title = "Decouvrir",
+                icon = Icons.Outlined.Explore,
+                onClick = { navigator.push(MangaDiscoverScreenRoute()) },
+            ),
             AppBar.Action(
                 title = stringResource(MR.strings.action_global_search),
                 icon = Icons.Outlined.TravelExplore,
