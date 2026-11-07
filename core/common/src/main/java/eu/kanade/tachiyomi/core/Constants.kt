@@ -23,4 +23,7 @@ object Constants {
     const val SHORTCUT_ANIME_DOWNLOADS = "eu.kanade.tachiyomi.SHOW_ANIME_DOWNLOADS"
     const val SHORTCUT_DOWNLOADS = "eu.kanade.tachiyomi.SHOW_DOWNLOADS"
     const val SHORTCUT_TELEGRAM = "eu.kanade.tachiyomi.SHOW_TELEGRAM"
+
+    /** Opens the dedicated Matrix account screen from the player overlay. */
+    const val INTENT_SOCIAL_SETTINGS = "eu.kanade.tachiyomi.SHOW_SOCIAL_SETTINGS"
 }

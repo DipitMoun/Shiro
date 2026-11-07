@@ -4,10 +4,12 @@ import eu.kanade.tachiyomi.data.social.matrix.AuthFailureReason
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import org.matrix.rustcomponents.sdk.Client
 import org.matrix.rustcomponents.sdk.CreateRoomParameters
 import org.matrix.rustcomponents.sdk.JoinRule
 import org.matrix.rustcomponents.sdk.PowerLevels
+import org.matrix.rustcomponents.sdk.Room
 import org.matrix.rustcomponents.sdk.RoomHistoryVisibility
 import org.matrix.rustcomponents.sdk.RoomPreset
 import org.matrix.rustcomponents.sdk.RoomVisibility
@@ -54,12 +56,26 @@ class RustMatrixRoomTransport(
             // createRoom resolves to the new room id (String), not a Room object.
             val roomId: String = client.createRoom(params)
 
-            // Send the initial org.shiro.room state via the freshly joined Room.
-            val room = client.getRoom(roomId)
-                ?: return SocialResult.Failure(
-                    SocialError.Unknown("Room $roomId not found after creation"),
+            // The local store may not expose the room immediately. Do not fail
+            // the whole creation if the optional metadata event cannot be sent:
+            // the room itself exists and the id is what the binding needs.
+            val room = awaitRoom(client, roomId)
+            if (room != null) {
+                try {
+                    room.sendStateEventRaw("org.shiro.room", "", initialStateJson, null)
+                } catch (t: Throwable) {
+                    android.util.Log.e(
+                        "SocialOverlay",
+                        "createRoom: org.shiro.room state failed (room kept)",
+                        t,
+                    )
+                }
+            } else {
+                android.util.Log.w(
+                    "SocialOverlay",
+                    "createRoom: room $roomId not in local store yet",
                 )
-            room.sendStateEventRaw("org.shiro.room", "", initialStateJson, null)
+            }
 
             SocialResult.Success(roomId)
         } catch (c: CancellationException) {
@@ -75,7 +91,7 @@ class RustMatrixRoomTransport(
     ): SocialResult<String> {
         val client = clientProvider() ?: return notAuthenticated()
         return try {
-            val room = client.getRoom(roomId)
+            val room = awaitRoom(client, roomId)
                 ?: return SocialResult.Failure(SocialError.Unknown("Room $roomId not found"))
             val eventId = room.sendRaw("m.room.message", contentJson, null)
             SocialResult.Success(eventId)
@@ -93,7 +109,7 @@ class RustMatrixRoomTransport(
     ): SocialResult<String> {
         val client = clientProvider() ?: return notAuthenticated()
         return try {
-            val room = client.getRoom(roomId)
+            val room = awaitRoom(client, roomId)
                 ?: return SocialResult.Failure(SocialError.Unknown("Room $roomId not found in store"))
             val eventId = room.sendStateEventRaw(type, "", contentJson, null)
             SocialResult.Success(eventId)
@@ -107,7 +123,7 @@ class RustMatrixRoomTransport(
     override suspend fun invite(roomId: String, inviteeMxid: String): SocialResult<Unit> {
         val client = clientProvider() ?: return notAuthenticated()
         return try {
-            val room = client.getRoom(roomId)
+            val room = awaitRoom(client, roomId)
                 ?: return SocialResult.Failure(SocialError.Unknown("Room $roomId not found in store"))
             room.inviteUserById(inviteeMxid)
             SocialResult.Success(Unit)
@@ -116,6 +132,19 @@ class RustMatrixRoomTransport(
         } catch (t: Throwable) {
             SocialResult.Failure(mapError(t, "invite($inviteeMxid)"))
         }
+    }
+
+    /**
+     * The SDK can return a room id before the room is visible in the local
+     * store. Wait briefly so the immediate follow-up (state event, thread root)
+     * does not fail spuriously.
+     */
+    private suspend fun awaitRoom(client: Client, roomId: String): Room? {
+        repeat(20) {
+            client.getRoom(roomId)?.let { return it }
+            delay(100)
+        }
+        return client.getRoom(roomId)
     }
 
     private fun <T> notAuthenticated(): SocialResult<T> = SocialResult.Failure(

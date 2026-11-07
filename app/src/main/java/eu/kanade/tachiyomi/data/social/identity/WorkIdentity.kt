@@ -139,14 +139,18 @@ data class EpisodeKey private constructor(val value: String) {
     }
 
     companion object {
-        private val PATTERN = Regex("^(S[0-9]{2}E[0-9]{3,4}(\\.[0-9]{1,2})?|MAIN)$")
+        private val PATTERN = Regex("^(E[0-9]{3,4}(\\.[0-9]{1,2})?|MAIN)$")
         val MAIN = EpisodeKey("MAIN")
 
         fun parse(value: String): EpisodeKey? =
             if (PATTERN.matches(value)) EpisodeKey(value) else null
 
-        fun of(season: Int, number: Double): EpisodeKey {
-            require(season in 0..99) { "Season must be between 0 and 99" }
+        /**
+         * Season-free episode identity. A work is identified by [WorkId], so the
+         * episode number is enough; requiring a season breaks works that do not
+         * expose one explicitly.
+         */
+        fun of(number: Double): EpisodeKey {
             require(number >= 0.0 && number.isFinite()) { "Episode number must be finite and positive" }
 
             val numberText = BigDecimal.valueOf(number).stripTrailingZeros().toPlainString()
@@ -155,7 +159,7 @@ data class EpisodeKey private constructor(val value: String) {
             val width = if (whole.length <= 3) 3 else 4
             val paddedWhole = whole.padStart(width, '0')
             val formatted = if (fraction.isEmpty()) paddedWhole else "$paddedWhole.$fraction"
-            return EpisodeKey("S${season.toString().padStart(2, '0')}E$formatted")
+            return EpisodeKey("E$formatted")
         }
     }
 }

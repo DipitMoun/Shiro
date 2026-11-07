@@ -18,7 +18,7 @@ class RustCommandDispatcherTest {
     private val thread = ThreadRef(
         authorMxid = "@alice:example.org",
         workId = WorkId.parse("anilist:154587")!!,
-        episodeKey = EpisodeKey.parse("S01E003")!!,
+        episodeKey = EpisodeKey.parse("E003")!!,
     )
 
     @Test

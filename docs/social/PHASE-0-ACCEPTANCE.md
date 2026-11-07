@@ -10,8 +10,9 @@ de modèle, d'audience ou d'interface.
       et les œuvres locales.
 - [ ] La résolution passe par une table d'alias et reste fail-closed sans
       identifiant commun ; aucun rapprochement par titre seul.
-- [ ] Un `episodeKey` stable est défini pour les épisodes normaux, les spéciaux,
-      les films et les numéros décimaux (`S01E003`, `S00E001`, `MAIN`).
+- [ ] Un `episodeKey` stable est défini sans dépendance à la saison, pour les
+      épisodes normaux, les spéciaux, les films et les numéros décimaux
+      (`E003`, `E001`, `E000`, `MAIN`).
 - [ ] Un `sourceKey` permet de distinguer deux versions du même épisode.
 - [ ] `positionMs`, `source.durationMs`, `beforeMs` et `afterMs` sont documentés.
 - [ ] La politique de dérive entre sources est écrite : exact si même source ou

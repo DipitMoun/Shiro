@@ -28,7 +28,7 @@ class ProjectingMomentRepositoryTest {
     private lateinit var repo: ProjectingMomentRepository
 
     private val workId = WorkId.parse("anilist:154587")!!
-    private val episodeKey = EpisodeKey.parse("S01E003")!!
+    private val episodeKey = EpisodeKey.parse("E003")!!
     private val thread = ThreadRef(
         authorMxid = "@alice:example.org",
         workId = workId,
@@ -61,7 +61,7 @@ class ProjectingMomentRepositoryTest {
                 "org.shiro.moment": {
                     "v": 1,
                     "work": {"id": "anilist:154587"},
-                    "episode": {"key": "S01E003"},
+                    "episode": {"key": "E003"},
                     "moments": [{"positionMs": 100000}],
                     "source": {"key": "aniyomi:123"},
                     "capturedAt": "2026-10-31T10:00:00Z"
@@ -180,6 +180,27 @@ class ProjectingMomentRepositoryTest {
         val emissions = withTimeout(3000) { repo.observeThread(thread).take(2).toList() }
         val last = (emissions.last() as SocialResult.Success).value
         assertTrue(last.items.isEmpty())
+    }
+
+    @Test
+    fun `thread root marker is never rendered as a message`() = runBlocking {
+        val root = TransportEvent(
+            eventId = rootId,
+            roomId = "!room:example.org",
+            sender = "@alice:example.org",
+            type = "m.room.message",
+            originServerTs = 50L,
+            contentJson = """{
+                "msgtype": "m.text",
+                "body": "Fil · Frieren · E003",
+                "org.shiro.thread": {"v": 1, "episode": "E003"}
+            }""",
+        )
+        source.setEvents(thread, listOf(root, replyEvent("\$r1", 100L, "salut")))
+        val emissions = withTimeout(3000) { repo.observeThread(thread).take(2).toList() }
+        val last = (emissions.last() as SocialResult.Success).value
+        assertEquals(1, last.items.size)
+        assertEquals("\$r1", last.items.single().eventId)
     }
 
     @Test

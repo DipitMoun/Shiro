@@ -49,12 +49,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -76,11 +79,21 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import eu.kanade.tachiyomi.data.social.matrix.MomentPayloadCodec
+import eu.kanade.tachiyomi.data.social.matrix.SocialError
+import eu.kanade.tachiyomi.data.social.matrix.SocialTimelineItem
+import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
+import eu.kanade.tachiyomi.ui.social.overlay.ConnectionState
+import eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayState
+import eu.kanade.tachiyomi.ui.social.overlay.SocialThreadDescriptor
 import kotlinx.coroutines.delay
 import kotlin.math.abs
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.i18n.stringResource
 
 private const val PREVIEW_DURATION_MS = 30_000L
 private const val NEAR_WINDOW_MS = 15_000L
@@ -102,9 +115,19 @@ internal enum class DemoMode(val label: String) {
 }
 
 internal class SocialUiState(private val context: SocialMomentContext) {
-    var onSendMatrix: ((String) -> Unit)? = null
+    var onSendMatrix: ((text: String, publish: Boolean, anchorMs: Long) -> Unit)? = null
     var onReactMatrix: ((String, String) -> Unit)? = null
-    var authors = SocialDemoData.authors()
+    var onSelectThread: ((ThreadRef) -> Unit)? = null
+
+    var authors by mutableStateOf<List<SocialAuthor>>(SocialDemoData.authors())
+        private set
+    var selfMxid by mutableStateOf(SocialDemoData.ME)
+        private set
+    var matrixConnected by mutableStateOf(false)
+        private set
+    var matrixError by mutableStateOf<SocialError?>(null)
+        private set
+
     private var myThreadId = SocialDemoData.myThread(context).id
 
     var demoMode by mutableStateOf(DemoMode.Normal)
@@ -129,72 +152,91 @@ internal class SocialUiState(private val context: SocialMomentContext) {
 
     val selectedAuthor: SocialAuthor?
         get() = authors.firstOrNull { it.id == selectedThread?.authorId }
-            ?: authors.firstOrNull { it.id == SocialDemoData.ME }
+            ?: authors.firstOrNull { it.id == selfMxid }
 
-    fun applyMatrixState(matrixState: eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayState) {
-        val timelineItems = matrixState.timeline?.items ?: emptyList()
-        val myMxid = matrixState.thread?.authorMxid ?: matrixState.account?.userId ?: "Moi"
+    fun applyMatrixState(matrixState: SocialOverlayState) {
+        matrixConnected = true
+        matrixError = matrixState.lastError
+        selfMxid = matrixState.account?.userId
+            ?: matrixState.threads.firstOrNull { it.isOwn }?.ref?.authorMxid
+            ?: SocialDemoData.ME
 
-        if (timelineItems.isEmpty()) {
-            authors = listOf(SocialAuthor(myMxid, "Moi", "M", 0xFF64B5F6))
-            threads = listOf(SocialThread("matrix_thread", myMxid, "Mes amis", emptyList(), emptyList()))
-            myThreadId = "matrix_thread"
-            selectedThreadId = "matrix_thread"
+        val descriptors = matrixState.threads.ifEmpty {
+            matrixState.thread?.let { thread ->
+                listOf(
+                    SocialThreadDescriptor(
+                        ref = thread,
+                        displayName = null,
+                        isOwn = thread.authorMxid == selfMxid,
+                    ),
+                )
+            }.orEmpty()
+        }
+
+        if (descriptors.isEmpty()) {
+            demoMode = if (matrixError != null) DemoMode.Error else DemoMode.Loading
+            authors = emptyList()
+            threads = emptyList()
+            selectedThreadId = null
+            myThreadId = ""
             return
         }
-        
-        // 1. Extraire tous les auteurs uniques des messages
-        val matrixAuthors = timelineItems.mapNotNull { item ->
-            val sender = item.sender
-            if (sender == null) return@mapNotNull null
-            val initial = if (sender.startsWith("@")) sender.substring(1).take(1).uppercase() else sender.take(1).uppercase()
-            SocialAuthor(
-                id = sender,
-                name = if (sender == myMxid) "Moi" else sender.substringBefore(":").removePrefix("@"),
-                initials = initial,
-                colorArgb = 0xFF64B5F6 // Couleur bleue par défaut
-            )
-        }.distinctBy { it.id }
-        
-        authors = matrixAuthors
 
-        // 2. Convertir les items en SocialMessage
-        val messages = timelineItems.mapNotNull { item ->
-            when (item) {
-                is eu.kanade.tachiyomi.data.social.matrix.SocialTimelineItem.MomentItem -> {
-                    SocialMessage(
-                        id = item.eventId,
-                        authorId = item.sender ?: myMxid,
-                        text = item.payload.note ?: "<Moment>",
-                        positionMs = item.payload.moments.firstOrNull()?.positionMs,
-                        reactions = item.reactions.associate { it.key to it.count },
-                        pinned = item.pinned
-                    )
-                }
-                is eu.kanade.tachiyomi.data.social.matrix.SocialTimelineItem.ReplyItem -> {
-                    SocialMessage(
-                        id = item.eventId,
-                        authorId = item.sender ?: myMxid,
-                        text = item.body,
-                        reactions = item.reactions.associate { it.key to it.count },
-                        pinned = false
-                    )
-                }
+        val authorMap = linkedMapOf<String, SocialAuthor>()
+        fun authorFor(mxid: String, displayName: String?) {
+            if (authorMap.containsKey(mxid)) return
+            val name = when {
+                mxid == selfMxid -> "Moi"
+                !displayName.isNullOrBlank() -> displayName
+                else -> mxid.substringBefore(':').removePrefix("@")
             }
-        }.sortedBy { it.id } // Tri basique
+            authorMap[mxid] = SocialAuthor(
+                id = mxid,
+                name = name,
+                initials = name.initials(),
+                colorArgb = authorColor(mxid),
+            )
+        }
 
-        // 3. Créer le thread principal
-        val thread = SocialThread(
-            id = "matrix_thread",
-            authorId = myMxid,
-            audienceLabel = "Mes amis",
-            messages = messages,
-            moments = emptyList()
-        )
-        
-        myThreadId = thread.id
-        threads = listOf(thread)
-        selectedThreadId = thread.id
+        descriptors.forEach { descriptor ->
+            authorFor(descriptor.ref.authorMxid, descriptor.displayName)
+        }
+
+        val uiThreads = descriptors.map { descriptor ->
+            val timeline = matrixState.timelines[descriptor.ref]
+                ?: matrixState.timeline?.takeIf { matrixState.thread == descriptor.ref }
+            val messages = timeline?.items.orEmpty().map { item ->
+                item.toUiMessage()
+            }
+            messages.forEach { authorFor(it.authorId, null) }
+            val authorName = authorMap[descriptor.ref.authorMxid]?.name ?: "Ami"
+            SocialThread(
+                id = descriptor.ref.uiId(),
+                authorId = descriptor.ref.authorMxid,
+                audienceLabel = if (descriptor.isOwn) "Tes amis" else "Amis de $authorName",
+                messages = messages,
+                moments = messages
+                    .mapNotNull { message ->
+                        message.positionMs?.let { position ->
+                            SocialMoment(id = "moment-${message.id}", positionMs = position)
+                        }
+                    }
+                    .distinctBy { it.positionMs },
+                matrixRef = descriptor.ref,
+            )
+        }
+
+        demoMode = DemoMode.Normal
+        authors = authorMap.values.toList()
+        threads = uiThreads
+        unread = authors.associate { it.id to 0 }
+        myThreadId = uiThreads.firstOrNull { it.authorId == selfMxid }?.id.orEmpty()
+
+        val selectedRef = matrixState.thread
+            ?: descriptors.firstOrNull { !it.isOwn }?.ref
+            ?: descriptors.firstOrNull()?.ref
+        selectedThreadId = uiThreads.firstOrNull { it.matrixRef == selectedRef }?.id
+            ?: uiThreads.firstOrNull()?.id
     }
 
     fun reload(mode: DemoMode) {
@@ -235,6 +277,9 @@ internal class SocialUiState(private val context: SocialMomentContext) {
     fun selectThread(threadId: String) {
         selectedThreadId = threadId
         clearUnread(threadId)
+        threads.firstOrNull { it.id == threadId }?.matrixRef?.let { ref ->
+            onSelectThread?.invoke(ref)
+        }
     }
 
     fun selectAuthor(authorId: String) {
@@ -242,38 +287,52 @@ internal class SocialUiState(private val context: SocialMomentContext) {
     }
 
     fun newChat() {
-        selectedThreadId = myThreadId
+        val ownThread = threads.firstOrNull { it.authorId == selfMxid }
+        if (ownThread != null) {
+            selectThread(ownThread.id)
+        } else {
+            selectedThreadId = myThreadId.takeIf { it.isNotEmpty() }
+        }
     }
 
     fun selectAnchor(positionMs: Long) {
         anchorMs = positionMs
     }
 
-    fun send(text: String, publish: Boolean) {
-        onSendMatrix?.invoke(text)
+    fun send(text: String) {
         val body = text.trim()
         if (body.isEmpty()) return
 
-        val targetId = if (publish) myThreadId else selectedThreadId ?: myThreadId
+        val target = selectedThread ?: return
+        val publish = target.authorId == selfMxid
+        onSendMatrix?.invoke(body, publish, anchorMs)
+
+        // Optimistic echo: the Matrix echo replaces this copy when the timeline
+        // update arrives, so the message is visible immediately.
         val message = SocialMessage(
             id = "local-${++localMessageId}",
-            authorId = SocialDemoData.ME,
+            authorId = selfMxid,
             text = body,
             positionMs = anchorMs,
         )
 
         threads = threads.map { thread ->
-            if (thread.id == targetId) {
+            if (thread.id == target.id) {
                 thread.copy(messages = thread.messages + message)
             } else {
                 thread
             }
         }
-        selectedThreadId = targetId
-        clearUnread(targetId)
+        selectedThreadId = target.id
+        clearUnread(target.id)
     }
 
     fun react(messageId: String, emoji: String) {
+        if (matrixConnected) {
+            onReactMatrix?.invoke(messageId, emoji)
+            return
+        }
+
         threads = threads.map { thread ->
             thread.copy(
                 messages = thread.messages.map { message ->
@@ -288,6 +347,46 @@ internal class SocialUiState(private val context: SocialMomentContext) {
             )
         }
     }
+
+    private fun SocialTimelineItem.toUiMessage(): SocialMessage = when (this) {
+        is SocialTimelineItem.MomentItem -> SocialMessage(
+            id = eventId,
+            authorId = sender,
+            text = payload.note?.takeIf { it.isNotBlank() }
+                ?: MomentPayloadCodec.fallbackBody(payload),
+            positionMs = payload.moments.firstOrNull()?.positionMs,
+            reactions = reactions.associate { it.key to it.count },
+            pinned = pinned,
+        )
+        is SocialTimelineItem.ReplyItem -> SocialMessage(
+            id = eventId,
+            authorId = sender,
+            text = body,
+            reactions = reactions.associate { it.key to it.count },
+        )
+    }
+
+    private fun ThreadRef.uiId(): String =
+        "$authorMxid|${workId.value}|${episodeKey.value}"
+
+    private fun String.initials(): String {
+        val letters = split(' ', '-', '_')
+            .mapNotNull { it.firstOrNull()?.uppercaseChar() }
+            .take(2)
+            .joinToString("")
+        return letters.ifEmpty { "?" }
+    }
+
+    private fun authorColor(mxid: String): Long {
+        val palette = longArrayOf(
+            0xFF2F6FED,
+            0xFFE08A2E,
+            0xFF8C5BE8,
+            0xFF1F9D67,
+            0xFFD95F8A,
+        )
+        return palette[(mxid.hashCode() and Int.MAX_VALUE) % palette.size]
+    }
 }
 
 @Composable
@@ -296,20 +395,46 @@ fun SocialMomentOverlay(
     posterUrl: String? = null,
     onClose: () -> Unit,
     onResume: (positionMs: Long) -> Unit,
-    matrixState: eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayState? = null,
-    onSendMatrix: ((String) -> Unit)? = null,
+    matrixState: SocialOverlayState? = null,
+    onSendMatrix: ((text: String, publish: Boolean, anchorMs: Long) -> Unit)? = null,
     onReactMatrix: ((String, String) -> Unit)? = null,
+    onSelectThread: ((ThreadRef) -> Unit)? = null,
+    onOpenSettings: () -> Unit = {},
+    onRetryMatrix: (() -> Unit)? = null,
     onPreviewStart: (positionMs: Long) -> Unit = {},
     onPreviewStop: (positionMs: Long) -> Unit = {},
     onPreviewMute: (muted: Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    if (matrixState != null && !matrixState.isConnected) {
+        SocialConnectionPrompt(
+            connection = matrixState.connection,
+            onOpenSettings = onOpenSettings,
+            onClose = onClose,
+            modifier = modifier,
+        )
+        return
+    }
+
     val state = remember(context) { SocialUiState(context) }
-    
-    LaunchedEffect(matrixState) {
+    val currentOnSend by rememberUpdatedState(onSendMatrix)
+    val currentOnReact by rememberUpdatedState(onReactMatrix)
+    val currentOnSelectThread by rememberUpdatedState(onSelectThread)
+
+    SideEffect {
+        state.onSendMatrix = currentOnSend
+        state.onReactMatrix = currentOnReact
+        state.onSelectThread = currentOnSelectThread
+    }
+
+    LaunchedEffect(
+        matrixState?.threads,
+        matrixState?.timelines,
+        matrixState?.thread,
+        matrixState?.account?.userId,
+        matrixState?.lastError,
+    ) {
         if (matrixState != null) {
-            state.onSendMatrix = onSendMatrix
-            state.onReactMatrix = onReactMatrix
             state.applyMatrixState(matrixState)
         }
     }
@@ -352,10 +477,10 @@ fun SocialMomentOverlay(
         onPreviewStop(state.anchorMs)
     }
 
-    val nearAuthors = remember(state.threads, state.anchorMs) {
+    val nearAuthors = remember(state.threads, state.anchorMs, state.selfMxid) {
         state.threads
             .filter { thread ->
-                thread.authorId != SocialDemoData.ME &&
+                thread.authorId != state.selfMxid &&
                     thread.messages.any { it.isNear(state.anchorMs) }
             }
             .mapNotNull { thread -> state.authors.firstOrNull { it.id == thread.authorId } }
@@ -409,13 +534,13 @@ fun SocialMomentOverlay(
                 val sidebarAuthors = buildList {
                     addAll(nearAuthors)
                     state.selectedAuthor
-                        ?.takeIf { it.id != SocialDemoData.ME }
+                        ?.takeIf { it.id != state.selfMxid }
                         ?.let { selected -> if (none { it.id == selected.id }) add(selected) }
-                    val myThread = state.threads.firstOrNull { it.authorId == SocialDemoData.ME }
+                    val myThread = state.threads.firstOrNull { it.authorId == state.selfMxid }
                     if (myThread?.messages?.isNotEmpty() == true ||
-                        state.selectedThread?.authorId == SocialDemoData.ME
+                        state.selectedThread?.authorId == state.selfMxid
                     ) {
-                        state.authors.firstOrNull { it.id == SocialDemoData.ME }?.let(::add)
+                        state.authors.firstOrNull { it.id == state.selfMxid }?.let(::add)
                     }
                 }.distinctBy { it.id }
 
@@ -453,8 +578,14 @@ fun SocialMomentOverlay(
                                 startPreview()
                             },
                             onReact = state::react,
-                            onSend = { text -> state.send(text, false) },
-                            onRetry = { state.reload(DemoMode.Normal) },
+                            onSend = { text -> state.send(text) },
+                            onRetry = {
+                                if (state.matrixConnected) {
+                                    onRetryMatrix?.invoke()
+                                } else {
+                                    state.reload(DemoMode.Normal)
+                                }
+                            },
                             onComposerFocus = { if (previewPlaying) stopPreview() },
                             modifier = Modifier
                                 .weight(1f)
@@ -465,7 +596,7 @@ fun SocialMomentOverlay(
                     MomentStage(
                         context = context,
                         posterUrl = posterUrl,
-                        authorName = state.selectedAuthor?.name ?: "Kevin",
+                        authorName = state.selectedAuthor?.name ?: "Moi",
                         anchorMs = state.anchorMs,
                         previewPlaying = previewPlaying,
                         previewElapsed = previewElapsed,
@@ -485,6 +616,113 @@ fun SocialMomentOverlay(
             }
         }
 
+    }
+}
+
+@Composable
+private fun SocialConnectionPrompt(
+    connection: ConnectionState,
+    onOpenSettings: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BackHandler(onBack = onClose)
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Panel),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 440.dp)
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(PanelRaised, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.PeopleAlt,
+                    contentDescription = null,
+                    tint = Accent,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+
+            Text(
+                text = stringResource(MR.strings.social_overlay_not_connected_title),
+                color = Ink,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = stringResource(MR.strings.social_overlay_not_connected_body),
+                color = Muted,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                textAlign = TextAlign.Center,
+            )
+
+            when (connection) {
+                ConnectionState.Connecting -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            color = Accent,
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            text = stringResource(MR.strings.social_overlay_connecting),
+                            color = Muted,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+                is ConnectionState.Error -> {
+                    Text(
+                        text = stringResource(
+                            MR.strings.social_matrix_error,
+                            connection.error.toString(),
+                        ),
+                        color = Unread,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                else -> Unit
+            }
+
+            Button(
+                onClick = onOpenSettings,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent,
+                    contentColor = Color.Black,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+            ) {
+                Text(stringResource(MR.strings.social_overlay_open_settings))
+            }
+
+            TextButton(onClick = onClose) {
+                Text(
+                    text = stringResource(MR.strings.action_close),
+                    color = Muted,
+                    fontSize = 12.sp,
+                )
+            }
+        }
     }
 }
 
@@ -590,7 +828,11 @@ private fun ChatPane(
     Column(modifier = modifier) {
         when (state.demoMode) {
             DemoMode.Loading -> StateBody("Chargement du fil", null, null)
-            DemoMode.Error -> StateBody("Impossible de charger le fil", "Vérifie ta connexion Matrix.", onRetry)
+            DemoMode.Error -> StateBody(
+                "Impossible de charger le fil",
+                state.matrixError?.toString() ?: "Vérifie ta connexion Matrix.",
+                onRetry,
+            )
             else -> {
                 val thread = state.selectedThread
                 if (thread == null) {
@@ -666,12 +908,22 @@ private fun ChatContent(
                     ChatMessageRow(
                         message = message,
                         author = state.authors.firstOrNull { it.id == message.authorId },
-                        isMine = message.authorId == SocialDemoData.ME,
+                        isMine = message.authorId == state.selfMxid,
                         onMoment = onMoment,
                         onReact = { emoji -> onReact(message.id, emoji) },
                     )
                 }
             }
+        }
+
+        state.matrixError?.let { error ->
+            Text(
+                text = "Matrix : $error",
+                color = Unread,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
         }
 
         ChatComposer(

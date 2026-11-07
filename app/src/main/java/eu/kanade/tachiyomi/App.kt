@@ -86,6 +86,10 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         super<Application>.onCreate()
         patchInjekt()
 
+        // Matrix Rust SDK: rustls-platform-verifier needs the Android Context
+        // before the first TLS handshake. The native library is loaded first.
+        org.matrix.rustsdk.Android.init(applicationContext)
+
         GlobalExceptionHandler.initialize(applicationContext, CrashActivity::class.java)
 
         // TLS 1.3 support for Android < 10

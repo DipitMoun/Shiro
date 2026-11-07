@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.data.social.matrix.ReactionSummary
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.SocialRoomKey
+import eu.kanade.tachiyomi.data.social.matrix.SocialSchemaKeys
 import eu.kanade.tachiyomi.data.social.matrix.SocialThreadKey
 import eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository
 import eu.kanade.tachiyomi.data.social.matrix.SocialThreadTimeline
@@ -171,6 +172,8 @@ class ProjectingMomentRepository(
         }
 
         private fun projectMessage(event: TransportEvent, content: JsonObject): SocialTimelineItem? {
+            // The episode thread root is an implementation marker, not a chat message.
+            if (content[SocialSchemaKeys.THREAD_ROOT_FIELD] != null) return null
             val momentJson = content["org.shiro.moment"] as? JsonObject
             if (momentJson != null) {
                 val payload = parseMoment(momentJson) ?: return null

@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.data.social.matrix.command
 
+import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
+import eu.kanade.tachiyomi.data.social.identity.WorkId
 import eu.kanade.tachiyomi.data.social.matrix.AuthFailureReason
 import eu.kanade.tachiyomi.data.social.matrix.MomentPayloadCodec
 import eu.kanade.tachiyomi.data.social.matrix.SocialCommand
@@ -56,8 +58,30 @@ class RustCommandDispatcher(
                 SocialResult.Success("")
             }
 
-            is SocialCommand.PublishToMyThread ->
-                failure("PublishToMyThread requires self-thread binding (P2-10)")
+            is SocialCommand.PublishToMyThread -> {
+                val payload = command.payload
+                val validation = MomentPayloadCodec.validate(payload)
+                if (validation.isNotEmpty()) {
+                    return failure("Invalid moment payload: ${validation.joinToString("; ")}")
+                }
+                val workId = WorkId.parse(payload.work.id)
+                    ?: return failure("Invalid work id: ${payload.work.id}")
+                val episodeKey = EpisodeKey.parse(payload.episode.key)
+                    ?: return failure("Invalid episode key: ${payload.episode.key}")
+                val selfMxid = try {
+                    client.userId()
+                } catch (t: Throwable) {
+                    return failure("Cannot resolve current user: ${t.message}")
+                }
+                val thread = ThreadRef(selfMxid, workId, episodeKey)
+                withTimeline(client, thread) { timeline ->
+                    val content = timeline.makeTextContent(MomentPayloadCodec.fallbackBody(payload))
+                        ?: return@withTimeline failure("createMessageContent returned null")
+                    val extra = """{"org.shiro.moment":${MomentPayloadCodec.encode(payload)}}"""
+                    timeline.sendWithExtraContent(content, extra)
+                    SocialResult.Success("")
+                }
+            }
 
             is SocialCommand.React -> withTimeline(client, command.thread) { timeline ->
                 val ok = timeline.toggleReaction(

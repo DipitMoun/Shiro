@@ -219,6 +219,26 @@
     <string name="pref_backup_summary">Manual &amp; automatic backups, storage space</string>
     <string name="pref_security_summary">App lock, secure screen</string>
     <string name="pref_advanced_summary">Dump crash logs, battery optimizations</string>
+    <string name="pref_category_social">Social</string>
+    <string name="pref_social_summary">Matrix account and friends</string>
+    <string name="social_matrix_account">Matrix account</string>
+    <string name="social_matrix_connected">Connected as %s</string>
+    <string name="social_matrix_disconnected">Not connected</string>
+    <string name="social_matrix_login">Sign in</string>
+    <string name="social_matrix_logout">Sign out</string>
+    <string name="social_matrix_homeserver">Homeserver</string>
+    <string name="social_matrix_user">Username</string>
+    <string name="social_matrix_password">Password</string>
+    <string name="social_matrix_connecting">Connecting…</string>
+    <string name="social_matrix_error">Error: %s</string>
+    <string name="social_matrix_login_title">Sign in to Matrix</string>
+    <string name="social_matrix_logout_title">Sign out of Matrix?</string>
+    <string name="social_matrix_logout_message">The local session will be removed. Your Matrix account and messages are not deleted.</string>
+    <string name="social_matrix_info">Your account is used only for the social overlay. Messages stay end-to-end encrypted.</string>
+    <string name="social_overlay_not_connected_title">Matrix account required</string>
+    <string name="social_overlay_not_connected_body">Sign in from Settings → Social to see your friends’ threads.</string>
+    <string name="social_overlay_open_settings">Open settings</string>
+    <string name="social_overlay_connecting">Connecting to Matrix…</string>
 
       <!-- General section -->
     <string name="pref_category_theme">Theme</string>

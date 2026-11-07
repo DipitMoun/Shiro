@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.ui.social
 
+import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
+
 data class SocialAuthor(
     val id: String,
     val name: String,
@@ -29,6 +31,8 @@ data class SocialThread(
     val audienceLabel: String,
     val messages: List<SocialMessage>,
     val moments: List<SocialMoment> = emptyList(),
+    /** Matrix identity of this thread; null for local demo threads. */
+    val matrixRef: ThreadRef? = null,
 )
 
 data class SocialMomentContext(

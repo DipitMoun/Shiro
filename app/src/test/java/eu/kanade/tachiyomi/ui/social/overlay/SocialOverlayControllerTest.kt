@@ -2,10 +2,18 @@ package eu.kanade.tachiyomi.ui.social.overlay
 
 import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
 import eu.kanade.tachiyomi.data.social.identity.WorkId
+import eu.kanade.tachiyomi.data.social.identity.WorkIdentity
 import eu.kanade.tachiyomi.data.social.matrix.AuthFailureReason
 import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
 import eu.kanade.tachiyomi.data.social.matrix.MatrixTransport
+import eu.kanade.tachiyomi.data.social.matrix.MomentAnchor
+import eu.kanade.tachiyomi.data.social.matrix.MomentClient
+import eu.kanade.tachiyomi.data.social.matrix.MomentEpisode
+import eu.kanade.tachiyomi.data.social.matrix.MomentPayload
+import eu.kanade.tachiyomi.data.social.matrix.MomentSource
+import eu.kanade.tachiyomi.data.social.matrix.MomentWork
 import eu.kanade.tachiyomi.data.social.matrix.SocialAccount
+import eu.kanade.tachiyomi.data.social.matrix.SocialCommand
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
@@ -14,6 +22,8 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialThreadTimeline
 import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
 import eu.kanade.tachiyomi.data.social.matrix.TimelinePage
 import eu.kanade.tachiyomi.data.social.matrix.TimelineStatus
+import eu.kanade.tachiyomi.data.social.matrix.catalog.DiscoveredThread
+import eu.kanade.tachiyomi.data.social.matrix.catalog.SocialThreadCatalog
 import eu.kanade.tachiyomi.data.social.matrix.command.InMemorySocialCommandDispatcher
 import eu.kanade.tachiyomi.data.social.matrix.push.InMemoryPushRegistrar
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +44,7 @@ class SocialOverlayControllerTest {
     private val thread = ThreadRef(
         authorMxid = "@alice:example.org",
         workId = WorkId.parse("anilist:154587")!!,
-        episodeKey = EpisodeKey.parse("S01E003")!!,
+        episodeKey = EpisodeKey.parse("E003")!!,
     )
     private val account = SocialAccount(
         userId = "@alice:example.org",
@@ -57,9 +67,21 @@ class SocialOverlayControllerTest {
 
     private class FakeTimelineRepo : SocialThreadRepository {
         var result: SocialResult<SocialThreadTimeline> = SocialResult.Failure(SocialError.Unknown("empty"))
-        override fun observeThread(thread: ThreadRef): Flow<SocialResult<SocialThreadTimeline>> = flowOf(result)
+        val results = mutableMapOf<ThreadRef, SocialResult<SocialThreadTimeline>>()
+        override fun observeThread(thread: ThreadRef): Flow<SocialResult<SocialThreadTimeline>> =
+            flowOf(results[thread] ?: result)
         override suspend fun pageBack(thread: ThreadRef, cursor: String): SocialResult<TimelinePage> =
             SocialResult.Success(TimelinePage(emptyList(), null))
+    }
+
+    private class FakeCatalog(
+        private val result: SocialResult<List<DiscoveredThread>>,
+    ) : SocialThreadCatalog {
+        override suspend fun discover(
+            work: WorkIdentity,
+            episodeKey: EpisodeKey,
+            selfMxid: String,
+        ): SocialResult<List<DiscoveredThread>> = result
     }
 
     @Test
@@ -197,5 +219,106 @@ class SocialOverlayControllerTest {
         )
         c.registerPush("https://ntfy.sh/topic")
         assertEquals("https://ntfy.sh/topic", push.currentEndpoint)
+    }
+
+    @Test
+    fun `openWork discovers every author thread and routes commands to the selection`() = runBlocking {
+        val self = "@me:example.org"
+        val friend = "@kevin:example.org"
+        val selfRef = ThreadRef(self, thread.workId, thread.episodeKey)
+        val friendRef = ThreadRef(friend, thread.workId, thread.episodeKey)
+        val selfTimeline = SocialThreadTimeline(
+            thread = selfRef,
+            roomId = "!self:example.org",
+            threadRootEventId = "$self-root",
+            items = emptyList(),
+            status = TimelineStatus.LIVE,
+        )
+        val friendTimeline = SocialThreadTimeline(
+            thread = friendRef,
+            roomId = "!friend:example.org",
+            threadRootEventId = "$friend-root",
+            items = emptyList(),
+            status = TimelineStatus.LIVE,
+        )
+        val repo = FakeTimelineRepo().apply {
+            results[selfRef] = SocialResult.Success(selfTimeline)
+            results[friendRef] = SocialResult.Success(friendTimeline)
+        }
+        val catalog = FakeCatalog(
+            SocialResult.Success(
+                listOf(
+                    DiscoveredThread(friendRef, "Kevin", "!friend:example.org", "$friend-root", false),
+                    DiscoveredThread(selfRef, "Moi", "!self:example.org", "$self-root", true),
+                ),
+            ),
+        )
+        val dispatcher = InMemorySocialCommandDispatcher()
+        val c = SocialOverlayController(
+            FakeSession(
+                SocialSessionState.Authenticated(
+                    SocialAccount(self, "DEV1", "https://matrix.example.org", "Moi"),
+                ),
+            ),
+            repo,
+            dispatcher,
+            InMemoryPushRegistrar(),
+            CoroutineScope(Dispatchers.Unconfined),
+            catalog,
+        )
+        c.connect()
+        c.openWork(
+            work = WorkIdentity(thread.workId, mapOf("local" to "1"), "Frieren"),
+            episodeKey = thread.episodeKey,
+            selfMxid = self,
+            selfDisplayName = "Moi",
+        )
+
+        assertEquals(2, c.state.value.threads.size)
+        assertEquals(friendRef, c.state.value.thread)
+        assertEquals(2, c.state.value.timelines.size)
+
+        c.selectThread(selfRef)
+        assertEquals(selfRef, c.state.value.thread)
+        assertEquals(selfTimeline, c.state.value.timeline)
+
+        c.reply("hello")
+        val reply = dispatcher.executed.last() as SocialCommand.ReplyInAuthorThread
+        assertEquals(selfRef, reply.thread)
+
+        val payload = MomentPayload(
+            v = MomentPayload.VERSION,
+            work = MomentWork(id = thread.workId.value),
+            episode = MomentEpisode(key = thread.episodeKey.value),
+            moments = listOf(MomentAnchor(positionMs = 1_000L)),
+            source = MomentSource(key = "local:1"),
+            capturedAt = "2026-11-02T12:00:00Z",
+            client = MomentClient("Shiro", "test"),
+        )
+        c.publish(payload)
+        assertTrue(dispatcher.executed.last() is SocialCommand.PublishToMyThread)
+    }
+
+    @Test
+    fun `openWork keeps the personal thread when discovery fails`() {
+        val self = "@me:example.org"
+        val selfRef = ThreadRef(self, thread.workId, thread.episodeKey)
+        val c = SocialOverlayController(
+            FakeSession(SocialSessionState.Authenticated(SocialAccount(self, "DEV1", "https://matrix.example.org"))),
+            FakeTimelineRepo(),
+            InMemorySocialCommandDispatcher(),
+            InMemoryPushRegistrar(),
+            CoroutineScope(Dispatchers.Unconfined),
+            FakeCatalog(SocialResult.Failure(SocialError.Unknown("offline"))),
+        )
+        c.connect()
+        c.openWork(
+            work = WorkIdentity(thread.workId, emptyMap(), "Frieren"),
+            episodeKey = thread.episodeKey,
+            selfMxid = self,
+        )
+
+        assertEquals(listOf(selfRef), c.state.value.threads.map { it.ref })
+        assertEquals(selfRef, c.state.value.thread)
     }
 }

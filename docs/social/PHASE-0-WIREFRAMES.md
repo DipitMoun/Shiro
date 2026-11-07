@@ -183,7 +183,8 @@ Moments  [01:40] [12:10] [18:30] [22:05]
 - jusqu'à 3 messages épinglés par fil, avec `★` et fond légèrement plus clair ;
 - composer fixe en bas.
 
-L'UI affiche `S1E1` ; le stockage canonique est `S01E001`.
+L'UI peut afficher `S1E1` si la saison est connue ; le stockage canonique reste
+`E001` et ne dépend jamais d'une saison.
 
 ## 5. État C — Boucle 15/15
 

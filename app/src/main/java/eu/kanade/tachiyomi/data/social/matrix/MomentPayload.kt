@@ -79,7 +79,7 @@ sealed interface MomentDecodeResult {
 
 object MomentPayloadCodec {
     private val workId = Regex("^(anilist|mal|anidb|tvdb|tg|local):[A-Za-z0-9._:-]{1,128}$")
-    private val episodeKey = Regex("^(S[0-9]{2}E[0-9]{3,4}(\\.[0-9]{1,2})?|MAIN)$")
+    private val episodeKey = Regex("^(E[0-9]{3,4}(\\.[0-9]{1,2})?|MAIN)$")
     private val formats = setOf("TV", "MOVIE", "OVA", "ONA", "SPECIAL", "OTHER")
     private val kinds = setOf("regular", "special", "film", "ova", "recap", "unknown")
     private val numberings = setOf("season", "absolute", "unknown")

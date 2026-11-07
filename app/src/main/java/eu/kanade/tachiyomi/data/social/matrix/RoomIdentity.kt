@@ -149,6 +149,9 @@ data class SocialRoomKey(
         /** Canonical separator; excluded from every validated component. */
         const val SEPARATOR = "|"
 
+        /** Human-readable separator used by [roomTopic]; never parsed as identity. */
+        private const val TOPIC_SEPARATOR = " · "
+
         /** Inverse of [value]; returns null when any component is malformed. */
         fun parse(raw: String): SocialRoomKey? {
             val parts = raw.split(SEPARATOR)
@@ -156,6 +159,20 @@ data class SocialRoomKey(
             if (!MatrixIds.isValidUserId(parts[0])) return null
             val workId = WorkId.parse(parts[1]) ?: return null
             return SocialRoomKey(parts[0], workId)
+        }
+
+        /**
+         * Reads a room key back from [roomTopic]. Used to discover already joined
+         * friend rooms without relying on local bindings that may be missing after a
+         * reinstall. Returns null for any topic not produced by [roomTopic].
+         */
+        fun parseTopic(topic: String): SocialRoomKey? {
+            val parts = topic.split(TOPIC_SEPARATOR)
+            if (parts.size != 3 || parts[0] != "Shiro" || !parts[2].startsWith("fil de ")) return null
+            val workId = WorkId.parse(parts[1]) ?: return null
+            val authorMxid = parts[2].removePrefix("fil de ")
+            if (!MatrixIds.isValidUserId(authorMxid)) return null
+            return SocialRoomKey(authorMxid, workId)
         }
     }
 }
@@ -240,5 +257,15 @@ object SocialSchemaKeys {
     fun threadRootBody(workTitle: String?, workId: WorkId, episodeKey: EpisodeKey): String {
         val label = workTitle?.takeIf { it.isNotBlank() } ?: workId.value
         return "Fil · $label · ${episodeKey.value}"
+    }
+
+    /**
+     * Extracts the episode key from a thread root body. The label may itself
+     * contain the separator, so only the last segment is authoritative.
+     */
+    fun threadRootEpisodeKey(body: String): EpisodeKey? {
+        val parts = body.split(" · ")
+        if (parts.size < 3 || parts.first() != "Fil") return null
+        return EpisodeKey.parse(parts.last())
     }
 }

@@ -105,12 +105,16 @@ connaît que `mal:52991` si l'alias local existe.
 Forme canonique stockée :
 
 ```text
-S<season 2 chiffres>E<épisode 3-4 chiffres>[.décimal]
-S00E001              spécial
+E<épisode 3-4 chiffres>[.décimal]
 MAIN                 film ou OVA avec sa propre entrée
 ```
 
-Exemples : `S01E001`, `S01E003`, `S01E003.5`, `S02E012`, `S00E001`, `MAIN`.
+Exemples : `E001`, `E003`, `E003.5`, `E012`, `E000`, `MAIN`.
+
+La saison ne fait pas partie de l'identité du fil : l'identité est
+`auteur + œuvre + épisode`. Cela évite de casser les œuvres qui n'exposent pas
+de numéro de saison explicite. `episode.season` reste une métadonnée facultative
+lorsqu'elle est réellement connue.
 
 Champs :
 
@@ -128,9 +132,10 @@ Règles :
 - l'épisode est une entrée de catalogue, pas un fichier ;
 - un film/OVA avec sa propre entrée AniList/MAL est une œuvre distincte avec
   `episode.key = "MAIN"` ;
-- un spécial rattaché à la même entrée utilise `S00E001` ;
-- un épisode sans numéro fiable utilise `S00E000` ou `numbering = unknown` ;
-- l'UI affiche `S1E1`, le stockage garde `S01E001`.
+- un spécial rattaché à la même entrée utilise `E000` avec `kind = special` ;
+- un épisode sans numéro fiable utilise `E000` ou `numbering = unknown` ;
+- l'UI peut afficher une saison lorsqu'elle existe, mais la clé stockée reste
+  `E001` et n'en dépend jamais.
 
 ### 2.4 `sourceKey`, position et durée
 
@@ -190,7 +195,7 @@ ne connaissent pas le champ personnalisé affichent le `body`.
   "origin_server_ts": 1793389331000,
   "content": {
     "msgtype": "m.text",
-    "body": "▶ 12:34, 18:02 — Ce plan-là, et la musique juste après. (Sousou no Frieren · S01E003)",
+    "body": "▶ 12:34, 18:02 — Ce plan-là, et la musique juste après. (Sousou no Frieren · E003)",
     "m.relates_to": {
       "rel_type": "m.thread",
       "event_id": "$threadRoot",
@@ -211,7 +216,7 @@ ne connaissent pas le champ personnalisé affichent le `body`.
         "year": 2023
       },
       "episode": {
-        "key": "S01E003",
+        "key": "E003",
         "number": 3.0,
         "season": 1,
         "kind": "regular",
@@ -247,7 +252,7 @@ ne connaissent pas le champ personnalisé affichent le `body`.
 | `work.title` | string | non | ≤ 200 caractères. |
 | `work.format` | string | non | `TV`, `MOVIE`, `OVA`, `ONA`, `SPECIAL`, `OTHER`. |
 | `work.year` | int | non | 1900–2200. |
-| `episode.key` | string | oui | `S01E003`, `S00E001`, `MAIN`. |
+| `episode.key` | string | oui | `E003`, `E001`, `MAIN`. |
 | `episode.number` | double | non | ≥ 0 ; décimales autorisées. |
 | `episode.season` | int | non | ≥ 0 ; `0` = spécial. |
 | `episode.kind` | string | non | `regular`, `special`, `film`, `ova`, `recap`, `unknown`. |
@@ -273,7 +278,7 @@ ne connaissent pas le champ personnalisé affichent le `body`.
 Le `body` est obligatoire et lisible sans Shiro :
 
 ```text
-▶ 12:34, 18:02 — Ce plan-là, et la musique juste après. (Sousou no Frieren · S01E003)
+▶ 12:34, 18:02 — Ce plan-là, et la musique juste après. (Sousou no Frieren · E003)
 ```
 
 Construction :
@@ -401,11 +406,11 @@ ordinaire, sans payload de moment :
 ```json
 {
   "msgtype": "m.text",
-  "body": "Fil · Sousou no Frieren · S01E003",
+  "body": "Fil · Sousou no Frieren · E003",
   "org.shiro.thread": {
     "v": 1,
     "workId": "anilist:154587",
-    "episodeKey": "S01E003",
+    "episodeKey": "E003",
     "episodeNumber": 3.0,
     "season": 1,
     "kind": "regular",
@@ -686,8 +691,9 @@ Points identifiés :
 - `PlayerViewModel.seekTo(position: Int, precise: Boolean)` : seek en secondes.
 - `PlayerActivity.setVideo(...)` : chargement de la vidéo.
 - `Episode` : `id`, `animeId`, `url`, `episodeNumber`, `totalSeconds`,
-  `lastSecondSeen`. **Pas de champ saison** : la saison vient de
-  `Anime.seasonNumber` / de la hiérarchie de saison.
+  `lastSecondSeen`. **Pas de champ saison** : la saison peut venir de
+  `Anime.seasonNumber` pour l'affichage, mais elle n'entre jamais dans
+  `episodeKey` ni dans l'identité du fil.
 - `Anime` : `id`, `source`, `url`, `seasonNumber`, `title`. **Pas d'ID
   AniList/MAL direct** : la résolution passe par le tracker ou les métadonnées
   de reconnaissance.

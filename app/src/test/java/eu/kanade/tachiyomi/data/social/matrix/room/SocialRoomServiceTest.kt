@@ -93,15 +93,15 @@ class SocialRoomServiceTest {
 
     @Test fun `ensureThreadRoot requires a bound room`() = runBlocking {
         val roomKey = SocialRoomKey(alice, work.id)
-        val result = service.ensureThreadRoot(roomKey, "S01E003", work.title)
+        val result = service.ensureThreadRoot(roomKey, "E003", work.title)
         assertTrue(result is SocialResult.Failure)
     }
 
     @Test fun `ensureThreadRoot creates the root then caches it`() = runBlocking {
         service.ensureRoom(alice, "Alice", alice, work, emptyList())
         val roomKey = SocialRoomKey(alice, work.id)
-        val first = service.ensureThreadRoot(roomKey, "S01E003", work.title)
-        val second = service.ensureThreadRoot(roomKey, "S01E003", work.title)
+        val first = service.ensureThreadRoot(roomKey, "E003", work.title)
+        val second = service.ensureThreadRoot(roomKey, "E003", work.title)
         assertTrue(first is SocialResult.Success)
         assertTrue(second is SocialResult.Success)
         assertEquals(1, transport.sendMessageCalls)
@@ -118,10 +118,10 @@ class SocialRoomServiceTest {
 
     @Test fun `thread root is a message containing org shiro thread`() = runBlocking {
         service.ensureRoom(alice, "Alice", alice, work, emptyList())
-        service.ensureThreadRoot(SocialRoomKey(alice, work.id), "S01E003", work.title)
+        service.ensureThreadRoot(SocialRoomKey(alice, work.id), "E003", work.title)
         val sentContent = transport.lastSendMessageContent ?: ""
         assertTrue(sentContent.contains("org.shiro.thread"), "actual content: $sentContent")
-        assertTrue(sentContent.contains("S01E003"), "actual content: $sentContent")
+        assertTrue(sentContent.contains("E003"), "actual content: $sentContent")
     }
 
     @Test fun `bindRoom failure stops the ensureRoom flow`() = runBlocking {

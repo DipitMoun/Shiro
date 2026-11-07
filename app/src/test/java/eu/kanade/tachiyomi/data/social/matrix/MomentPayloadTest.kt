@@ -16,11 +16,11 @@ class MomentPayloadTest {
             year = 2023,
         ),
         episode = MomentEpisode(
-            key = "S01E003",
+            key = "E003",
             number = 3.0,
-            season = 1,
+            season = null,
             kind = "regular",
-            numbering = "season",
+            numbering = "unknown",
             title = "Le pays des mages",
         ),
         moments = listOf(
@@ -61,7 +61,7 @@ class MomentPayloadTest {
     @Test
     fun `missing required fields are rejected`() {
         val decoded = codec.decode(
-            """{"work":{"id":"anilist:1"},"episode":{"key":"S01E001"},"moments":[{"positionMs":0}],"source":{"key":"x"},"capturedAt":"2026-10-30T19:42:11Z"}""",
+            """{"work":{"id":"anilist:1"},"episode":{"key":"E001"},"moments":[{"positionMs":0}],"source":{"key":"x"},"capturedAt":"2026-10-30T19:42:11Z"}""",
         )
 
         assertTrue(decoded is MomentDecodeResult.Invalid)
@@ -102,7 +102,7 @@ class MomentPayloadTest {
     @Test
     fun `optional fields receive schema defaults`() {
         val decoded = codec.decode(
-            """{"v":1,"work":{"id":"anilist:1"},"episode":{"key":"S01E001"},"moments":[{"positionMs":0}],"source":{"key":"x"},"capturedAt":"2026-10-30T19:42:11Z"}""",
+            """{"v":1,"work":{"id":"anilist:1"},"episode":{"key":"E001"},"moments":[{"positionMs":0}],"source":{"key":"x"},"capturedAt":"2026-10-30T19:42:11Z"}""",
         )
 
         assertTrue(decoded is MomentDecodeResult.Valid)
@@ -120,7 +120,7 @@ class MomentPayloadTest {
         assertTrue(body.contains("12:34"))
         assertTrue(body.contains("18:02"))
         assertTrue(body.contains("Sousou no Frieren"))
-        assertTrue(body.contains("S01E003"))
+        assertTrue(body.contains("E003"))
         assertTrue(body.contains("musique"))
     }
 

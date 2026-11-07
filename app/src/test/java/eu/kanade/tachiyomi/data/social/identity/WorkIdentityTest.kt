@@ -58,22 +58,22 @@ class WorkIdentityTest {
     }
 
     @Test
-    fun `episode keys format season and episode numbers`() {
-        assertEquals("S01E003", EpisodeKey.of(1, 3.0).value)
-        assertEquals("S00E001", EpisodeKey.of(0, 1.0).value)
-        assertEquals("S01E003.5", EpisodeKey.of(1, 3.5).value)
-        assertEquals("S02E003.05", EpisodeKey.of(2, 3.05).value)
-        assertEquals("S01E1234", EpisodeKey.of(1, 1234.0).value)
+    fun `episode keys format episode numbers without a season`() {
+        assertEquals("E003", EpisodeKey.of(3.0).value)
+        assertEquals("E001", EpisodeKey.of(1.0).value)
+        assertEquals("E003.5", EpisodeKey.of(3.5).value)
+        assertEquals("E003.05", EpisodeKey.of(3.05).value)
+        assertEquals("E1234", EpisodeKey.of(1234.0).value)
         assertEquals("MAIN", EpisodeKey.MAIN.value)
     }
 
     @Test
     fun `episode keys parse canonical forms and reject invalid ones`() {
-        assertEquals("S01E003.5", EpisodeKey.parse("S01E003.5")?.value)
+        assertEquals("E003.5", EpisodeKey.parse("E003.5")?.value)
         assertEquals("MAIN", EpisodeKey.parse("MAIN")?.value)
-        assertNull(EpisodeKey.parse("S1E003"))
-        assertNull(EpisodeKey.parse("S01E12"))
-        assertNull(EpisodeKey.parse("S01E003."))
-        assertThrows(IllegalArgumentException::class.java) { EpisodeKey.of(1, -1.0) }
+        assertNull(EpisodeKey.parse("S01E003"))
+        assertNull(EpisodeKey.parse("E12"))
+        assertNull(EpisodeKey.parse("E003."))
+        assertThrows(IllegalArgumentException::class.java) { EpisodeKey.of(-1.0) }
     }
 }
