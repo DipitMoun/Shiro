@@ -32,6 +32,7 @@ sealed class AnimeExtension {
         val isObsolete: Boolean = false,
         val isShared: Boolean,
         val store: AnimeExtensionStore? = null,
+        val signatureHash: String? = null,
     ) : AnimeExtension()
 
     data class Available(

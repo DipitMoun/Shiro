@@ -146,7 +146,7 @@ class AnimeExtensionManager(
      */
     suspend fun findAvailableExtensions() {
         val extensions: List<AnimeExtension.Available> = try {
-            api.findExtensions()
+            api.findExtensions(installedExtensionsMapFlow.value)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             withUIContext { context.toast(MR.strings.extension_api_error) }
@@ -376,7 +376,7 @@ class AnimeExtensionManager(
             ?: availableExtensionsMapFlow.value[pkgName]
             ?: return false
 
-        return (availableExt.versionCode > versionCode || availableExt.libVersion > libVersion)
+        return availableExt.versionCode > versionCode
     }
 
     private fun updatePendingUpdatesCount() {

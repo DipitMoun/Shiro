@@ -27,9 +27,29 @@ internal class AnimeExtensionApi {
         preferenceStore.getLong("last_ext_check", 0)
     }
 
-    suspend fun findExtensions(): List<AnimeExtension.Available> {
-        return withIOContext { repository.fetchExtensions() }
+    suspend fun findExtensions(
+        installedByPkg: Map<String, AnimeExtension.Installed> = emptyMap(),
+    ): List<AnimeExtension.Available> {
+        return withIOContext { repository.fetchExtensions().bestPerPackage(installedByPkg) }
     }
+
+    // Several repos can ship the same package: keep the highest versionCode whose store
+    // signing key matches the installed APK signature, so that Android accepts the update.
+    // Falls back to the overall highest versionCode only when no compatible entry exists
+    // or when the installed signature is unknown (NO_SIGNING_KEY stores).
+    private fun List<AnimeExtension.Available>.bestPerPackage(
+        installedByPkg: Map<String, AnimeExtension.Installed>,
+    ): List<AnimeExtension.Available> =
+        groupBy { it.pkgName }.values.mapNotNull { dups ->
+            val installedSig = installedByPkg[dups.first().pkgName]?.signatureHash
+            val compatible = if (installedSig != null) {
+                dups.filter { it.store.signingKey == installedSig || it.store.signingKey == "NO_SIGNING_KEY" }
+            } else {
+                dups
+            }
+            (compatible.ifEmpty { dups })
+                .maxWithOrNull(compareBy<AnimeExtension.Available>({ it.versionCode }, { it.libVersion }))
+        }
 
     suspend fun checkForUpdates(
         context: Context,
@@ -45,15 +65,16 @@ internal class AnimeExtensionApi {
         // Update extension repo details
         updateExtensionStores()
 
-        val extensions = if (fromAvailableExtensionList) {
-            animeExtensionManager.availableExtensionsFlow.value
-        } else {
-            findExtensions().also { lastExtCheck.set(Instant.now().toEpochMilli()) }
-        }
-
         val installedExtensions = AnimeExtensionLoader.loadExtensions(context)
             .filterIsInstance<AnimeLoadResult.Success>()
             .map { it.extension }
+
+        val extensions = if (fromAvailableExtensionList) {
+            animeExtensionManager.availableExtensionsFlow.value
+        } else {
+            val installedByPkg = installedExtensions.associateBy { it.pkgName }
+            findExtensions(installedByPkg).also { lastExtCheck.set(Instant.now().toEpochMilli()) }
+        }
 
         val extensionsWithUpdate = mutableListOf<AnimeExtension.Installed>()
         for (installedExt in installedExtensions) {
@@ -61,8 +82,8 @@ internal class AnimeExtensionApi {
             val availableExt = extensions.find { it.pkgName == pkgName } ?: continue
 
             val hasUpdatedVer = availableExt.versionCode > installedExt.versionCode
-            val hasUpdatedLib = availableExt.libVersion > installedExt.libVersion
-            val hasUpdate = hasUpdatedVer || hasUpdatedLib
+            // libVersion alone is not an update: Android only accepts a strictly higher versionCode
+            val hasUpdate = hasUpdatedVer
             if (hasUpdate) {
                 extensionsWithUpdate.add(installedExt)
             }
