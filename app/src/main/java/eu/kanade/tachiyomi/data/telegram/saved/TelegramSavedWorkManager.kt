@@ -294,6 +294,7 @@ class TelegramSavedWorkManager(
         sizeBytes = sizeBytes,
         mimeType = mimeType,
         caption = caption,
+        durationSeconds = durationSeconds,
         date = date,
         threadId = threadId,
         season = season,

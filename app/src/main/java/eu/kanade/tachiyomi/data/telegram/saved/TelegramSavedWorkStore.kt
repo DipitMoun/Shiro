@@ -79,7 +79,7 @@ class TelegramSavedWorkStore(context: Context) {
                             work.kind == TelegramSavedKind.VIDEO &&
                                 (
                                     !TelegramFileHeuristics.isVideoFile(file.fileName, file.mimeType) ||
-                                        EpisodeMediaValidator.isTooSmall(file.sizeBytes)
+                                        EpisodeMediaValidator.isTooShort(file.durationSeconds, file.sizeBytes)
                                     )
                             )
                 }

@@ -57,6 +57,7 @@ data class TelegramSavedFile(
     val sizeBytes: Long,
     val mimeType: String? = null,
     val caption: String? = null,
+    val durationSeconds: Int? = null,
     val date: Long = 0L,
     val threadId: Long = 0L,
     val season: Int? = null,

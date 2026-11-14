@@ -483,7 +483,7 @@ class TelegramIndexManager(
         // ne pas polluer les épisodes. Les documents (mangas, PDF, archives)
         // n'ont aucune limite de taille.
         if (mediaKind == TelegramMediaKind.VIDEO &&
-            EpisodeMediaValidator.isTooSmall(metadata.sizeBytes)
+            EpisodeMediaValidator.isTooShort(metadata.durationSeconds, metadata.sizeBytes)
         ) {
             return null
         }

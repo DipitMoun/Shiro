@@ -149,6 +149,7 @@ object TelegramUrls {
         chatId: Long,
         extension: String? = null,
         messageId: Long = 0L,
+        durationSeconds: Int? = null,
     ): String {
         val ext = extension
             ?.lowercase()
@@ -156,7 +157,8 @@ object TelegramUrls {
             ?.let { "&ext=$it" }
             .orEmpty()
         val msg = messageId.takeIf { it > 0L }?.let { "&msg=$it" }.orEmpty()
-        return "$SCHEME" + "file/$fileId?size=$sizeBytes&chat=$chatId$ext$msg"
+        val dur = durationSeconds?.takeIf { it > 0 }?.let { "&dur=$it" }.orEmpty()
+        return "$SCHEME" + "file/$fileId?size=$sizeBytes&chat=$chatId$ext$msg$dur"
     }
 
     data class FileRef(
@@ -165,6 +167,7 @@ object TelegramUrls {
         val chatId: Long?,
         val extension: String?,
         val messageId: Long = 0L,
+        val durationSeconds: Int? = null,
     )
 
     fun parseFile(url: String?): FileRef? {
@@ -186,6 +189,9 @@ object TelegramUrls {
         val messageId = query.substringAfter("msg=", missingDelimiterValue = "")
             .substringBefore('&')
             .toLongOrNull() ?: 0L
-        return FileRef(fileId, size, chat, ext, messageId)
+        val duration = query.substringAfter("dur=", missingDelimiterValue = "")
+            .substringBefore('&')
+            .toIntOrNull()
+        return FileRef(fileId, size, chat, ext, messageId, duration)
     }
 }

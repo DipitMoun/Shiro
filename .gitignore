@@ -89,3 +89,6 @@ validate-*.log
 # Offline test logs
 offline-*.txt
 validate-*.txt
+
+# Debug sessions
+session*-patch*/

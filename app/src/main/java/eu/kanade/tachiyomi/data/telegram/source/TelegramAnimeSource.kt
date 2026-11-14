@@ -177,6 +177,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
                         file.chatId,
                         extensionOf(file.fileName),
                         messageId = file.messageId,
+                        durationSeconds = file.durationSeconds,
                     )
                     name = file.title.ifBlank { file.fileName }
                     episode_number = -1f
@@ -197,7 +198,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
                 .filterNot {
                     TelegramFileHeuristics.isSuspect(it.fileName, it.caption, work.title) ||
                         !TelegramFileHeuristics.isVideoFile(it.fileName, it.mimeType) ||
-                        EpisodeMediaValidator.isTooSmall(it.sizeBytes)
+                        EpisodeMediaValidator.isTooShort(it.durationSeconds, it.sizeBytes)
                 }
                 .filter { it.season == ref.season && it.episode == ref.number }
                 .sortedBy { it.sizeBytes }
@@ -210,7 +211,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
                 .filterNot {
                     TelegramFileHeuristics.isSuspect(it.fileName, it.caption, work.title) ||
                         !TelegramFileHeuristics.isVideoFile(it.fileName, it.mimeType) ||
-                        EpisodeMediaValidator.isTooSmall(it.sizeBytes)
+                        EpisodeMediaValidator.isTooShort(it.durationSeconds, it.sizeBytes)
                 }
                 .filter { it.messageId == ref.messageId }
                 .map { it.toVideo() }
@@ -235,7 +236,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
             return channel.videoFiles
                 .filter {
                     TelegramFileHeuristics.isVideoFile(it.fileName, it.mimeType) &&
-                        !EpisodeMediaValidator.isTooSmall(it.sizeBytes)
+                        !EpisodeMediaValidator.isTooShort(it.durationSeconds, it.sizeBytes)
                 }
                 .filter {
                     if (ref.messageId > 0L) {
@@ -345,7 +346,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
                     TelegramFileHeuristics.isUnsupportedFile(it.fileName, it.mimeType) ||
                         TelegramFileHeuristics.isSuspect(it.fileName, it.caption, it.title) ||
                         !TelegramFileHeuristics.isVideoFile(it.fileName, it.mimeType) ||
-                        EpisodeMediaValidator.isTooSmall(it.sizeBytes)
+                        EpisodeMediaValidator.isTooShort(it.durationSeconds, it.sizeBytes)
                 }
                 .map { it to channel.title }
         }
@@ -406,6 +407,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
                             file.chatId,
                             extensionOf(file.fileName),
                             messageId = file.messageId,
+                            durationSeconds = file.durationSeconds,
                         )
                     name = file.title.ifBlank { file.fileName }
                     episode_number = -1f
@@ -437,7 +439,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
             TelegramFileHeuristics.isUnsupportedFile(it.fileName, it.mimeType) ||
                 TelegramFileHeuristics.isSuspect(it.fileName, it.caption, it.title) ||
                 !TelegramFileHeuristics.isVideoFile(it.fileName, it.mimeType) ||
-                EpisodeMediaValidator.isTooSmall(it.sizeBytes)
+                EpisodeMediaValidator.isTooShort(it.durationSeconds, it.sizeBytes)
         }
     }
 
@@ -453,7 +455,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
         val usable = work.files.filterNot {
             TelegramFileHeuristics.isSuspect(it.fileName, it.caption, work.title) ||
                 !TelegramFileHeuristics.isVideoFile(it.fileName, it.mimeType) ||
-                EpisodeMediaValidator.isTooSmall(it.sizeBytes)
+                EpisodeMediaValidator.isTooShort(it.durationSeconds, it.sizeBytes)
         }
 
         val numbered = usable.filter { it.episode != null }
@@ -553,6 +555,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
                 chatId,
                 extensionOf(fileName),
                 messageId = messageId,
+                durationSeconds = durationSeconds,
             ),
             videoTitle = title,
             resolution = resolutionOf(variant),
@@ -607,6 +610,7 @@ class TelegramAnimeSource : AnimeHttpSource() {
                 chatId,
                 extensionOf(fileName),
                 messageId = messageId,
+                durationSeconds = durationSeconds,
             ),
             videoTitle = title,
             resolution = resolutionOf(variant),

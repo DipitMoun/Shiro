@@ -618,9 +618,16 @@ class AnimeDownloader(
             tmpDir.findFile(finalName)?.delete()
             tmpFile.renameTo(finalName)
             val finalFile = tmpDir.findFile(finalName) ?: tmpFile
-            if (finalFile.length() < EpisodeMediaValidator.MIN_EPISODE_BYTES) {
+            // Prefer the TDLib duration when available: it catches 90 s
+            // high-bitrate videos that exceed 50 MB. Fall back to size
+            // only for legacy FileRef entries without duration.
+            val tooShort = EpisodeMediaValidator.isTooShort(ref.durationSeconds, finalFile.length())
+            if (tooShort) {
                 finalFile.delete()
-                throw IOException("Fichier Telegram inférieur à 50 Mo")
+                throw IOException(
+                    "Vidéo Telegram trop courte " +
+                        "(${ref.durationSeconds ?: "?"}s < ${EpisodeMediaValidator.MIN_EPISODE_SECONDS}s)",
+                )
             }
             finalFile
         } catch (e: Throwable) {
