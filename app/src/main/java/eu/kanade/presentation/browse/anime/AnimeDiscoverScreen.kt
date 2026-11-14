@@ -52,6 +52,11 @@ import eu.kanade.tachiyomi.ui.browse.catalog.DiscoverItem
 import eu.kanade.tachiyomi.ui.browse.catalog.preferredTitle
 import kotlinx.coroutines.delay
 import tachiyomi.presentation.core.util.plus
+import androidx.compose.material.icons.outlined.Refresh
+import kotlinx.collections.immutable.persistentListOf
+import tachiyomi.presentation.core.screens.EmptyScreen
+import tachiyomi.presentation.core.screens.EmptyScreenAction
+import tachiyomi.i18n.MR
 
 @Composable
 fun AnimeDiscoverScreen(
@@ -74,22 +79,22 @@ fun AnimeDiscoverScreen(
             }
         }
         state.error != null && state.carousel.isEmpty() -> {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = state.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(onClick = onRetry) {
-                    Text("Réessayer")
-                }
-            }
+            EmptyScreen(
+                stringRes = MR.strings.exception_offline,
+                modifier = Modifier.padding(contentPadding),
+                actions = persistentListOf(
+                    EmptyScreenAction(
+                        stringRes = MR.strings.action_retry,
+                        icon = Icons.Outlined.Refresh,
+                        onClick = onRetry,
+                    ),
+                    EmptyScreenAction(
+                        stringRes = MR.strings.local_source,
+                        icon = Icons.Outlined.FolderOpen,
+                        onClick = onOpenLocalSource,
+                    ),
+                ),
+            )
         }
         else -> {
             val listState = rememberLazyListState()

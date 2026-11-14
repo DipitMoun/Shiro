@@ -85,3 +85,7 @@ retest5-*.txt
 retest5-*.log
 live-logcat-*.txt
 validate-*.log
+
+# Offline test logs
+offline-*.txt
+validate-*.txt
