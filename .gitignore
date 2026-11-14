@@ -29,3 +29,12 @@ dist/
 
 # AGP generated build configs
 app/src/main/java/org/rustls/platformverifier/BuildConfig.kt
+# Debug artifacts (bug-fix scripts)
+bug01-backup-*/
+bug06-backup-*/
+bug01-diag*.txt
+bug06-diag-*.txt
+bug*-patch-report-*.txt
+bug*-compile-*.log
+bug*-final-*.txt
+bug*-fix-*.txt
