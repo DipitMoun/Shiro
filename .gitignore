@@ -65,3 +65,16 @@ audit-maj-*.txt
 retest*.txt
 build5-*.log
 diff-*.patch
+
+# Debug artifacts (session 3+ audit)
+apk-*.log
+apk-*.txt
+live-analysis-*.txt
+build.log
+session3-*.txt
+session3-*.log
+session4-*.txt
+test-ext-*.txt
+test-ext-*.log
+test-maj-*.txt
+test-maj-*.log

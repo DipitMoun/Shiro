@@ -45,6 +45,7 @@ internal class MangaExtensionApi {
                 .map { async { getExtensions(it) } }
                 .awaitAll()
                 .flatten()
+                .bestPerPackage()
         }
     }
 
@@ -65,6 +66,13 @@ internal class MangaExtensionApi {
             emptyList()
         }
     }
+
+    // Several repos can ship the same package: keep only the highest versionCode so that
+    // "update available" and "install" always use the same entry (Android refuses downgrades).
+    private fun List<MangaExtension.Available>.bestPerPackage(): List<MangaExtension.Available> =
+        groupBy { it.pkgName }.values.map { dups ->
+            dups.maxWith(compareBy<MangaExtension.Available>({ it.versionCode }, { it.libVersion }))
+        }
 
     suspend fun checkForUpdates(
         context: Context,
@@ -95,8 +103,8 @@ internal class MangaExtensionApi {
             val pkgName = installedExt.pkgName
             val availableExt = extensions.find { it.pkgName == pkgName } ?: continue
             val hasUpdatedVer = availableExt.versionCode > installedExt.versionCode
-            val hasUpdatedLib = availableExt.libVersion > installedExt.libVersion
-            val hasUpdate = hasUpdatedVer || hasUpdatedLib
+            // libVersion alone is not an update: Android only accepts a strictly higher versionCode
+            val hasUpdate = hasUpdatedVer
             if (hasUpdate) {
                 extensionsWithUpdate.add(installedExt)
             }
