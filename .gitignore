@@ -78,3 +78,10 @@ test-ext-*.txt
 test-ext-*.log
 test-maj-*.txt
 test-maj-*.log
+
+# Validation logs (extensions session)
+validate-ext-*.txt
+retest5-*.txt
+retest5-*.log
+live-logcat-*.txt
+validate-*.log
