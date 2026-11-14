@@ -38,3 +38,22 @@ bug*-patch-report-*.txt
 bug*-compile-*.log
 bug*-final-*.txt
 bug*-fix-*.txt
+
+# Session debug artifacts
+bug02-diag-*.txt
+bug05-crash-*.txt
+cleanup-*.txt
+session1-*.txt
+session1-*.log
+session1-backup-*/
+session1-fix-*/
+commit-msg-*.txt
+
+# Session debug artifacts (broad)
+session*-compile-*.log
+session*-diag-*.txt
+session*-fix-*/
+session*-backup-*/
+session*-final-*.txt
+bom-fix-*.txt
+ext-test-*.txt
