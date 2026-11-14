@@ -398,7 +398,7 @@ class MangaUpdatesScreenModel(
                             .forEach { (key, workItems) ->
                                 add(
                                     MangaUpdatesUiModel.Group(
-                                        key = key,
+                                        key = "$date:$key",
                                         // Du plus ancien au plus récent pour que
                                         // la ligne commence par le premier chapitre.
                                         items = workItems.sortedBy { it.update.dateFetch },

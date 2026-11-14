@@ -541,7 +541,7 @@ class AnimeUpdatesScreenModel(
                             .forEach { (key, workItems) ->
                                 add(
                                     AnimeUpdatesUiModel.Group(
-                                        key = key,
+                                        key = "$date:$key",
                                         // Du plus ancien au plus récent pour que
                                         // la ligne commence par le premier épisode.
                                         items = workItems.sortedBy { it.update.dateFetch },
