@@ -24,7 +24,7 @@ class PackageInstallerInstallerAnime(private val service: Service) : InstallerAn
         override fun onReceive(context: Context, intent: Intent) {
             val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
             val statusMessage = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-            logcat(LogPriority.DEBUG) { "PackageInstaller status=$status message=$statusMessage" }
+            logcat(if (status == PackageInstaller.STATUS_SUCCESS) LogPriority.INFO else LogPriority.ERROR) { "PackageInstaller status=$status message=$statusMessage" }
             when (status) {
                 PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                     val userAction = intent.getParcelableExtraCompat<Intent>(Intent.EXTRA_INTENT)

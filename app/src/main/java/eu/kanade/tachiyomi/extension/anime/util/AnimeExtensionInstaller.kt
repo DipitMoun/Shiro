@@ -210,6 +210,9 @@ internal class AnimeExtensionInstaller(private val context: Context) {
     fun cancelInstall(pkgName: String) {
         val downloadId = activeDownloads.remove(pkgName) ?: return
         downloadManager.remove(downloadId)
+        // Unblock a stuck flow: if the download was still Pending, the flow
+        // never observes a terminal state. Force Idle so onCompletion runs.
+        downloadsStateFlows[downloadId]?.value = InstallStep.Idle
         InstallerAnime.cancelInstallQueue(context, downloadId)
     }
 

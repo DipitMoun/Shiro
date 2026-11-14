@@ -196,7 +196,12 @@ class MangaExtensionsScreenModel(
     private suspend fun Flow<InstallStep>.collectToInstallUpdate(extension: MangaExtension) =
         this
             .onEach { installStep -> addDownloadState(extension, installStep) }
-            .onCompletion { removeDownloadState(extension) }
+            .onCompletion {
+                // Show the final state (Installed/Error) to the user for a
+                // moment before resetting, instead of silently reverting.
+                delay(2_500)
+                removeDownloadState(extension)
+            }
             .collect()
 
     fun uninstallExtension(extension: MangaExtension) {
