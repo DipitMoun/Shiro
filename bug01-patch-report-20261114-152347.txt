@@ -1,0 +1,15 @@
+﻿=== BUG-01 Patch Report ===
+Backup : bug01-backup-20261114-152347
+OK     : 9 / 10
+KO/Warn: 1
+
+✅ P1 — openWork: default = self — OK
+✅ P2a — import ThreadRef — OK
+✅ P2b — selectThread() — OK
+❌ P2c — openOwnWork→openWork — pattern NON trouvé
+✅ P3a — thread/timeline via state — OK
+✅ P3b — reset sur state.thread — OK
+✅ P4 — TopAppBar sous-titre — OK
+✅ P5a — call site FriendsBubbles — OK
+✅ P5b — FriendsBubbles signature+corps — OK
+✅ P5c — ParticipantAvatar (isActive/onClick) — OK

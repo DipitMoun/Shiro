@@ -50,7 +50,6 @@ import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.icons.CustomIcons
-import tachiyomi.presentation.core.icons.Discord
 import tachiyomi.presentation.core.icons.Github
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -149,7 +148,7 @@ object AboutScreen : Screen() {
                         title = stringResource(MR.strings.help_translate),
                         onPreferenceClick = {
                             uriHandler.openUri(
-                                "https://aniyomi.org/docs/contribute#translation",
+                                "https://github.com/DipitMoun/Shiro/issues",
                             )
                         },
                     )
@@ -165,7 +164,7 @@ object AboutScreen : Screen() {
                 item {
                     TextPreferenceWidget(
                         title = stringResource(MR.strings.privacy_policy),
-                        onPreferenceClick = { uriHandler.openUri("https://aniyomi.org/privacy/") },
+                        onPreferenceClick = { uriHandler.openUri("https://github.com/DipitMoun/Shiro/blob/main/PRIVACY.md") },
                     )
                 }
 
@@ -179,17 +178,12 @@ object AboutScreen : Screen() {
                         LinkIcon(
                             label = stringResource(MR.strings.website),
                             icon = Icons.Outlined.Public,
-                            url = "https://aniyomi.org",
-                        )
-                        LinkIcon(
-                            label = "Discord",
-                            icon = CustomIcons.Discord,
-                            url = "https://discord.gg/F32UjdJZrR",
+                            url = "https://github.com/DipitMoun/Shiro",
                         )
                         LinkIcon(
                             label = "GitHub",
                             icon = CustomIcons.Github,
-                            url = "https://github.com/aniyomiorg/aniyomi",
+                            url = "https://github.com/DipitMoun/Shiro",
                         )
                     }
                 }

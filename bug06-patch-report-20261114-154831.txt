@@ -1,0 +1,38 @@
+﻿=== BUG-06 Patch Report ===
+Backup : bug06-backup-20261114-154831
+
+✅ A1 — website — OK
+✅ A2 — github — OK
+✅ A3 — privacy — OK
+✅ A4 — translation — OK
+❌ A5 — remove Discord — 0 match
+✅ B1 — repo preview — OK
+✅ B2 — repo stable — OK
+✅ B3 — RELEASE_URL — OK
+✅ C — UA: AnilistInterceptor.kt — OK
+✅ C — UA: JellyfinInterceptor.kt — OK
+✅ C — UA: KavitaInterceptor.kt — OK
+✅ C — UA: KitsuInterceptor.kt — OK
+✅ C — UA: KomgaApi.kt — OK
+✅ C — UA: MangaUpdatesInterceptor.kt — OK
+✅ C — UA: ShikimoriInterceptor.kt — OK
+✅ C — UA: SimklInterceptor.kt — OK
+✅ C — UA: Bangumi — OK
+✅ D — help: Constants.kt — 2 remplacement(s)
+✅ D — help: GuidesStep.kt — 1 remplacement(s)
+✅ D — help: SettingsDataScreen.kt — 1 remplacement(s)
+✅ D — help: SettingsTrackingScreen.kt — 1 remplacement(s)
+✅ D — help: WebViewScreenContent.kt — 1 remplacement(s)
+✅ D — help: PlayerSettingsCustomButtonScreen.kt — 1 remplacement(s)
+✅ D — help: AnimeLibraryUpdateJob.kt — 1 remplacement(s)
+✅ D — help: AnimeLibraryUpdateNotifier.kt — 1 remplacement(s)
+✅ D — help: MangaLibraryUpdateJob.kt — 1 remplacement(s)
+✅ D — help: MangaLibraryUpdateNotifier.kt — 1 remplacement(s)
+✅ D — help: MigrateAnimeSourceTab.kt — 1 remplacement(s)
+✅ D — help: MigrateMangaSourceTab.kt — 1 remplacement(s)
+✅ D — help: LocalAnimeSource.kt — 1 remplacement(s)
+✅ D — help: LocalMangaSource.kt — 1 remplacement(s)
+✅ E — PRIVACY.md — créé
+
+--- aniyomi.org résiduels (code .kt/.xml) ---
+source-api\src\commonMain\kotlin\eu\kanade\tachiyomi\animesource\online\AnimeHttpSource.kt:47: * to the site's content, such as "https://aniyomi.org".

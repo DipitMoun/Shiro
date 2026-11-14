@@ -1,0 +1,363 @@
+﻿########## BUG-06 : liens Aniyomi — diagnostic ##########
+Date : 11/14/2026 15:34:31
+
+########## 1. Occurrences aniyomi.github.io / github.com/aniyomi / etc. ##########
+app\src\main\java\eu\kanade\presentation\more\onboarding\GuidesStep.kt:59: const val GETTING_STARTED_URL = "https://aniyomi.org/docs/guides/getting-started"
+app\src\main\java\eu\kanade\presentation\more\settings\screen\about\AboutScreen.kt:152: "https://aniyomi.org/docs/contribute#translation",
+app\src\main\java\eu\kanade\presentation\more\settings\screen\about\AboutScreen.kt:168: onPreferenceClick = { uriHandler.openUri("https://aniyomi.org/privacy/") },
+app\src\main\java\eu\kanade\presentation\more\settings\screen\about\AboutScreen.kt:182: url = "https://aniyomi.org",
+app\src\main\java\eu\kanade\presentation\more\settings\screen\about\AboutScreen.kt:192: url = "https://github.com/aniyomiorg/aniyomi",
+app\src\main\java\eu\kanade\presentation\more\settings\screen\player\custombutton\PlayerSettingsCustomButtonScreen.kt:44: onClickFAQ = { uriHandler.openUri("https://aniyomi.org/docs/guides/player-settings/custom-buttons") },
+app\src\main\java\eu\kanade\presentation\more\settings\screen\SettingsDataScreen.kt:89: const val HELP_URL = "https://aniyomi.org/docs/faq/storage"
+app\src\main\java\eu\kanade\presentation\more\settings\screen\SettingsTrackingScreen.kt:80: IconButton(onClick = { uriHandler.openUri("https://aniyomi.org/help/guides/tracking/") }) {
+app\src\main\java\eu\kanade\presentation\webview\WebViewScreenContent.kt:183: "https://aniyomi.org/docs/guides/troubleshooting/#cloudflare",
+app\src\main\java\eu\kanade\tachiyomi\data\library\anime\AnimeLibraryUpdateJob.kt:439: private const val ERROR_LOG_HELP_URL = "https://aniyomi.org/docs/guides/troubleshooting/"
+app\src\main\java\eu\kanade\tachiyomi\data\library\anime\AnimeLibraryUpdateNotifier.kt:406: "https://aniyomi.org/docs/faq/library#why-am-i-warned-about-large-bulk-updates-and-downloads"
+app\src\main\java\eu\kanade\tachiyomi\data\library\manga\MangaLibraryUpdateJob.kt:427: private const val ERROR_LOG_HELP_URL = "https://aniyomi.org/help/guides/troubleshooting"
+app\src\main\java\eu\kanade\tachiyomi\data\library\manga\MangaLibraryUpdateNotifier.kt:393: "https://aniyomi.org/docs/faq/library#why-am-i-warned-about-large-bulk-updates-and-downloads"
+app\src\main\java\eu\kanade\tachiyomi\data\track\bangumi\BangumiInterceptor.kt:38: "jmir1/Aniyomi/v${BuildConfig.VERSION_NAME} (Android) (https://github.com/aniyomiorg/aniyomi)",
+app\src\main\java\eu\kanade\tachiyomi\ui\browse\anime\migration\sources\MigrateAnimeSourceTab.kt:36: uriHandler.openUri("https://aniyomi.org/help/guides/source-migration/")
+app\src\main\java\eu\kanade\tachiyomi\ui\browse\manga\migration\sources\MigrateMangaSourceTab.kt:35: uriHandler.openUri("https://aniyomi.org/help/guides/source-migration/")
+core\common\src\main\java\eu\kanade\tachiyomi\core\Constants.kt:4: const val URL_HELP = "https://aniyomi.org/docs/guides/troubleshooting/"
+core\common\src\main\java\eu\kanade\tachiyomi\core\Constants.kt:5: const val URL_HELP_UPCOMING = "https://aniyomi.org/docs/faq/updates/upcoming"
+i18n\README.md:5: Original English strings are managed in `src/commonMain/moko-resources/base/`. Translations are done externally via Weblate. See [our website](https://aniyomi.org/docs/contribute#translation) for more details.
+source-api\src\commonMain\kotlin\eu\kanade\tachiyomi\animesource\online\AnimeHttpSource.kt:47: * to the site's content, such as "https://aniyomi.org".
+source-local\src\androidMain\kotlin\tachiyomi\source\local\entries\anime\LocalAnimeSource.kt:366: const val HELP_URL = "https://aniyomi.org/help/guides/local-anime/"
+source-local\src\androidMain\kotlin\tachiyomi\source\local\entries\manga\LocalMangaSource.kt:379: const val HELP_URL = "https://aniyomi.org/help/guides/local-manga/"
+CHANGELOG.md:23: - Added related entries support ([@quickdesh](https://github.com/quickdesh)) ([#2378](https://github.com/aniyomiorg/aniyomi/pull/2378))
+CHANGELOG.md:24: - Added a description for the horizontal seek gesture setting ([@kenkoro](https://github.com/kenkoro)) ([#2224](https://github.com/aniyomiorg/aniyomi/pull/2224))
+CHANGELOG.md:25: - Added an http server for use in extensions ([@Secozzi](https://github.com/Secozzi)) ([#2348](https://github.com/aniyomiorg/aniyomi/pull/2348), [#2368](https://github.com/aniyomiorg/aniyomi/pull/2368))
+CHANGELOG.md:26: - Added support for thumbnail preview when seeking ([@Secozzi](https://github.com/Secozzi)) ([#2343](https://github.com/aniyomiorg/aniyomi/pull/2343))
+CHANGELOG.md:27: - Add torrent streaming support ([@Secozzi](https://github.com/Secozzi)) ([#2346](https://github.com/aniyomiorg/aniyomi/pull/2346))
+CHANGELOG.md:31: - Swapped keyEvent listeners for left and right keyboard arrow keys as they were swapped in the code causing the opposite of the desired behavior([@alphastark](https://github.com/alphastark)) ([#2219](https://github.com/aniyomiorg/aniyomi/pull/2219))
+CHANGELOG.md:32: - Fix some malformed translated strings that made the player quit when Aniskip was enabled ([@686udjie](https://github.com/686udjie)) ([#2217](https://github.com/aniyomiorg/aniyomi/pull/2217))
+CHANGELOG.md:37: - Fix Hosters feature detection (again) ([@hollowshiroyuki](https://github.com/hollowshiroyuki)) ([#2216](https://github.com/aniyomiorg/aniyomi/pull/2216))
+CHANGELOG.md:42: - Fix source Seasons/Hosters feature detection ([@hollowshiroyuki](https://github.com/hollowshiroyuki)) ([#2195](https://github.com/aniyomiorg/aniyomi/pull/2195))
+CHANGELOG.md:43: - Fix shared download cache messing up downloaded episodes detection ([@choppeh](https://github.com/choppeh)) ([#2184](https://github.com/aniyomiorg/aniyomi/pull/2184))
+CHANGELOG.md:44: - Fix Shikimori anime tracking ([@danya140](https://github.com/danya140)) ([#2205](https://github.com/aniyomiorg/aniyomi/pull/2205))
+CHANGELOG.md:53: - Fix list view resetting scroll upon exiting child ([@quickdesh](https://github.com/quickdesh)) ([#1982](https://github.com/aniyomiorg/aniyomi/pull/1982))
+CHANGELOG.md:54: - Fix episode number parsing ([@Secozzi](https://github.com/Secozzi)) ([#2096](https://github.com/aniyomiorg/aniyomi/pull/2096))
+CHANGELOG.md:55: - Fix tracking menu not opening on add to library ([@Secozzi](https://github.com/Secozzi)) ([#2098](https://github.com/aniyomiorg/aniyomi/pull/2098))
+CHANGELOG.md:56: - Fix stop/continue anime download button ([@Secozzi](https://github.com/Secozzi)) ([#2099](https://github.com/aniyomiorg/aniyomi/pull/2099))
+CHANGELOG.md:57: - Fix creating/restoring backups between mihon and aniyomi ([@Secozzi](https://github.com/Secozzi)) ([#2117](https://github.com/aniyomiorg/aniyomi/pull/2117))
+CHANGELOG.md:61: - Add support for new parameters from ext lib 16 ([@quickdesh](https://github.com/quickdesh)) ([#1982](https://github.com/aniyomiorg/aniyomi/pull/1982))
+CHANGELOG.md:62: - Add player settings to the main settings screen ([@jmir1](https://github.com/jmir1)) ([#2081](https://github.com/aniyomiorg/aniyomi/pull/2081))
+CHANGELOG.md:63: - Add seasons support ([@Secozzi](https://github.com/Secozzi)) ([#2095](https://github.com/aniyomiorg/aniyomi/pull/2095))
+CHANGELOG.md:68: - Fix crash on migration ([@Secozzi](https://github.com/Secozzi)) ([#2079](https://github.com/aniyomiorg/aniyomi/pull/2079))
+CHANGELOG.md:73: - Set mpv's media-title property ([@Secozzi](https://github.com/Secozzi)) ([#1672](https://github.com/aniyomiorg/aniyomi/pull/1672))
+CHANGELOG.md:74: - Add mpvKt to external players ([@Secozzi](https://github.com/Secozzi)) ([#1674](https://github.com/aniyomiorg/aniyomi/pull/1674))
+CHANGELOG.md:75: - Add video filters ([@abdallahmehiz](https://github.com/abdallahmehiz)) ([#1698](https://github.com/aniyomiorg/aniyomi/pull/1698))
+CHANGELOG.md:76: - Show hours and minutes in relative time strings ([@jmir1](https://github.com/jmir1)) ([`1f3be7b`](https://github.com/aniyomiorg/aniyomi/commit/1f3be7b523136039b3b60213f2cee7959a9367d7))
+CHANGELOG.md:77: - Fix some issues with relative date calculations ([@jmir1](https://github.com/jmir1)) ([`03e1ecd`](https://github.com/aniyomiorg/aniyomi/commit/03e1ecd75edd2ea15dc8732ffeab32c6af26b202))
+CHANGELOG.md:78: - Add better auto sub select ([@Secozzi](https://github.com/Secozzi)) ([#1706](https://github.com/aniyomiorg/aniyomi/pull/1706))
+CHANGELOG.md:79: - Copy the file location when using ext downloader ([@quickdesh](https://github.com/quickdesh)) ([#1758](https://github.com/aniyomiorg/aniyomi/pull/1758))
+CHANGELOG.md:80: - Replace player with mpvKt ([@Secozzi](https://github.com/Secozzi)) ([#1834](https://github.com/aniyomiorg/aniyomi/pull/1834), [#1855](https://github.com/aniyomiorg/aniyomi/pull/1855), [#1859](https://github.com/aniyomiorg/aniyomi/pull/1859), [#1860](https://github.com/aniyomiorg/aniyomi/pull/1860))
+CHANGELOG.md:81: - Move player preferences to separate section ([@Secozzi](https://github.com/Secozzi)) ([#1819](https://github.com/aniyomiorg/aniyomi/pull/1819))
+CHANGELOG.md:82: - Implement video hosters ([@Secozzi](https://github.com/Secozzi)) ([#1892](https://github.com/aniyomiorg/aniyomi/pull/1892))
+CHANGELOG.md:83: - Add size slider for the "List Display" Mode ([@MavikBow](https://github.com/MavikBow)) ([#1906](https://github.com/aniyomiorg/aniyomi/pull/1906))
+CHANGELOG.md:84: - Make the default list a set size and make browse list scale ([@MavikBow](https://github.com/MavikBow)) ([#1914](https://github.com/aniyomiorg/aniyomi/pull/1914))
+CHANGELOG.md:85: - Allow negative brightness values (dimming) ([@jmir1](https://github.com/jmir1)) ([#1915](https://github.com/aniyomiorg/aniyomi/pull/1915))
+CHANGELOG.md:86: - Add new lua functions for custom buttons ([@Secozzi](https://github.com/Secozzi)) ([#1980](https://github.com/aniyomiorg/aniyomi/pull/1980))
+CHANGELOG.md:87: - Use timestamps provided by extensions ([@Secozzi](https://github.com/Secozzi)) ([#1983](https://github.com/aniyomiorg/aniyomi/pull/1983))
+CHANGELOG.md:88: - Add titles to player sheets + consistency with More sheet ([@quickdesh](https://github.com/quickdesh)) ([#2015](https://github.com/aniyomiorg/aniyomi/pull/2015))
+CHANGELOG.md:89: - Add script & script-opts editor to player settings ([@Secozzi](https://github.com/Secozzi)) ([#2019](https://github.com/aniyomiorg/aniyomi/pull/2019))
+CHANGELOG.md:93: - Show "Now" instead of "0 minutes ago" ([@Secozzi](https://github.com/Secozzi)) ([#1715](https://github.com/aniyomiorg/aniyomi/pull/1715))
+CHANGELOG.md:94: - Add headers when using 1dm as external player ([@Secozzi](https://github.com/Secozzi)) ([#2032](https://github.com/aniyomiorg/aniyomi/pull/2032))
+CHANGELOG.md:98: - Fix enhanced tracking for jellyfin ([@Secozzi](https://github.com/Secozzi)) ([#1656](https://github.com/aniyomiorg/aniyomi/pull/1656), [#1658](https://github.com/aniyomiorg/aniyomi/pull/1658))
+CHANGELOG.md:99: - Use different status strings for anime trackers ([@jmir1](https://github.com/jmir1)) ([`74b32a3`](https://github.com/aniyomiorg/aniyomi/commit/74b32a3a0b323ed2f6f7929e131dcb4901e7bf9b))
+CHANGELOG.md:100: - Fix Shikimori tracking for anime ([@jmir1](https://github.com/jmir1)) ([`58817c7`](https://github.com/aniyomiorg/aniyomi/commit/58817c724e2808072ff273329cee261d12084927))
+CHANGELOG.md:101: - Group updates by date and not time ([@jmir1](https://github.com/jmir1)) ([`c83ebf3`](https://github.com/aniyomiorg/aniyomi/commit/c83ebf322f48d41ca1ad0105262160ecb7cde991))
+CHANGELOG.md:102: - Fix airing time not showing ([@Secozzi](https://github.com/Secozzi)) ([#1720](https://github.com/aniyomiorg/aniyomi/pull/1720))
+CHANGELOG.md:103: - Don't invalidate anime downloads on startup ([@Secozzi](https://github.com/Secozzi)) ([#1753](https://github.com/aniyomiorg/aniyomi/pull/1753))
+CHANGELOG.md:104: - Fix hidden categories getting reset after delete/reorder ([@cuong-tran](https://github.com/cuong-tran)) ([#1780](https://github.com/aniyomiorg/aniyomi/pull/1780))
+CHANGELOG.md:105: - Fix episode progress not being saved and duplicate tracks ([@perokhe](https://github.com/perokhe)) ([#1784](https://github.com/aniyomiorg/aniyomi/pull/1784), [#1785](https://github.com/aniyomiorg/aniyomi/pull/1785))
+CHANGELOG.md:106: - Fix subtitle select not matching two letter language codes ([@Secozzi](https://github.com/Secozzi)) ([#1805](https://github.com/aniyomiorg/aniyomi/pull/1805))
+CHANGELOG.md:107: - Fix potential intent extra npe ([@quickdesh](https://github.com/quickdesh)) ([#1816](https://github.com/aniyomiorg/aniyomi/pull/1816))
+CHANGELOG.md:108: - Fix history date header duplication ([@quickdesh](https://github.com/quickdesh)) ([#1817](https://github.com/aniyomiorg/aniyomi/pull/1817))
+CHANGELOG.md:109: - Fix migrations not getting context correctly ([@Secozzi](https://github.com/Secozzi)) ([#1820](https://github.com/aniyomiorg/aniyomi/pull/1820))
+CHANGELOG.md:111: - Fix gesture seeking not seeking to start and end ([@perokhe](https://github.com/perokhe)) ([#1865](https://github.com/aniyomiorg/aniyomi/pull/1865))
+CHANGELOG.md:112: - Fix crash when opening player settings in tablet ui ([@Secozzi](https://github.com/Secozzi)) ([#1868](https://github.com/aniyomiorg/aniyomi/pull/1868))
+CHANGELOG.md:113: - Fix episode list in player not respecting filters & crash when exiting while stuff is loading ([@Secozzi](https://github.com/Secozzi)) ([#1869](https://github.com/aniyomiorg/aniyomi/pull/1869))
+CHANGELOG.md:114: - Fix episode being marked as seen at start ([@perokhe](https://github.com/perokhe)) ([#1871](https://github.com/aniyomiorg/aniyomi/pull/1871))
+CHANGELOG.md:115: - Fix player not being paused when loading tracks after changing quality ([@Secozzi](https://github.com/Secozzi)) ([#1878](https://github.com/aniyomiorg/aniyomi/pull/1878))
+CHANGELOG.md:116: - Fix lag when toggling player ui ([@Secozzi](https://github.com/Secozzi)) ([#1887](https://github.com/aniyomiorg/aniyomi/pull/1887))
+CHANGELOG.md:117: - Fix audio selection not working on external audio tracks ([@Secozzi](https://github.com/Secozzi)) ([#1901](https://github.com/aniyomiorg/aniyomi/pull/1901))
+CHANGELOG.md:118: - Reset "hide player controls time" when pressing custom button ([@Secozzi](https://github.com/Secozzi)) ([#1902](https://github.com/aniyomiorg/aniyomi/pull/1902))
+CHANGELOG.md:119: - Don't unpause on share and save ([@Secozzi](https://github.com/Secozzi)) ([#1905](https://github.com/aniyomiorg/aniyomi/pull/1905))
+CHANGELOG.md:120: - Fix player pausing with gesture seek ([@perokhe](https://github.com/perokhe)) ([#1916](https://github.com/aniyomiorg/aniyomi/pull/1916))
+CHANGELOG.md:121: - Fix potential npe issues with mpv-lib ([@Secozzi](https://github.com/Secozzi)) ([#1921](https://github.com/aniyomiorg/aniyomi/pull/1921))
+CHANGELOG.md:122: - Dismiss chapter sheet on chapter select ([@Secozzi](https://github.com/Secozzi)) ([#1976](https://github.com/aniyomiorg/aniyomi/pull/1976))
+CHANGELOG.md:123: - Fix some issues caused by [`10e28cc`](https://github.com/aniyomiorg/aniyomi/commit/10e28cc4092758cf38d27cc14aadf539698738f2) ([@Secozzi](https://github.com/Secozzi)) ([#1981](https://github.com/aniyomiorg/aniyomi/pull/1981))
+CHANGELOG.md:124: - Fix npe issue caused in player controls ([@Secozzi](https://github.com/Secozzi)) ([#1986](https://github.com/aniyomiorg/aniyomi/pull/1986))
+CHANGELOG.md:125: - Replace some manga strings with respective anime strings ([@perokhe](https://github.com/perokhe)) ([#1864](https://github.com/aniyomiorg/aniyomi/pull/1864))
+CHANGELOG.md:126: - Open correct tab from extension update notifications ([@jmir1](https://github.com/jmir1)) ([`161471d`](https://github.com/aniyomiorg/aniyomi/commit/161471d94a2350c0c983eeeccd3b7ac0dc66d429))
+CHANGELOG.md:127: - Fix sub-auto not loading all external subtitle files ([@perokhe](https://github.com/perokhe)) ([#1866](https://github.com/aniyomiorg/aniyomi/pull/1866))
+CHANGELOG.md:128: - Fix `ALSearchItem.format` nullability ([@Secozzi](https://github.com/Secozzi)) ([#1910](https://github.com/aniyomiorg/aniyomi/pull/1910))
+CHANGELOG.md:129: - Don't format mpv preferences ([@Secozzi](https://github.com/Secozzi)) ([#1939](https://github.com/aniyomiorg/aniyomi/pull/1939))
+CHANGELOG.md:130: - Prevent crash on app death when watching in external player ([@Secozzi](https://github.com/Secozzi)) ([#1945](https://github.com/aniyomiorg/aniyomi/pull/1945))
+CHANGELOG.md:131: - Don't run unnecessary stuff when exiting the player ([@Secozzi](https://github.com/Secozzi)) ([#1961](https://github.com/aniyomiorg/aniyomi/pull/1961))
+CHANGELOG.md:132: - Fix some downloader issues ([@Secozzi](https://github.com/Secozzi)) ([#1964](https://github.com/aniyomiorg/aniyomi/pull/1964))
+CHANGELOG.md:133: - Fix downloader not working for certain types of tracks & duration sometimes not being logged ([@Secozzi](https://github.com/Secozzi)) ([#2001](https://github.com/aniyomiorg/aniyomi/pull/2001))
+CHANGELOG.md:134: - Fix some issues with intro skip length ([@jmir1](https://github.com/jmir1)) ([`72cac57`](https://github.com/aniyomiorg/aniyomi/commit/72cac57d8e66366cbc0f3106eb351c82250c460b), [`25dd3ea`](https://github.com/aniyomiorg/aniyomi/commit/25dd3ea69fb217de7b0485c29e4a9b970737fd45))
+CHANGELOG.md:135: - Force clipboard to use UI thread when copying path for external players ([@quickdesh](https://github.com/quickdesh)) ([#1994](https://github.com/aniyomiorg/aniyomi/pull/1994))
+CHANGELOG.md:136: - Use application directory for storing files used by mpv ([@Secozzi](https://github.com/Secozzi)) ([#1995](https://github.com/aniyomiorg/aniyomi/pull/1995))
+CHANGELOG.md:137: - Update backup warning string (follow Mihon) ([@cuong-tran](https://github.com/cuong-tran)) ([#2012](https://github.com/aniyomiorg/aniyomi/pull/2012))
+CHANGELOG.md:138: - Fix issues with episode deletion & more ([@quickdesh](https://github.com/quickdesh)) ([#2017](https://github.com/aniyomiorg/aniyomi/pull/2017))
+CHANGELOG.md:139: - Fix vertical slider width issues and shift boost volume value to slider ([@quickdesh](https://github.com/quickdesh)) ([#2018](https://github.com/aniyomiorg/aniyomi/pull/2018))
+CHANGELOG.md:140: - Fix MyAnimeList login ([@choppeh](https://github.com/choppeh)) ([#2035](https://github.com/aniyomiorg/aniyomi/pull/2035))
+CHANGELOG.md:141: - Call sort methods for videos and hosters ([@cuong-tran](https://github.com/cuong-tran)) ([#2058](https://github.com/aniyomiorg/aniyomi/pull/2058))
+CHANGELOG.md:142: - Invalidate preferred languages in settings ([@Secozzi](https://github.com/Secozzi)) ([#2075](https://github.com/aniyomiorg/aniyomi/pull/2075))
+CHANGELOG.md:143: - Fix crash when using sort by airing time ([@quickdesh](https://github.com/quickdesh)) ([#2076](https://github.com/aniyomiorg/aniyomi/pull/2076))
+CHANGELOG.md:147: - Merge from mihon until 0.16.5 ([@Secozzi](https://github.com/Secozzi)) ([#1663](https://github.com/aniyomiorg/aniyomi/pull/1663))
+CHANGELOG.md:148: - Merge until latest mihon commits ([@Secozzi](https://github.com/Secozzi)) ([#1693](https://github.com/aniyomiorg/aniyomi/pull/1693))
+CHANGELOG.md:149: - Merge until latest mihon commits (v0.17.0) ([@Secozzi](https://github.com/Secozzi)) ([#1804](https://github.com/aniyomiorg/aniyomi/pull/1804))
+CHANGELOG.md:150: - Merge until latest mihon commits (v0.18.0) ([@Secozzi](https://github.com/Secozzi)) ([#1863](https://github.com/aniyomiorg/aniyomi/pull/1863))
+CHANGELOG.md:151: - Remove ACRA crash report analytics ([@jmir1](https://github.com/jmir1)) ([`d3c6a15`](https://github.com/aniyomiorg/aniyomi/commit/d3c6a159d82ca239c10e8f5822c3b2046c5545f2), [`5ae35c8`](https://github.com/aniyomiorg/aniyomi/commit/5ae35c891b90ae927200185641240280effaf667))
+CHANGELOG.md:156: - Fix extensions disappearing due to errors with the ClassLoader ([@jmir1](https://github.com/jmir1)) ([`959f84a`](https://github.com/aniyomiorg/aniyomi/commit/959f84ab41859f90c458c076d83d363ae086e47f))
+CHANGELOG.md:161: - Hotfix to eliminate all proguard issues causing errors and crashes ([@jmir1](https://github.com/jmir1)) ([`a8cd723`](https://github.com/aniyomiorg/aniyomi/commit/a8cd7233dfdf26c98ff86b1871a7ac5774379b5e), [`a7644c2`](https://github.com/aniyomiorg/aniyomi/commit/a7644c268153fc0b9f10c27202591f960c6f6384), [`5045fa1`](https://github.com/aniyomiorg/aniyomi/commit/5045fa18ce5a1faa2130f1a33609e43d8453f078))
+CHANGELOG.md:166: - Hotfix release to address errors with extensions ([@jmir1](https://github.com/jmir1)) ([`98d2528`](https://github.com/aniyomiorg/aniyomi/commit/98d252866e17beba7d9a4d094797e23c05ead6c1))
+CHANGELOG.md:171: - Fix pip not broadcasting intent in A14+ ([@quickdesh](https://github.com/quickdesh)) ([#1603](https://github.com/aniyomiorg/aniyomi/pull/1603))
+CHANGELOG.md:172: - Fix advanced player settings crash in android ≤ 10 ([@perokhe](https://github.com/perokhe)) ([#1627](https://github.com/aniyomiorg/aniyomi/pull/1627))
+CHANGELOG.md:176: - Hide the skip intro button if the skipped amount == 0 ([@abdallahmehiz](https://github.com/abdallahmehiz)) ([#1598](https://github.com/aniyomiorg/aniyomi/pull/1598))
+CHANGELOG.md:180: - Merge from mihon until mihon 0.16.2 ([@Secozzi](https://github.com/Secozzi)) ([#1578](https://github.com/aniyomiorg/aniyomi/pull/1578))
+CHANGELOG.md:181: - Merge from mihon until 0.16.4 ([@Secozzi](https://github.com/Secozzi)) ([#1601](https://github.com/aniyomiorg/aniyomi/pull/1601))
+CONTRIBUTING.md:1: Looking to report an issue/bug or make a feature request? Please refer to the [README file](https://github.com/aniyomiorg/aniyomi#issues-feature-requests-and-contributing).
+CONTRIBUTING.md:12: If you're interested in taking on [an open issue](https://github.com/aniyomiorg/aniyomi/issues), please comment on it so others are aware.
+CONTRIBUTING.md:33: Translations are done externally via Weblate. See [our website](https://aniyomi.org/docs/contribute#translation) for more details.
+CONTRIBUTING.md:38: Forks are allowed so long as they abide by [the project's LICENSE](https://github.com/aniyomiorg/aniyomi/blob/main/LICENSE).
+CONTRIBUTING.md:45: - Change or disable the [app update checker](https://github.com/aniyomiorg/aniyomi/blob/main/app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt)
+CONTRIBUTING.md:47: - Change the `applicationId` in [`build.gradle.kts`](https://github.com/aniyomiorg/aniyomi/blob/main/app/build.gradle.kts)
+CONTRIBUTING.md:49: - If you want to use Firebase analytics, replace [`google-services.json`](https://github.com/aniyomiorg/aniyomi/blob/main/app/src/standard/google-services.json) with your own
+CONTRIBUTING.md:50: - If you want to use ACRA crash reporting, replace the `ACRA_URI` endpoint in [`build.gradle.kts`](https://github.com/aniyomiorg/aniyomi/blob/main/app/build.gradle.kts) with your own
+README.md:3: <a href="https://aniyomi.org">
+README.md:13: [![GitHub downloads](https://img.shields.io/github/downloads/aniyomiorg/aniyomi/total?label=downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/aniyomiorg/aniyomi/releases)
+README.md:15: [![CI](https://img.shields.io/github/actions/workflow/status/aniyomiorg/aniyomi/build_push.yml?labelColor=27303D)](https://github.com/aniyomiorg/aniyomi/actions/workflows/build_push.yml)
+README.md:21: [![Aniyomi Stable](https://img.shields.io/github/release/aniyomiorg/aniyomi.svg?maxAge=3600&label=Stable&labelColor=06599d&color=043b69)](https://github.com/aniyomiorg/aniyomi/releases)
+README.md:22: [![Aniyomi Preview](https://img.shields.io/github/v/release/aniyomiorg/aniyomi-preview.svg?maxAge=3600&label=Beta&labelColor=2c2c47&color=1c1c39)](https://github.com/aniyomiorg/aniyomi-preview/releases)
+README.md:48: Before reporting a new issue, take a look at the [FAQ](https://aniyomi.org/docs/faq/general), the [changelog](https://aniyomi.org/changelogs/) and the already opened [issues](https://github.com/aniyomiorg/aniyomi/issues); if you got any questions, join our [Discord server](https://discord.gg/F32UjdJZrR).
+README.md:52: [![aniyomiorg/aniyomi-website - GitHub](https://github-readme-stats.vercel.app/api/pin/?username=aniyomiorg&repo=aniyomi-website&bg_color=161B22&text_color=c9d1d9&title_color=818cf8&icon_color=818cf8&border_radius=8&hide_border=true&description_lines_count=2)](https://github.com/aniyomiorg/aniyomi-website/)
+README.md:53: [![aniyomiorg/aniyomi-mpv-lib - GitHub](https://github-readme-stats.vercel.app/api/pin/?username=aniyomiorg&repo=aniyomi-mpv-lib&bg_color=161B22&text_color=c9d1d9&title_color=818cf8&icon_color=818cf8&border_radius=8&hide_border=true&description_lines_count=2)](https://github.com/aniyomiorg/aniyomi-mpv-lib/)
+README.md:59: <a href="https://github.com/aniyomiorg/aniyomi/graphs/contributors">
+
+########## 2. Mot 'Aniyomi' dans le code Kotlin (app + domain + data) ##########
+app\src\main\java\eu\kanade\presentation\library\components\LibraryProgressHelper.kt:90: episode.totalSeconds // Dans Aniyomi, c'est deja en ms
+app\src\main\java\eu\kanade\tachiyomi\data\backup\models\Backup.kt:54: // Aniyomi specific values
+app\src\main\java\eu\kanade\tachiyomi\data\backup\models\BackupAnime.kt:46: // Aniyomi specific values
+app\src\main\java\eu\kanade\tachiyomi\data\backup\models\BackupEpisode.kt:33: // Aniyomi specific values
+app\src\main\java\eu\kanade\tachiyomi\data\library\manga\MangaLibraryUpdateNotifier.kt:391: // TODO: Change when implemented on Aniyomi website
+app\src\main\java\eu\kanade\tachiyomi\data\telegram\index\TelegramIndexModels.kt:16: * Le fichier JSON est la seule source de vérité : les sources Aniyomi le lisent
+app\src\main\java\eu\kanade\tachiyomi\data\telegram\tdlib\TelegramAuthManager.kt:213: * Aniyomi). L'échec est ignoré : le cache sera purgé par TDLib.
+app\src\main\java\eu\kanade\tachiyomi\data\track\anilist\AnilistInterceptor.kt:46: .header("User-Agent", "Aniyomi v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+app\src\main\java\eu\kanade\tachiyomi\data\track\bangumi\BangumiInterceptor.kt:38: "jmir1/Aniyomi/v${BuildConfig.VERSION_NAME} (Android) (https://github.com/aniyomiorg/aniyomi)",
+app\src\main\java\eu\kanade\tachiyomi\data\track\jellyfin\JellyfinInterceptor.kt:24: .header("User-Agent", "Aniyomi v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+app\src\main\java\eu\kanade\tachiyomi\data\track\kavita\KavitaInterceptor.kt:21: .header("User-Agent", "Aniyomi v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+app\src\main\java\eu\kanade\tachiyomi\data\track\kitsu\KitsuInterceptor.kt:40: .header("User-Agent", "Aniyomi v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+app\src\main\java\eu\kanade\tachiyomi\data\track\komga\KomgaApi.kt:30: .add("User-Agent", "Aniyomi v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+app\src\main\java\eu\kanade\tachiyomi\data\track\mangaupdates\MangaUpdatesInterceptor.kt:22: .header("User-Agent", "Aniyomi v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+app\src\main\java\eu\kanade\tachiyomi\data\track\myanimelist\MyAnimeListInterceptor.kt:35: // .header("User-Agent", "Aniyomi v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+app\src\main\java\eu\kanade\tachiyomi\data\track\shikimori\ShikimoriInterceptor.kt:39: .header("User-Agent", "Aniyomi v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+app\src\main\java\eu\kanade\tachiyomi\data\track\simkl\SimklInterceptor.kt:25: .header("User-Agent", "Aniyomi v${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+app\src\main\java\eu\kanade\tachiyomi\data\updater\AppUpdateChecker.kt:15: // Shiro: update checker disabled - fork does not track upstream Aniyomi releases
+app\src\main\java\eu\kanade\tachiyomi\extension\anime\util\AnimeExtensionLoader.kt:250: ?: pkgManager.getApplicationLabel(appInfo).toString().substringAfter("Aniyomi: ")
+app\src\main\java\eu\kanade\tachiyomi\extension\manga\util\MangaExtensionLoader.kt:33: * installer, so other variants of Tachiyomi/Aniyomi and its forks can also use this extension.
+app\src\main\java\eu\kanade\tachiyomi\ui\player\PlayerActivity.kt:20: * PlayerActivity from Aniyomi.
+app\src\main\java\eu\kanade\tachiyomi\ui\player\PlayerActivity.kt:508: // Then, copy the user files from the Aniyomi directory
+app\src\main\java\eu\kanade\tachiyomi\ui\player\PlayerViewModel.kt:20: * PlayerViewModel from Aniyomi.
+data\src\main\java\mihon\data\extension\anime\model\NetworkLegacyAnimeExtension.kt:30: name = name.substringAfter("Aniyomi: "),
+
+########## 3. AppInfo.kt complet ##########
+package eu.kanade.tachiyomi
+
+import tachiyomi.core.common.util.system.ImageUtil
+
+/**
+ * Used by extensions.
+ */
+@Suppress("UNUSED")
+object AppInfo {
+    /**
+     * Version code of the host application. May be useful for sharing as User-Agent information.
+     * Note that this value differs between forks so logic should not rely on it.
+     *
+     * @since extension-lib 1.3
+     */
+    fun getVersionCode(): Int = BuildConfig.VERSION_CODE
+
+    /**
+     * Version name of the host application. May be useful for sharing as User-Agent information.
+     * Note that this value differs between forks so logic should not rely on it.
+     *
+     * @since extension-lib 1.3
+     */
+    fun getVersionName(): String = BuildConfig.VERSION_NAME
+
+    /**
+     * A list of supported image MIME types by the reader.
+     * e.g. ["image/jpeg", "image/png", ...]
+     *
+     * @since extension-lib 1.5
+     */
+    fun getSupportedImageMimeTypes(): List<String> = ImageUtil.ImageType.entries.map { it.mime }
+}
+
+########## 4. AppUpdateChecker.kt (URL release) ##########
+L7: import tachiyomi.domain.release.interactor.GetApplicationRelease
+L12: private val getApplicationRelease: GetApplicationRelease by injectLazy()
+L14: suspend fun checkForUpdate(context: Context, forceCheck: Boolean = false): GetApplicationRelease.Result {
+L15: // Shiro: update checker disabled - fork does not track upstream Aniyomi releases
+L16: return GetApplicationRelease.Result.OsTooOld
+L20: val GITHUB_REPO: String by lazy {
+L22: "aniyomiorg/aniyomi-preview"
+L24: "aniyomiorg/aniyomi"
+L28: val RELEASE_TAG: String by lazy {
+L36: val RELEASE_URL = "https://github.com/$GITHUB_REPO/releases/tag/$RELEASE_TAG"
+
+########## 5. ReleaseServiceImpl.kt (repo GitHub) ##########
+package tachiyomi.data.release
+
+import android.os.Build
+import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.awaitSuccess
+import eu.kanade.tachiyomi.network.parseAs
+import kotlinx.serialization.json.Json
+import tachiyomi.domain.release.interactor.GetApplicationRelease
+import tachiyomi.domain.release.model.Release
+import tachiyomi.domain.release.service.ReleaseService
+
+class ReleaseServiceImpl(
+    private val networkService: NetworkHelper,
+    private val json: Json,
+) : ReleaseService {
+
+    override suspend fun latest(arguments: GetApplicationRelease.Arguments): Release? {
+        val release = with(json) {
+            networkService.client
+                .newCall(GET("https://api.github.com/repos/${arguments.repository}/releases/latest"))
+                .awaitSuccess()
+                .parseAs<GithubRelease>()
+        }
+        val downloadLink = getDownloadLink(release = release) ?: return null
+
+        return Release(
+            version = release.version,
+            info = release.info.replace(gitHubUsernameMentionRegex) { mention ->
+                "[${mention.value}](https://github.com/${mention.value.substring(1)})"
+            },
+            releaseLink = release.releaseLink,
+            downloadLink = downloadLink,
+        )
+    }
+
+    private fun getDownloadLink(release: GithubRelease): String? {
+        val map = release.assets.associate { asset ->
+            BUILD_TYPES.find { "-$it" in asset.name } to asset.downloadLink
+        }
+
+        return map[Build.SUPPORTED_ABIS[0]] ?: map[null]
+    }
+
+    companion object {
+        private val BUILD_TYPES = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+
+        /**
+         * Regular expression that matches a mention to a valid GitHub username, like it's
+         * done in GitHub Flavored Markdown. It follows these constraints:
+         *
+         * - Alphanumeric with single hyphens (no consecutive hyphens)
+         * - Cannot begin or end with a hyphen
+         * - Max length of 39 characters
+         *
+         * Reference: https://stackoverflow.com/a/30281147
+         */
+        private val gitHubUsernameMentionRegex = """\B@([a-z0-9](?:-(?=[a-z0-9])|[a-z0-9]){0,38}(?<=[a-z0-9]))"""
+            .toRegex(RegexOption.IGNORE_CASE)
+    }
+}
+
+########## 6. AboutScreen.kt — URLs cliquables ##########
+L21: import androidx.compose.ui.platform.LocalUriHandler
+L33: import eu.kanade.tachiyomi.data.updater.RELEASE_URL
+L48: import tachiyomi.presentation.core.components.LinkIcon
+L53: import tachiyomi.presentation.core.icons.Discord
+L54: import tachiyomi.presentation.core.icons.Github
+L67: val uriHandler = LocalUriHandler.current
+L122: releaseLink = result.release.releaseLink,
+L123: downloadLink = result.release.downloadLink,
+L142: onPreferenceClick = { uriHandler.openUri(RELEASE_URL) },
+L151: uriHandler.openUri(
+L152: "https://aniyomi.org/docs/contribute#translation",
+L161: onPreferenceClick = { navigator.push(OpenSourceLicensesScreen()) },
+L168: onPreferenceClick = { uriHandler.openUri("https://aniyomi.org/privacy/") },
+L179: LinkIcon(
+L180: label = stringResource(MR.strings.website),
+L182: url = "https://aniyomi.org",
+L184: LinkIcon(
+L185: label = "Discord",
+L186: icon = CustomIcons.Discord,
+L187: url = "https://discord.gg/F32UjdJZrR",
+L189: LinkIcon(
+L190: label = "GitHub",
+L191: icon = CustomIcons.Github,
+L192: url = "https://github.com/aniyomiorg/aniyomi",
+
+########## 7. Strings (i18n) avec 'Aniyomi' ##########
+
+########## 8. AndroidManifest.xml — package / label / URLs ##########
+L43: android:label="@string/app_name"
+L65: <intent-filter android:label="Ajouter un ami Shiro">
+L71: <data android:scheme="shiro" />
+L72: <data android:host="social" />
+L77: <intent-filter android:label="@string/action_add_repo">
+L83: <data android:scheme="tachiyomi" />
+L84: <data android:host="add-repo" />
+L88: <intent-filter android:label="@string/action_addExtensionStore">
+L94: <data android:scheme="aniyomi" />
+L95: <data android:host="add-repo" />
+L99: <intent-filter android:label="@string/action_addExtensionStore">
+L105: <data android:scheme="aniyomi" />
+L106: <data android:host="extension-store" />
+L110: <intent-filter android:label="@string/pref_restore_backup">
+L116: <data android:scheme="file" />
+L117: <data android:scheme="content" />
+L118: <data android:host="*" />
+L151: android:label="@string/action_global_anime_search"
+L161: <action android:name="eu.kanade.tachiyomi.ANIMESEARCH" />
+L178: android:label="@string/action_global_manga_search"
+L188: <action android:name="eu.kanade.tachiyomi.SEARCH" />
+L192: <action android:name="eu.kanade.tachiyomi.ANIMESEARCH" />
+L257: android:label="@string/track_activity_name">
+L264: <data android:scheme="aniyomi"/>
+L266: <data android:host="myanimelist-auth" />
+L267: <data android:host="anilist-auth" />
+L268: <data android:host="bangumi-auth" />
+L269: <data android:host="shikimori-auth" />
+L270: <data android:host="simkl-auth"/>
+
+########## 9. app/build.gradle.kts — URLs ##########
+L10: id("com.github.zellius.shortcut-helper")
+L29: applicationId = "io.github.DipitMoun.shiro"
+L212: implementation("io.github.tdlib-android:core:0.1.1")
+L216: implementation(projects.i18nAniyomi)
+L265: implementation(aniyomilibs.compose.constraintlayout)
+L272: implementation(aniyomilibs.mediasession)
+L283: implementation(libs.bundles.okhttp)
+L337: // For detecting memory leaks; see https://square.github.io/leakcanary/
+L345: implementation(aniyomilibs.aniyomi.mpv)
+L347: implementation(aniyomilibs.ffmpeg.kit)
+L348: implementation(aniyomilibs.arthenica.smartexceptions)
+L350: implementation(aniyomilibs.torrserver)
+L352: implementation(aniyomilibs.seeker)
+L354: implementation(aniyomilibs.truetypeparser)
+
+########## 10. git remote ##########
+aniyomi-plus	https://github.com/Med-amine0/aniyomi_plus.git (fetch)
+aniyomi-plus	https://github.com/Med-amine0/aniyomi_plus.git (push)
+origin	https://github.com/DipitMoun/Shiro.git (fetch)
+origin	https://github.com/DipitMoun/Shiro.git (push)
+upstream	https://github.com/aniyomiorg/aniyomi.git (fetch)
+upstream	https://github.com/aniyomiorg/aniyomi.git (push)
+
+
+########## FIN ##########
+

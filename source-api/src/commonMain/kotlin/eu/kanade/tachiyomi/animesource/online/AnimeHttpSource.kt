@@ -44,7 +44,7 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
      * Returns the base (home) URL of the website as a string.
      *
      * This is typically the root address that serves as the main entry point
-     * to the site's content, such as "https://aniyomi.org".
+     * to the site's content, such as "https://github.com/DipitMoun/Shiro".
      *
      * This method is used in the browse screen to determine the URL
      * opened when tapping "Open in WebView".

@@ -436,7 +436,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         private const val WORK_NAME_AUTO = "AnimeLibraryUpdate-auto"
         private const val WORK_NAME_MANUAL = "AnimeLibraryUpdate-manual"
 
-        private const val ERROR_LOG_HELP_URL = "https://aniyomi.org/docs/guides/troubleshooting/"
+        private const val ERROR_LOG_HELP_URL = "https://github.com/DipitMoun/Shiro/issues"
 
         private const val ANIME_PER_SOURCE_QUEUE_WARNING_THRESHOLD = 60
 
