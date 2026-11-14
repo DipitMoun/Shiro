@@ -208,7 +208,7 @@ class AnimeScreen(
             alwaysUseExternalPlayer = screenModel.alwaysUseExternalPlayer,
             navigateUp = navigator::pop,
             onEpisodeClicked = { episode, alt ->
-                if (isMultiSource && mappingState?.complete != true) {
+                if (isMultiSource && (mappingState?.assignedEpisodes ?: 0) == 0) {
                     scope.launch {
                         screenModel.snackbarHostState.showSnackbar("Attribution des sources en cours…")
                     }
@@ -223,7 +223,7 @@ class AnimeScreen(
                 }
             },
             onDownloadEpisode = screenModel::runEpisodeDownloadActions.takeIf {
-                (!isMultiSource || mappingState?.complete == true) &&
+                (!isMultiSource || (mappingState?.assignedEpisodes ?: 0) > 0) &&
                     !successState.source.isLocalOrStub() &&
                     successState.anime.fetchType == FetchType.Episodes
             },
@@ -278,7 +278,7 @@ class AnimeScreen(
             onFilterButtonClicked = screenModel::showSettingsDialog,
             onRefresh = screenModel::fetchAllFromSource,
             onContinueWatching = {
-                if (isMultiSource && mappingState?.complete != true) {
+                if (isMultiSource && (mappingState?.assignedEpisodes ?: 0) == 0) {
                     scope.launch {
                         screenModel.snackbarHostState.showSnackbar("Attribution des sources en cours…")
                     }
@@ -299,7 +299,7 @@ class AnimeScreen(
                 )
             }.takeIf { isAnimeHttpSource },
             onDownloadActionClicked = screenModel::runDownloadAction.takeIf {
-                (!isMultiSource || mappingState?.complete == true) &&
+                (!isMultiSource || (mappingState?.assignedEpisodes ?: 0) > 0) &&
                     !successState.source.isLocalOrStub() &&
                     successState.anime.fetchType == FetchType.Episodes
             },
@@ -325,7 +325,7 @@ class AnimeScreen(
                 navigator.push(AnimeScreen(it.id))
             },
             onContinueWatchingClicked = {
-                if (isMultiSource && mappingState?.complete != true) {
+                if (isMultiSource && (mappingState?.assignedEpisodes ?: 0) == 0) {
                     scope.launch {
                         screenModel.snackbarHostState.showSnackbar("Attribution des sources en cours…")
                     }
