@@ -297,24 +297,49 @@ internal class AnimeExtensionInstaller(private val context: Context) {
             // Avoid events for downloads we didn't request
             if (id !in activeDownloads.values) return
 
-            val uri = downloadManager.getUriForDownloadedFile(id)
-
-            // Set next installation step
-            if (uri == null) {
-                logcat(LogPriority.ERROR) { "Couldn't locate downloaded APK" }
-                updateInstallStep(id, InstallStep.Error)
-                return
-            }
+            // getUriForDownloadedFile returns null on Android 10+ when the APK
+            // lives in app-private ExternalFilesDir (scoped storage). The file
+            // exists, but the URI isn't exposed through a ContentProvider.
+            // Try it first, then fall back to COLUMN_LOCAL_URI.
+            val directUri = downloadManager.getUriForDownloadedFile(id)
 
             val query = DownloadManager.Query().setFilterById(id)
-            downloadManager.query(query).use { cursor ->
-                if (cursor.moveToFirst()) {
+            val cursor = downloadManager.query(query)
+            try {
+                if (!cursor.moveToFirst()) {
+                    logcat(LogPriority.ERROR) { "Download $id not found in DB" }
+                    updateInstallStep(id, InstallStep.Error)
+                    return
+                }
+
+                val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                if (status != DownloadManager.STATUS_SUCCESSFUL) {
+                    logcat(LogPriority.ERROR) { "Download $id failed with status $status" }
+                    updateInstallStep(id, InstallStep.Error)
+                    return
+                }
+
+                val uriToInstall = directUri ?: run {
                     val localUri = cursor.getString(
                         cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI),
-                    ).removePrefix(FILE_SCHEME)
-
-                    installApk(id, File(localUri).getUriCompat(context))
+                    )?.removePrefix(FILE_SCHEME)
+                    if (localUri.isNullOrEmpty()) {
+                        logcat(LogPriority.ERROR) { "No local uri for download $id" }
+                        updateInstallStep(id, InstallStep.Error)
+                        return
+                    }
+                    val file = File(localUri)
+                    if (!file.exists()) {
+                        logcat(LogPriority.ERROR) { "APK file missing: $localUri" }
+                        updateInstallStep(id, InstallStep.Error)
+                        return
+                    }
+                    file.getUriCompat(context)
                 }
+
+                installApk(id, uriToInstall)
+            } finally {
+                cursor.close()
             }
         }
     }
