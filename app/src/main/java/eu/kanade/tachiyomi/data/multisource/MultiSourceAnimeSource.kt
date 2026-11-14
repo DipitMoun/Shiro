@@ -293,21 +293,32 @@ object MultiSourceAnimeSource : AnimeSource {
                 .getOrNull()
                 .orEmpty()
 
-            val resolvedHosters = hosters.mapNotNull { hoster ->
-                val videos = hoster.videoList ?: runCatching { source.getVideoList(hoster) }
-                    .onFailure {
-                        logcat(LogPriority.WARN, it) {
-                            "Multi-source: vidéos indisponibles pour ${hoster.hosterName} via ${source.name}"
+            // Resolve all hosters in parallel. Before this change, sources
+            // exposing 11 hosters at 2 s timeout each burned ~22 s before the
+            // WebView fallback even started. Each hoster is independent, so
+            // the whole batch now finishes in max(individual times).
+            val resolvedHosters = coroutineScope {
+                hosters
+                    .map { hoster ->
+                        async {
+                            val videos = hoster.videoList ?: runCatching { source.getVideoList(hoster) }
+                                .onFailure {
+                                    logcat(LogPriority.WARN, it) {
+                                        "Multi-source: vidéos indisponibles pour ${hoster.hosterName} via ${source.name}"
+                                    }
+                                }
+                                .getOrNull()
+                                .orEmpty()
+                            val resolvedVideos = resolveVideos(source, videos)
+                            logcat(LogPriority.DEBUG) {
+                                "Multi-source: ${source.name}/${hoster.hosterName} vidéos=" +
+                                    "${videos.size} résolues=${resolvedVideos.size}"
+                            }
+                            if (resolvedVideos.isEmpty()) null else hoster.copy(videoList = resolvedVideos)
                         }
                     }
-                    .getOrNull()
-                    .orEmpty()
-                val resolvedVideos = resolveVideos(source, videos)
-                logcat(LogPriority.DEBUG) {
-                    "Multi-source: ${source.name}/${hoster.hosterName} vidéos=" +
-                        "${videos.size} résolues=${resolvedVideos.size}"
-                }
-                if (resolvedVideos.isEmpty()) null else hoster.copy(videoList = resolvedVideos)
+                    .awaitAll()
+                    .filterNotNull()
             }
 
             if (resolvedHosters.isNotEmpty()) {
