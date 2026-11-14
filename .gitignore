@@ -92,3 +92,10 @@ validate-*.txt
 
 # Debug sessions
 session*-patch*/
+
+# Frieren repro logs
+frieren-*.txt
+offline-*.txt
+
+# Session 6 backups
+session6-patchA-*/

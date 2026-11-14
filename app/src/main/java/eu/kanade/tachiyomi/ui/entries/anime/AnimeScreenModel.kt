@@ -816,9 +816,20 @@ class AnimeScreenModel(
     ) {
         when (action) {
             EpisodeDownloadAction.START -> {
-                startDownload(items.map { it.episode }, false)
-                if (items.any { it.downloadState == AnimeDownload.State.ERROR }) {
-                    downloadManager.startDownloads()
+                // Single episode: open the quality picker so the user can pick
+                // a hoster/video before committing to a potentially large (or
+                // slow) download. This is the only way to avoid a silent 2 GB /
+                // 18-minute DL when several qualities are available.
+                // Batch downloads (2+ episodes) keep the previous behaviour and
+                // pick the best video automatically to avoid opening N pickers.
+                val single = items.singleOrNull()
+                if (single != null) {
+                    showQualitiesDialog(single.episode)
+                } else {
+                    startDownload(items.map { it.episode }, false)
+                    if (items.any { it.downloadState == AnimeDownload.State.ERROR }) {
+                        downloadManager.startDownloads()
+                    }
                 }
             }
             EpisodeDownloadAction.START_NOW -> {

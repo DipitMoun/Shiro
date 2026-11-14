@@ -15,6 +15,10 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.data.media.EpisodeMediaValidator
+import eu.kanade.tachiyomi.data.media.MediaDurationProbe
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import eu.kanade.tachiyomi.data.multisource.resolver.WebViewMediaResolver
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogWork
 import eu.kanade.tachiyomi.ui.browse.catalog.preferredTitle
@@ -178,7 +182,28 @@ object MultiSourceAnimeSource : AnimeSource {
             return emptyList()
         }
 
-        val videos = media.mapIndexedNotNull { index, item ->
+        // Probe the duration of every candidate in parallel to catch openings,
+        // teasers and previews before they reach the user. Media whose duration
+        // cannot be measured (probe failure, live stream) are kept as-is to
+        // avoid regressions; media shorter than MIN_EPISODE_SECONDS are dropped.
+        val orderedMedia = coroutineScope {
+            media
+                .map { item ->
+                    async { item to MediaDurationProbe.probeDuration(item.url, item.headers) }
+                }
+                .awaitAll()
+                .filter { (_, duration) ->
+                    duration == null || duration >= EpisodeMediaValidator.MIN_EPISODE_SECONDS
+                }
+                .sortedByDescending { (_, duration) -> duration ?: 0L }
+        }
+        if (orderedMedia.isEmpty()) {
+            logcat(LogPriority.INFO) {
+                "Multi-source: tous les médias WebView trop courts sur ${ref.sourceName}"
+            }
+            return emptyList()
+        }
+        val videos = orderedMedia.mapIndexedNotNull { index, (item, _) ->
             runCatching {
                 val videoHeaders = Headers.Builder().apply {
                     item.headers.forEach { (key, value) -> add(key, value) }
