@@ -59,7 +59,7 @@ internal class MangaExtensionApi {
             with(json) {
                 response
                     .parseAs<List<ExtensionJsonObject>>()
-                    .toExtensions(repoBaseUrl)
+                    .toExtensions(repoBaseUrl, extRepo.signingKeyFingerprint)
             }
         } catch (e: Throwable) {
             logcat(LogPriority.ERROR, e) { "Failed to get extensions from $repoBaseUrl" }
@@ -103,8 +103,13 @@ internal class MangaExtensionApi {
             val pkgName = installedExt.pkgName
             val availableExt = extensions.find { it.pkgName == pkgName } ?: continue
             val hasUpdatedVer = availableExt.versionCode > installedExt.versionCode
-            // libVersion alone is not an update: Android only accepts a strictly higher versionCode
-            val hasUpdate = hasUpdatedVer
+            // libVersion alone is not an update: Android only accepts a strictly higher versionCode.
+            // Also reject mismatched signatures: Android refuses INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+            val sigOk = installedExt.signatureHash == null ||
+                availableExt.signingKey == installedExt.signatureHash ||
+                availableExt.signingKey.startsWith("NOFINGERPRINT") ||
+                availableExt.signingKey == "NO_SIGNING_KEY"
+            val hasUpdate = hasUpdatedVer && sigOk
             if (hasUpdate) {
                 extensionsWithUpdate.add(installedExt)
             }
@@ -117,7 +122,10 @@ internal class MangaExtensionApi {
         return extensionsWithUpdate
     }
 
-    private fun List<ExtensionJsonObject>.toExtensions(repoUrl: String): List<MangaExtension.Available> {
+    private fun List<ExtensionJsonObject>.toExtensions(
+        repoUrl: String,
+        signingKey: String,
+    ): List<MangaExtension.Available> {
         return this
             .filter {
                 val libVersion = it.extractLibVersion()
@@ -136,6 +144,7 @@ internal class MangaExtensionApi {
                     apkName = it.apk,
                     iconUrl = "$repoUrl/icon/${it.pkg}.png",
                     repoUrl = repoUrl,
+                    signingKey = signingKey,
                 )
             }
     }

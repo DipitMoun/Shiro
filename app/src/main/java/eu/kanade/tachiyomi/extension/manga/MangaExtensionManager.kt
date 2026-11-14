@@ -371,7 +371,12 @@ class MangaExtensionManager(
             ?: availableExtensionsMapFlow.value[pkgName]
             ?: return false
 
-        return availableExt.versionCode > versionCode
+        // Android only accepts updates with the same signing key as the installed APK.
+        return availableExt.versionCode > versionCode &&
+            (signatureHash == null ||
+                availableExt.signingKey == signatureHash ||
+                availableExt.signingKey.startsWith("NOFINGERPRINT") ||
+                availableExt.signingKey == "NO_SIGNING_KEY")
     }
 
     private fun updatePendingUpdatesCount() {

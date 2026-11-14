@@ -82,8 +82,12 @@ internal class AnimeExtensionApi {
             val availableExt = extensions.find { it.pkgName == pkgName } ?: continue
 
             val hasUpdatedVer = availableExt.versionCode > installedExt.versionCode
-            // libVersion alone is not an update: Android only accepts a strictly higher versionCode
-            val hasUpdate = hasUpdatedVer
+            // libVersion alone is not an update: Android only accepts a strictly higher versionCode.
+            // Also reject mismatched signatures: Android refuses INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+            val sigOk = installedExt.signatureHash == null ||
+                availableExt.store.signingKey == installedExt.signatureHash ||
+                availableExt.store.signingKey == "NO_SIGNING_KEY"
+            val hasUpdate = hasUpdatedVer && sigOk
             if (hasUpdate) {
                 extensionsWithUpdate.add(installedExt)
             }
