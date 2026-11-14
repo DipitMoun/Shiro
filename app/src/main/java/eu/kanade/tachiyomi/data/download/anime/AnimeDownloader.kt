@@ -946,8 +946,10 @@ class AnimeDownloader(
         tmpDir: UniFile,
     ): Boolean {
         val downloadedVideo = tmpDir.listFiles().orEmpty().filterNot { it.extension == ".tmp" }
-        return downloadedVideo.size == 1 &&
-            downloadedVideo.first().length() >= EpisodeMediaValidator.MIN_EPISODE_BYTES
+        // Size-based filtering is Telegram-specific (see downloadTelegramVideo).
+        // For any other source, an ffmpeg exit 0 with a non-empty output is enough:
+        // short videos, previews, and small extensions all rely on this.
+        return downloadedVideo.size == 1 && downloadedVideo.first().length() > 0L
     }
 
     /**
@@ -967,8 +969,8 @@ class AnimeDownloader(
         // Ensure that the episode folder has the full video
         val downloadedVideo = tmpDir.listFiles().orEmpty().filterNot { it.extension == ".tmp" }
 
-        val validSize = downloadedVideo.size == 1 &&
-            downloadedVideo.first().length() >= EpisodeMediaValidator.MIN_EPISODE_BYTES
+        // See isDownloadSuccessful: size filtering is Telegram-only.
+        val validSize = downloadedVideo.size == 1 && downloadedVideo.first().length() > 0L
         download.status = if (validSize) {
             // Only rename the directory if it's downloaded
             val filename = DiskUtil.buildValidFilename("${download.anime.title} - ${download.episode.name}")
