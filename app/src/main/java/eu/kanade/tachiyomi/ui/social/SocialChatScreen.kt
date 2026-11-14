@@ -158,16 +158,12 @@ class SocialChatScreen(
             )
         }
 
-        val thread = account?.let { current ->
-            selectedEpisode?.let { episode ->
-                ThreadRef(current.userId, chatContext.work.id, episode.key)
-            }
-        }
-        val timeline = thread?.let { state.timelines[it] }
-            ?: state.timeline?.takeIf { state.thread == thread }
+        // `state.thread` and `state.timeline` are kept in sync by the controller.
+        // They reflect the active author (self by default, a friend after a tap).
+        val timeline = state.timeline
         val items = timeline?.items.orEmpty()
 
-        LaunchedEffect(selectedEpisode?.key) {
+        LaunchedEffect(state.thread) {
             pending.clear()
             replyTarget = null
             actionItem = null
@@ -216,11 +212,30 @@ class SocialChatScreen(
                                     )
                                     Spacer(Modifier.width(10.dp))
                                 }
-                                Text(
-                                    text = chatContext.title,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                                Column {
+                                    Text(
+                                        text = chatContext.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    val activeAuthor = state.thread?.authorMxid
+                                    val selfMxid = account?.userId
+                                    if (
+                                        activeAuthor != null &&
+                                        selfMxid != null &&
+                                        activeAuthor != selfMxid
+                                    ) {
+                                        val label = participants[activeAuthor]?.name
+                                            ?: activeAuthor.substringBefore(':').removePrefix("@")
+                                        Text(
+                                            text = "Salon de $label",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
                             }
                         },
                         navigationIcon = {
@@ -229,7 +244,24 @@ class SocialChatScreen(
                             }
                         },
                         actions = {
-                            FriendsBubbles(friends = friends)
+                            val selfParticipant = account?.let { participants[it.userId] }
+                            FriendsBubbles(
+                                self = selfParticipant,
+                                friends = friends,
+                                activeMxid = state.thread?.authorMxid,
+                                threadsLoaded = state.threads.isNotEmpty(),
+                                onSelect = { participant ->
+                                    if (selectedEpisode != null) {
+                                        model.selectThread(
+                                            ThreadRef(
+                                                authorMxid = participant.mxid,
+                                                workId = chatContext.work.id,
+                                                episodeKey = selectedEpisode.key,
+                                            ),
+                                        )
+                                    }
+                                },
+                            )
                         },
                     )
                 },
@@ -584,23 +616,47 @@ private fun ChatBackground(posterUrl: String?) {
 }
 
 @Composable
-private fun FriendsBubbles(friends: List<SocialChatFriend>) {
+private fun FriendsBubbles(
+    self: SocialChatFriend?,
+    friends: List<SocialChatFriend>,
+    activeMxid: String?,
+    threadsLoaded: Boolean,
+    onSelect: (SocialChatFriend) -> Unit,
+) {
     Row(
         modifier = Modifier.padding(end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        friends.take(5).forEach { friend ->
+        self?.let { participant ->
+            val isActive = participant.mxid == activeMxid
             ParticipantAvatar(
-                participant = friend,
+                participant = participant,
                 size = 30.dp,
-                modifier = Modifier.border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = CircleShape,
-                ),
+                isActive = isActive,
+                onClick = if (!isActive && threadsLoaded) {
+                    { onSelect(participant) }
+                } else {
+                    null
+                },
             )
         }
+        friends
+            .filter { it.mxid != self?.mxid }
+            .take(if (self != null) 4 else 5)
+            .forEach { friend ->
+                val isActive = friend.mxid == activeMxid
+                ParticipantAvatar(
+                    participant = friend,
+                    size = 30.dp,
+                    isActive = isActive,
+                    onClick = if (!isActive && threadsLoaded) {
+                        { onSelect(friend) }
+                    } else {
+                        null
+                    },
+                )
+            }
     }
 }
 
@@ -933,27 +989,46 @@ private fun ParticipantAvatar(
     participant: SocialChatFriend,
     size: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
+    isActive: Boolean = false,
+    onClick: (() -> Unit)? = null,
 ) {
     val bitmap = remember(participant.avatarBytes) {
         participant.avatarBytes?.let { bytes ->
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
         }
     }
+    // Active + clickable avatars only appear in the top-bar row.
+    // Message avatars (onClick == null, isActive == false) keep their previous look.
+    val baseModifier = modifier
+        .size(size)
+        .clip(CircleShape)
+        .then(
+            when {
+                isActive -> Modifier.border(
+                    width = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = CircleShape,
+                )
+                onClick != null -> Modifier.border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = CircleShape,
+                )
+                else -> Modifier
+            },
+        )
+        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+
     if (bitmap != null) {
         Image(
             bitmap = bitmap,
             contentDescription = participant.name,
             contentScale = ContentScale.Crop,
-            modifier = modifier
-                .size(size)
-                .clip(CircleShape),
+            modifier = baseModifier,
         )
     } else {
         Box(
-            modifier = modifier
-                .size(size)
-                .clip(CircleShape)
-                .background(participantColor(participant.mxid).copy(alpha = 0.18f)),
+            modifier = baseModifier.background(participantColor(participant.mxid).copy(alpha = 0.18f)),
             contentAlignment = Alignment.Center,
         ) {
             Text(

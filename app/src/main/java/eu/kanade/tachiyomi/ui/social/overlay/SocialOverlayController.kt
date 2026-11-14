@@ -172,7 +172,7 @@ class SocialOverlayController(
                     add(SocialThreadDescriptor(ownRef, selfDisplayName ?: "Moi", isOwn = true))
                 }
             }
-            val selected = descriptors.firstOrNull { !it.isOwn }?.ref ?: descriptors.firstOrNull()?.ref
+            val selected = descriptors.firstOrNull { it.isOwn }?.ref ?: descriptors.firstOrNull()?.ref
             _state.value = _state.value.copy(
                 threads = descriptors,
                 thread = selected,

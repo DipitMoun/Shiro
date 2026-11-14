@@ -15,6 +15,7 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.SocialRoomKey
 import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
 import eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository
+import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
 import eu.kanade.tachiyomi.data.social.friends.SocialFriendInviteAccepter
 import eu.kanade.tachiyomi.data.social.friends.SocialFriendStore
 import eu.kanade.tachiyomi.data.social.matrix.catalog.SocialThreadCatalog
@@ -123,6 +124,11 @@ class SocialChatScreenModel(
         screenModelScope.launch { controller.react(eventId, key) }
     }
 
+    /** Switches the chat view to the thread owned by [ref.authorMxid]. */
+    fun selectThread(ref: ThreadRef) {
+        controller.selectThread(ref)
+    }
+
     private suspend fun refreshFriends(
         context: SocialChatContext,
         selfMxid: String,
@@ -229,7 +235,7 @@ class SocialChatScreenModel(
         val roomKey = SocialRoomKey(authorMxid = selfMxid, workId = context.work.id)
         when (val root = roomService.ensureThreadRoot(roomKey, episode.key.value, context.title)) {
             is SocialResult.Success -> {
-                controller.openOwnWork(
+                controller.openWork(
                     work = context.work,
                     episodeKey = episode.key,
                     selfMxid = selfMxid,
