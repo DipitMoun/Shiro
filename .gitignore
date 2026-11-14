@@ -57,3 +57,11 @@ session*-backup-*/
 session*-final-*.txt
 bom-fix-*.txt
 ext-test-*.txt
+
+# Debug artifacts (session 5+ audit)
+tr-*.txt
+test-maj2-*.txt
+audit-maj-*.txt
+retest*.txt
+build5-*.log
+diff-*.patch
