@@ -22,7 +22,10 @@ class PackageInstallerInstallerAnime(private val service: Service) : InstallerAn
 
     private val packageActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
+            val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+            val statusMessage = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+            logcat(LogPriority.DEBUG) { "PackageInstaller status=$status message=$statusMessage" }
+            when (status) {
                 PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                     val userAction = intent.getParcelableExtraCompat<Intent>(Intent.EXTRA_INTENT)
                     if (userAction == null) {
@@ -93,7 +96,9 @@ class PackageInstallerInstallerAnime(private val service: Service) : InstallerAn
         activeSession?.let { (activeEntry, sessionId) ->
             if (activeEntry == entry) {
                 packageInstaller.abandonSession(sessionId)
-                return false
+                // Return true so the queue can notify the manager and UI
+                // that the install was aborted (InstallStep.Idle).
+                return true
             }
         }
         return true
