@@ -415,6 +415,35 @@ private fun VideoIcon(
     }
 }
 
+private fun videoDisplayLabel(video: Video): String {
+    val title = video.videoTitle.ifBlank { "Video" }
+    val hasResInTitle = Regex("\\d+p\\b").containsMatchIn(title)
+    val hasBitrateInTitle = Regex("\\d+\\s*(Mbps|kbps)", RegexOption.IGNORE_CASE).containsMatchIn(title)
+    val parts = mutableListOf(title)
+    video.resolution?.let { res ->
+        if (res > 0 && !hasResInTitle) {
+            parts += when {
+                res >= 2160 -> "4K"
+                res >= 1440 -> "1440p"
+                res >= 1080 -> "1080p"
+                res >= 720 -> "720p"
+                res >= 480 -> "480p"
+                res >= 360 -> "360p"
+                else -> "${res}p"
+            }
+        }
+    }
+    video.bitrate?.let { br ->
+        if (br > 0 && !hasBitrateInTitle) {
+            val mbps = br / 1_000_000.0
+            if (mbps >= 0.1) {
+                parts += "${(mbps * 10).toInt() / 10.0} Mbps"
+            }
+        }
+    }
+    return parts.joinToString(" · ")
+}
+
 @Composable
 private fun VideoText(
     video: Video,
@@ -423,7 +452,7 @@ private fun VideoText(
     modifier: Modifier = Modifier,
 ) {
     Text(
-        text = video.videoTitle,
+        text = videoDisplayLabel(video),
         fontStyle = if (selected) FontStyle.Italic else FontStyle.Normal,
         fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
         style = MaterialTheme.typography.bodyMedium,
