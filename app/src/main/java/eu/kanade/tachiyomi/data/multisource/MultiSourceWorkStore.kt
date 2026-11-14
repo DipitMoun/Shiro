@@ -32,7 +32,21 @@ class MultiSourceWorkStore(context: Context) {
         return runCatching { json.decodeFromString<CatalogWork>(raw) }.getOrNull()
     }
 
+    /** Source choisie manuellement pour une œuvre (null = automatique). */
+    fun preferredSource(url: String): Long? = prefs.getLong("$url$SOURCE_SUFFIX", -1L).takeIf { it > 0L }
+
+    fun setPreferredSource(url: String, sourceId: Long?) {
+        prefs.edit().apply {
+            if (sourceId == null || sourceId <= 0L) {
+                remove("$url$SOURCE_SUFFIX")
+            } else {
+                putLong("$url$SOURCE_SUFFIX", sourceId)
+            }
+        }.apply()
+    }
+
     private companion object {
         const val URL_PREFIX = "multisource:"
+        const val SOURCE_SUFFIX = "#source"
     }
 }

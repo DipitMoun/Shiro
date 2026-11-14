@@ -217,7 +217,10 @@ data class TelegramSearchFileUi(
 
 private const val SAVED_WORKS_REPAIR_VERSION = 1
 
-class TelegramScreenModel : ScreenModel {
+class TelegramScreenModel(
+    /** Type de fichiers parcourus : vidéos (animés) ou documents (mangas). */
+    private val kind: TelegramMediaKind = TelegramMediaKind.VIDEO,
+) : ScreenModel {
 
     private val appContext: Application by injectLazy()
     private val authManager: TelegramAuthManager by injectLazy()
@@ -595,7 +598,7 @@ class TelegramScreenModel : ScreenModel {
                 val indexed = indexManager.channel(chatId)
                 val localFiles = withContext(Dispatchers.Default) {
                     indexed?.files
-                        ?.filter { it.mediaKind == TelegramMediaKind.VIDEO }
+                        ?.filter { it.mediaKind == kind }
                         ?.filter { it.matchesSearch(tokens) }
                         ?.filterNot {
                             TelegramFileHeuristics.isUnsupportedFile(it.fileName, it.mimeType) ||
@@ -637,7 +640,7 @@ class TelegramScreenModel : ScreenModel {
 
                 result?.files?.forEach { metadata ->
                     metadata.toSearchFile(chatId, channelTitle)
-                        ?.takeIf { it.kind == TelegramMediaKind.VIDEO }
+                        ?.takeIf { it.kind == kind }
                         ?.let { file ->
                             addToGroups(groups, file)
                             serverMatches++
@@ -1114,7 +1117,10 @@ class TelegramScreenModel : ScreenModel {
             (mime.startsWith("video/") || ext in VIDEO_EXTENSIONS)
         val mediaKind = when {
             kind == TelegramFileKind.VIDEO || isVideoDoc -> TelegramMediaKind.VIDEO
-            kind == TelegramFileKind.DOCUMENT -> TelegramMediaKind.DOCUMENT
+            // Liste blanche : seules les archives/images de BD sont des
+            // documents exploitables. Un .txt ou un .docx n'est pas une œuvre.
+            kind == TelegramFileKind.DOCUMENT &&
+                TelegramFileHeuristics.isComicDocument(fileName, mimeType) -> TelegramMediaKind.DOCUMENT
             else -> return null
         }
 
@@ -1355,18 +1361,27 @@ class TelegramScreenModel : ScreenModel {
         if (_state.value.busy) return
         screenModelScope.launch {
             _state.update { it.copy(busy = true) }
-            val animeId = runCatching {
-                importer.ensureAggregatedWork(
-                    workKey = work.workKey,
-                    title = work.title,
-                    coverUrl = work.coverUrl,
-                    resolved = workOverrides.snapshot().metadataFor(work.workKey),
-                )
+            val libraryId = runCatching {
+                if (kind == TelegramMediaKind.DOCUMENT) {
+                    importer.ensureMangaWork(
+                        chatId = work.chatId,
+                        slug = work.id.split(':').getOrNull(1).orEmpty(),
+                        title = work.title,
+                        coverUrl = work.coverUrl,
+                    )
+                } else {
+                    importer.ensureAggregatedWork(
+                        workKey = work.workKey,
+                        title = work.title,
+                        coverUrl = work.coverUrl,
+                        resolved = workOverrides.snapshot().metadataFor(work.workKey),
+                    )
+                }
             }
                 .onFailure { logcat(LogPriority.WARN, it) { "Création de l'œuvre Telegram impossible" } }
                 .getOrNull()
             _state.update { it.copy(busy = false) }
-            if (animeId != null) onOpened(animeId)
+            if (libraryId != null) onOpened(libraryId)
         }
     }
 
@@ -1457,7 +1472,8 @@ class TelegramScreenModel : ScreenModel {
         // fichiers, et l'écran se recalcule à chaque révision).
         val filesByWork = channel.files.groupBy { it.workId }
         return channel.works
-            .filter { it.mediaKind == TelegramMediaKind.VIDEO && it.episodeCount > 0 }
+            .filter { it.mediaKind == kind && it.fileCount > 0 }
+            .filter { kind == TelegramMediaKind.DOCUMENT || it.episodeCount > 0 }
             .filterNot { TelegramFileHeuristics.isGenericTitle(it.displayTitle) }
             .mapNotNull { work ->
                 val baseKey = work.aggregationKey().ifBlank {
@@ -1470,7 +1486,7 @@ class TelegramScreenModel : ScreenModel {
                     id = work.id,
                     chatId = work.chatId,
                     title = overrideSnapshot.titleFor(key) ?: work.displayTitle,
-                    kind = "Vidéo",
+                    kind = kindLabel(),
                     files = work.fileCount,
                     episodes = work.episodeCount,
                     resolved = !work.isUnresolved || overrideSnapshot.isRecognized(key),
@@ -1569,14 +1585,14 @@ class TelegramScreenModel : ScreenModel {
                         workResolver.resolve(
                             title = work.title,
                             season = null,
-                            kind = TelegramMediaKind.VIDEO,
+                            kind = kind,
                             acceptAny = true,
                         )
                     } else {
                         externalResolver.search(
                             provider = provider,
                             title = work.title,
-                            kind = TelegramMediaKind.VIDEO,
+                            kind = kind,
                         )
                     }
                 }.getOrNull()
@@ -1665,7 +1681,8 @@ class TelegramScreenModel : ScreenModel {
             .filter { it.chatId in enabled }
             .flatMap { it.works }
             .filterNot { TelegramFileHeuristics.isGenericTitle(it.title) }
-            .filter { it.mediaKind == TelegramMediaKind.VIDEO && it.fileCount > 0 && it.episodeCount > 0 }
+            .filter { it.mediaKind == kind && it.fileCount > 0 }
+            .filter { kind == TelegramMediaKind.DOCUMENT || it.episodeCount > 0 }
             .mapNotNull { work ->
                 val baseKey = work.workKey.ifBlank { normalizeSearchText(work.title).trim() }
                 val key = overrideSnapshot.resolve(baseKey)
@@ -1674,7 +1691,7 @@ class TelegramScreenModel : ScreenModel {
                     id = work.id,
                     chatId = work.chatId,
                     title = overrideSnapshot.titleFor(key) ?: work.title,
-                    kind = if (work.mediaKind == TelegramMediaKind.VIDEO) "Vidéo" else "Documents",
+                    kind = kindLabel(),
                     files = work.fileCount,
                     episodes = work.episodeCount,
                     resolved = work.resolved || overrideSnapshot.isRecognized(key),
@@ -1714,8 +1731,18 @@ class TelegramScreenModel : ScreenModel {
             it.copy(
                 channels = channels,
                 enabledChatIds = enabled,
-                works = indexedWorks.filter { it.resolved },
-                unresolvedWorks = indexedWorks.filterNot { it.resolved },
+                // Les documents n'ont pas de correspondance AniList : toutes les
+                // œuvres documentaires restent visibles, reconnues ou non.
+                works = if (kind == TelegramMediaKind.DOCUMENT) {
+                    indexedWorks
+                } else {
+                    indexedWorks.filter { it.resolved }
+                },
+                unresolvedWorks = if (kind == TelegramMediaKind.DOCUMENT) {
+                    emptyList()
+                } else {
+                    indexedWorks.filterNot { it.resolved }
+                },
                 omdbApiKey = preferences.omdbApiKey,
                 videoChats = preferences.videoChats,
                 docChats = preferences.docChats,
@@ -1732,6 +1759,9 @@ class TelegramScreenModel : ScreenModel {
      * œuvre (même préfixe de clé) partagent leurs numéros ; deux œuvres
      * différentes gardent chacun leurs épisodes, même s'ils commencent à 1.
      */
+    private fun kindLabel(): String =
+        if (kind == TelegramMediaKind.DOCUMENT) "Documents" else "Vidéo"
+
     private fun uniqueEpisodeCount(contributions: List<TelegramWorkUi>): Int {
         if (contributions.isEmpty()) return 0
         val rawKeys = contributions.map { it.rawKey.ifBlank { it.workKey } }

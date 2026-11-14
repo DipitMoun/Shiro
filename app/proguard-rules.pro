@@ -94,3 +94,7 @@
 -keepclassmembers class * extends com.sun.jna.* { public *; }
 -dontwarn com.sun.jna.**
 -dontwarn java.awt.**
+
+# rustls-platform-verifier JNI entrypoints (referenced only from Rust).
+-keep class org.rustls.platformverifier.** { *; }
+-keepclassmembers class org.rustls.platformverifier.CertificateVerifier { *; }

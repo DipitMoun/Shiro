@@ -4,6 +4,7 @@ import android.content.Context
 import java.io.File
 import org.matrix.rustcomponents.sdk.Client
 import org.matrix.rustcomponents.sdk.ClientBuilder
+import org.matrix.rustcomponents.sdk.SlidingSyncVersionBuilder
 import org.matrix.rustcomponents.sdk.SqliteStoreBuilder
 
 /**
@@ -49,6 +50,7 @@ class RustMatrixClientFactory(
         return ClientBuilder()
             .homeserverUrl(homeserverUrl)
             .sqliteStore(storeBuilder)
+            .slidingSyncVersionBuilder(SlidingSyncVersionBuilder.NATIVE)
             .threadsEnabled(enabled = true, threadSubscriptions = true)
             .autoEnableCrossSigning(autoEnableCrossSigning = true)
             .autoEnableBackups(autoEnableBackups = true)

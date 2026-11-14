@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.browse.manga.source.discover
 
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.tachiyomi.data.multisource.MultiSourceMangaWorkOpener
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogRepository
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogType
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogWork
@@ -28,14 +29,15 @@ data class MangaDiscoverState(
     val recommendations: List<CatalogWork> = emptyList(),
     val recommendationsLoading: Boolean = false,
     val error: String? = null,
-
-
+    val opening: Boolean = false,
+    val openMangaId: Long? = null,
 )
 
 class MangaDiscoverScreenModel : ScreenModel {
     private val repository = CatalogRepository(Injekt.get(), CatalogType.MANGA)
     private val mangaRepository: MangaRepository = Injekt.get()
-    
+    private val opener: MultiSourceMangaWorkOpener = Injekt.get()
+
 
     private val _state = MutableStateFlow(
         repository.peekDiscover()?.let { feed ->
@@ -133,6 +135,32 @@ class MangaDiscoverScreenModel : ScreenModel {
     fun retry() {
         loadedAt = 0L
         load(force = true)
+    }
+
+    fun open(work: CatalogWork) {
+        if (_state.value.opening) return
+        _state.update { it.copy(opening = true) }
+
+        screenModelScope.launch {
+            val mangaId = runCatching { opener.open(work) }
+                .onFailure {
+                    logcat(LogPriority.WARN, it) {
+                        "Ouverture de l'œuvre manga multi-source impossible : ${work.title}"
+                    }
+                }
+                .getOrNull()
+
+            _state.update {
+                it.copy(
+                    opening = false,
+                    openMangaId = mangaId,
+                )
+            }
+        }
+    }
+
+    fun consumeOpen() {
+        _state.update { it.copy(openMangaId = null) }
     }
 
     private fun buildCarousel(feed: DiscoverFeed): List<DiscoverItem> {

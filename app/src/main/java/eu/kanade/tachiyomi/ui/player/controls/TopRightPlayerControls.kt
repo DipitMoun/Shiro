@@ -54,9 +54,6 @@ fun TopRightPlayerControls(
     onQualityClick: () -> Unit,
     isEpisodeOnline: Boolean?,
 
-    // social
-    onSocialClick: (() -> Unit)? = null,
-
     // more
     onMoreClick: () -> Unit,
     onMoreLongClick: () -> Unit,
@@ -92,14 +89,6 @@ fun TopRightPlayerControls(
                 icon = Icons.Default.HighQuality,
                 onClick = onQualityClick,
                 onLongClick = onQualityClick,
-                horizontalSpacing = MaterialTheme.padding.mediumSmall,
-            )
-        }
-        if (onSocialClick != null) {
-            ControlsButton(
-                icon = Icons.Outlined.PeopleAlt,
-                onClick = onSocialClick,
-                title = "Fils sociaux",
                 horizontalSpacing = MaterialTheme.padding.mediumSmall,
             )
         }

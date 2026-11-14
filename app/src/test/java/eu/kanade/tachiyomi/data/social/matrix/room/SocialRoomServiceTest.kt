@@ -58,6 +58,57 @@ class SocialRoomServiceTest {
         assertTrue(name.contains("anilist:154587"), "actual name: $name")
     }
 
+    @Test fun `legacy room is reused when it was created after the work was added`() = runBlocking {
+        val stable = WorkId.parse("local:abc123")!!
+        val legacy = WorkId.parse("local:1")!!
+        bindings.bindRoom(SocialRoomKey(alice, legacy), "!legacy:example.org")
+        transport.roomCreatedAtResult = SocialResult.Success(2_000L)
+
+        val migrated = work.copy(id = stable, legacyId = legacy, addedAt = 1_000L)
+        val result = service.ensureRoom(alice, "Alice", alice, migrated, emptyList())
+
+        val ensured = (result as SocialResult.Success).value
+        assertEquals("!legacy:example.org", ensured.roomId)
+        assertFalse(ensured.created)
+        assertEquals(0, transport.createRoomCalls)
+        assertEquals(
+            "!legacy:example.org",
+            (bindings.resolveRoom(SocialRoomKey(alice, stable)) as SocialResult.Success).value,
+        )
+    }
+
+    @Test fun `legacy room is not reused when it predates the new library row`() = runBlocking {
+        val stable = WorkId.parse("local:abc123")!!
+        val legacy = WorkId.parse("local:1")!!
+        bindings.bindRoom(SocialRoomKey(alice, legacy), "!old:example.org")
+        transport.roomCreatedAtResult = SocialResult.Success(500L)
+
+        val migrated = work.copy(id = stable, legacyId = legacy, addedAt = 1_000L)
+        val result = service.ensureRoom(alice, "Alice", alice, migrated, emptyList())
+
+        val ensured = (result as SocialResult.Success).value
+        assertEquals("!room0:example.org", ensured.roomId)
+        assertTrue(ensured.created)
+        assertEquals(1, transport.createRoomCalls)
+    }
+
+    @Test fun `legacy room is not reused when it contains another work title`() = runBlocking {
+        val stable = WorkId.parse("local:abc123")!!
+        val legacy = WorkId.parse("local:1")!!
+        bindings.bindRoom(SocialRoomKey(alice, legacy), "!other-work:example.org")
+        transport.roomCreatedAtResult = SocialResult.Success(2_000L)
+        transport.threadRootBodiesResult = SocialResult.Success(
+            listOf("Fil · Another anime · E001"),
+        )
+
+        val migrated = work.copy(id = stable, legacyId = legacy, addedAt = 1_000L)
+        val result = service.ensureRoom(alice, "Alice", alice, migrated, emptyList())
+
+        val ensured = (result as SocialResult.Success).value
+        assertEquals("!room0:example.org", ensured.roomId)
+        assertTrue(ensured.created)
+    }
+
     @Test fun `second ensureRoom re-uses the cached binding without recreating`() = runBlocking {
         service.ensureRoom(alice, "Alice", alice, work, emptyList())
         val result = service.ensureRoom(alice, "Alice", alice, work, emptyList())

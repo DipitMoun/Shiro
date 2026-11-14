@@ -8,7 +8,6 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
 import eu.kanade.core.util.addOrRemove
-import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.items.episode.interactor.SetSeenStatus
 import eu.kanade.presentation.entries.anime.components.EpisodeDownloadAction
 import eu.kanade.presentation.updates.anime.AnimeUpdatesUiModel
@@ -37,7 +36,11 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.download.service.DownloadPreferences
+import eu.kanade.tachiyomi.animesource.model.SAnime
 import tachiyomi.domain.entries.anime.interactor.GetAnime
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.repository.AnimeRepository
+import tachiyomi.domain.track.anime.model.AnimeTrack
 import eu.kanade.tachiyomi.ui.browse.catalog.AiringEvent
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogRepository
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogType
@@ -63,6 +66,7 @@ class AnimeUpdatesScreenModel(
     private val getAnime: GetAnime = Injekt.get(),
     private val catalogRepository: CatalogRepository = CatalogRepository(Injekt.get(), CatalogType.ANIME),
     private val trackRepository: AnimeTrackRepository = Injekt.get(),
+    private val animeRepository: AnimeRepository = Injekt.get(),
     private val getEpisode: GetEpisode = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
@@ -81,14 +85,53 @@ class AnimeUpdatesScreenModel(
     private val selectedEpisodeIds: HashSet<Long> = HashSet()
 
     init {
-        screenModelScope.launch {
+        screenModelScope.launchIO {
             runCatching {
                 val tracks = trackRepository.getAnimeTracksAsFlow().first()
-                val anilistIds = tracks.filter { it.trackerId == 2L }.mapNotNull { it.remoteId?.toInt() }
-                if (anilistIds.isNotEmpty()) {
-                    val sched = catalogRepository.getAiringSchedule(anilistIds)
-                    mutableState.update { it.copy(upcoming = sched) }
+                val libraryAnime = animeRepository.getAnimeFavorites()
+                val anilistIdByAnime = resolveAniListIds(tracks, libraryAnime)
+                val animeIdByRemoteId = anilistIdByAnime.entries
+                    .associate { (animeId, remoteId) -> remoteId to animeId }
+
+                val scheduled = if (animeIdByRemoteId.isNotEmpty()) {
+                    catalogRepository.getAiringSchedule(animeIdByRemoteId.keys.toList())
+                } else {
+                    emptyList()
                 }
+
+                val upcoming = buildList {
+                    scheduled.forEach { event ->
+                        val animeId = animeIdByRemoteId[event.mediaId] ?: return@forEach
+                        add(event.copy(animeId = animeId))
+                    }
+                    // Repli local : `nextEpisodeAiringAt` est déjà alimenté par
+                    // AniChart (AniList, MAL, Simkl) à l'ouverture d'une fiche.
+                    libraryAnime.forEach { anime ->
+                        // `nextEpisodeAiringAt` est stocké en secondes Unix.
+                        val airingAt = anime.nextEpisodeAiringAt
+                        if (airingAt <= 0L) return@forEach
+                        if (any { it.animeId == anime.id }) return@forEach
+                        add(
+                            AiringEvent(
+                                mediaId = anilistIdByAnime[anime.id] ?: 0,
+                                episode = anime.nextEpisodeToAir,
+                                airingAt = airingAt,
+                                title = anime.title,
+                                coverUrl = anime.thumbnailUrl,
+                                animeId = anime.id,
+                            ),
+                        )
+                    }
+                }.sortedBy { it.airingAt }
+
+                mutableState.update {
+                    it.copy(
+                        upcoming = upcoming,
+                        upcomingAnimeIds = animeIdByRemoteId,
+                    )
+                }
+            }.onFailure {
+                logcat(LogPriority.WARN, it) { "Prévision des sorties impossible" }
             }
         }
         screenModelScope.launchIO {
@@ -119,6 +162,52 @@ class AnimeUpdatesScreenModel(
                 .catch { logcat(LogPriority.ERROR, it) }
                 .collect(this@AnimeUpdatesScreenModel::updateDownloadState)
         }
+    }
+
+    /**
+     * Résout un identifiant AniList pour chaque animé de la bibliothèque :
+     * piste AniList directe, puis piste MAL (idMal), puis recherche par titre
+     * (couvre Kitsu/Shikimori et les animés non suivis).
+     */
+    private suspend fun resolveAniListIds(
+        tracks: List<AnimeTrack>,
+        libraryAnime: List<Anime>,
+    ): Map<Long, Int> {
+        val result = mutableMapOf<Long, Int>()
+
+        tracks.filter { it.trackerId == ANILIST_TRACKER_ID }.forEach { track ->
+            result[track.animeId] = track.remoteId.toInt()
+        }
+
+        tracks.filter { it.trackerId == MAL_TRACKER_ID }
+            .filter { it.animeId !in result }
+            .forEach { track ->
+                catalogRepository.resolveAniListIdByMal(track.remoteId)?.let { id ->
+                    result[track.animeId] = id
+                }
+            }
+
+        val ongoingStatuses = setOf(
+            SAnime.ONGOING.toLong(),
+            SAnime.PUBLISHING_FINISHED.toLong(),
+            SAnime.UPCOMING.toLong(),
+        )
+        libraryAnime
+            .filter { it.id !in result }
+            .sortedWith(
+                compareByDescending<Anime> {
+                    // Les animés en cours et sans prévision locale d'abord.
+                    it.status in ongoingStatuses && it.nextEpisodeAiringAt == 0L
+                }.thenByDescending { it.lastUpdate },
+            )
+            .take(MAX_TITLE_RESOLUTIONS)
+            .forEach { anime ->
+                catalogRepository.resolveAniListIdByTitle(anime.title)?.let { id ->
+                    result[anime.id] = id
+                }
+            }
+
+        return result
     }
 
     private fun List<AnimeUpdatesWithRelations>.toUpdateItems(): PersistentList<AnimeUpdatesItem> {
@@ -390,6 +479,25 @@ class AnimeUpdatesScreenModel(
         selectedPositions[1] = -1
     }
 
+    /** Sélectionne ou désélectionne toutes les sorties d'une œuvre. */
+    fun toggleGroupSelection(items: List<AnimeUpdatesItem>, selected: Boolean) {
+        if (items.isEmpty()) return
+        val ids = items.mapTo(HashSet()) { it.update.episodeId }
+        mutableState.update { state ->
+            val newItems = state.items.map {
+                if (it.update.episodeId in ids) {
+                    selectedEpisodeIds.addOrRemove(it.update.episodeId, selected)
+                    it.copy(selected = selected)
+                } else {
+                    it
+                }
+            }
+            state.copy(items = newItems.toPersistentList())
+        }
+        selectedPositions[0] = -1
+        selectedPositions[1] = -1
+    }
+
     fun invertSelection() {
         mutableState.update { state ->
             val newItems = state.items.map {
@@ -415,6 +523,8 @@ class AnimeUpdatesScreenModel(
         val isLoading: Boolean = true,
         val items: PersistentList<AnimeUpdatesItem> = persistentListOf(),
         val upcoming: List<eu.kanade.tachiyomi.ui.browse.catalog.AiringEvent> = emptyList(),
+        /** Correspondance AniList mediaId -> identifiant local de l'animé. */
+        val upcomingAnimeIds: Map<Int, Long> = emptyMap(),
         val dialog: Dialog? = null,
     ) {
         val selected = items.filter { it.selected }
@@ -422,14 +532,22 @@ class AnimeUpdatesScreenModel(
 
         fun getUiModel(): List<AnimeUpdatesUiModel> {
             return items
-                .map { AnimeUpdatesUiModel.Item(it) }
-                .insertSeparators { before, after ->
-                    val beforeDate = before?.item?.update?.dateFetch?.toLocalDate()
-                    val afterDate = after?.item?.update?.dateFetch?.toLocalDate()
-                    when {
-                        beforeDate != afterDate && afterDate != null -> AnimeUpdatesUiModel.Header(afterDate)
-                        // Return null to avoid adding a separator between two items.
-                        else -> null
+                .groupBy { it.update.dateFetch.toLocalDate() }
+                .flatMap { (date, dateItems) ->
+                    buildList {
+                        add(AnimeUpdatesUiModel.Header(date))
+                        dateItems
+                            .groupBy { "${it.update.sourceId}:${it.update.animeId}" }
+                            .forEach { (key, workItems) ->
+                                add(
+                                    AnimeUpdatesUiModel.Group(
+                                        key = key,
+                                        // Du plus ancien au plus récent pour que
+                                        // la ligne commence par le premier épisode.
+                                        items = workItems.sortedBy { it.update.dateFetch },
+                                    ),
+                                )
+                            }
                     }
                 }
         }
@@ -448,6 +566,12 @@ class AnimeUpdatesScreenModel(
     sealed interface Event {
         data object InternalError : Event
         data class LibraryUpdateTriggered(val started: Boolean) : Event
+    }
+
+    private companion object {
+        const val ANILIST_TRACKER_ID = 2L
+        const val MAL_TRACKER_ID = 1L
+        const val MAX_TITLE_RESOLUTIONS = 15
     }
 }
 

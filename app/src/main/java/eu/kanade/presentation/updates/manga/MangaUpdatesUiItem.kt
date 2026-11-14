@@ -1,53 +1,31 @@
 package eu.kanade.presentation.updates.manga
 
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Circle
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.relativeDateText
-import eu.kanade.presentation.entries.components.DotSeparatorText
-import eu.kanade.presentation.entries.components.ItemCover
 import eu.kanade.presentation.entries.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.entries.manga.components.ChapterDownloadIndicator
+import eu.kanade.presentation.updates.components.UpdateGroupCard
+import eu.kanade.presentation.updates.components.UpdateGroupRow
 import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.presentation.util.relativeTimeSpanString
-import eu.kanade.tachiyomi.data.download.manga.model.MangaDownload
 import eu.kanade.tachiyomi.ui.updates.manga.MangaUpdatesItem
-import tachiyomi.domain.updates.manga.model.MangaUpdatesWithRelations
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.ListGroupHeader
-import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
-import tachiyomi.presentation.core.util.selectedBackground
 
 internal fun LazyListScope.mangaUpdatesLastUpdatedItem(
     lastUpdated: Long,
@@ -69,107 +47,172 @@ internal fun LazyListScope.mangaUpdatesLastUpdatedItem(
 internal fun LazyListScope.mangaUpdatesUiItems(
     uiModels: List<MangaUpdatesUiModel>,
     selectionMode: Boolean,
+    expandedGroups: Set<String>,
+    onToggleGroup: (String) -> Unit,
+    onSelectGroup: (List<MangaUpdatesItem>, Boolean) -> Unit,
     onUpdateSelected: (MangaUpdatesItem, Boolean, Boolean, Boolean) -> Unit,
     onClickCover: (MangaUpdatesItem) -> Unit,
     onClickUpdate: (MangaUpdatesItem) -> Unit,
     onDownloadChapter: (List<MangaUpdatesItem>, ChapterDownloadAction) -> Unit,
+    onMarkGroupRead: (List<MangaUpdatesItem>, Boolean) -> Unit,
 ) {
     items(
         items = uiModels,
         contentType = {
             when (it) {
                 is MangaUpdatesUiModel.Header -> "header"
-                is MangaUpdatesUiModel.Item -> "item"
+                is MangaUpdatesUiModel.Group -> "group"
             }
         },
         key = {
             when (it) {
                 is MangaUpdatesUiModel.Header -> "mangaUpdatesHeader-${it.hashCode()}"
-                is MangaUpdatesUiModel.Item -> "mangaUpdates-${it.item.update.mangaId}-${it.item.update.chapterId}"
+                is MangaUpdatesUiModel.Group -> "mangaUpdatesGroup-${it.key}"
             }
         },
-    ) { item ->
-        when (item) {
+    ) { model ->
+        when (model) {
             is MangaUpdatesUiModel.Header -> {
                 ListGroupHeader(
                     modifier = Modifier.animateItemFastScroll(),
-                    text = relativeDateText(item.date),
+                    text = relativeDateText(model.date),
                 )
             }
-            is MangaUpdatesUiModel.Item -> {
-                val updatesItem = item.item
-                MangaUpdatesUiItem(
+            is MangaUpdatesUiModel.Group -> {
+                val group = model
+                // Ordre de lecture : numéro croissant, puis date. Indispensable
+                // quand plusieurs chapitres arrivent dans le même lot.
+                val orderedItems = remember(group.items) {
+                    group.items.sortedWith(
+                        compareBy<MangaUpdatesItem> {
+                            numberLabel(it.update.chapterName)?.toDoubleOrNull() ?: Double.MAX_VALUE
+                        }.thenBy { it.update.dateFetch },
+                    )
+                }
+                val resume = orderedItems.firstOrNull { !it.update.read } ?: orderedItems.last()
+                val allRead = orderedItems.all { it.update.read }
+                val groupSelected = orderedItems.all { it.selected }
+                val expanded = group.key in expandedGroups
+
+                UpdateGroupCard(
                     modifier = Modifier.animateItemFastScroll(),
-                    update = updatesItem.update,
-                    selected = updatesItem.selected,
-                    readProgress = updatesItem.update.lastPageRead
-                        .takeIf { !updatesItem.update.read && it > 0L }
-                        ?.let {
-                            stringResource(
-                                MR.strings.chapter_progress,
-                                it + 1,
-                            )
-                        },
-                    onLongClick = {
-                        onUpdateSelected(updatesItem, !updatesItem.selected, true, true)
-                    },
-                    onClick = {
-                        when {
-                            selectionMode -> onUpdateSelected(
-                                updatesItem,
-                                !updatesItem.selected,
-                                true,
-                                false,
-                            )
-                            else -> onClickUpdate(updatesItem)
+                    title = orderedItems.first().update.mangaTitle,
+                    summary = groupSummary(orderedItems),
+                    coverData = orderedItems.first().update.coverData,
+                    isSelected = selectionMode && groupSelected,
+                    isExpanded = expanded,
+                    onToggleExpand = {
+                        if (selectionMode) {
+                            onSelectGroup(orderedItems, !groupSelected)
+                        } else {
+                            onToggleGroup(group.key)
                         }
                     },
-                    onClickCover = { onClickCover(updatesItem) }.takeIf { !selectionMode },
-                    onDownloadChapter = { action: ChapterDownloadAction ->
-                        onDownloadChapter(listOf(updatesItem), action)
-                    }.takeIf { !selectionMode },
-                    downloadStateProvider = updatesItem.downloadStateProvider,
-                    downloadProgressProvider = updatesItem.downloadProgressProvider,
+                    onLongClick = { onSelectGroup(orderedItems, !groupSelected) },
+                    primaryLabel = primaryLabel(resume).takeIf { !selectionMode },
+                    onPrimaryClick = { onClickUpdate(resume) },
+                    onClickCover = { onClickCover(orderedItems.first()) }.takeIf { !selectionMode },
+                    trailingContent = {
+                        if (!selectionMode) {
+                            ChapterDownloadIndicator(
+                                enabled = true,
+                                modifier = Modifier.padding(start = 4.dp),
+                                downloadStateProvider = resume.downloadStateProvider,
+                                downloadProgressProvider = resume.downloadProgressProvider,
+                                onClick = { onDownloadChapter(listOf(resume), it) },
+                            )
+                        }
+                    },
+                    expandedContent = {
+                        orderedItems.forEach { item ->
+                            UpdateGroupRow(
+                                label = item.update.chapterName,
+                                meta = relativeTimeSpanString(item.update.dateFetch),
+                                isUnread = !item.update.read,
+                                isSelected = item.selected,
+                                onClick = {
+                                    if (selectionMode) {
+                                        onUpdateSelected(item, !item.selected, true, false)
+                                    } else {
+                                        onClickUpdate(item)
+                                    }
+                                },
+                                onLongClick = {
+                                    onUpdateSelected(item, !item.selected, true, true)
+                                },
+                                trailingContent = {
+                                    ChapterDownloadIndicator(
+                                        enabled = !selectionMode,
+                                        modifier = Modifier.padding(start = 4.dp),
+                                        downloadStateProvider = item.downloadStateProvider,
+                                        downloadProgressProvider = item.downloadProgressProvider,
+                                        onClick = { onDownloadChapter(listOf(item), it) },
+                                    )
+                                },
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(
+                                onClick = { onMarkGroupRead(orderedItems, true) },
+                                enabled = !allRead,
+                            ) {
+                                Text(text = "Tout marquer lu")
+                            }
+                            TextButton(
+                                onClick = { onDownloadChapter(orderedItems, ChapterDownloadAction.START) },
+                            ) {
+                                Text(text = "Tout télécharger")
+                            }
+                        }
+                    },
                 )
             }
         }
     }
 }
 
-@Composable
-private fun MangaUpdatesUiItem(
-    update: MangaUpdatesWithRelations,
-    selected: Boolean,
-    readProgress: String?,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onClickCover: (() -> Unit)?,
-    onDownloadChapter: ((ChapterDownloadAction) -> Unit)?,
-    // Download Indicator
-    downloadStateProvider: () -> MangaDownload.State,
-    downloadProgressProvider: () -> Int,
-    modifier: Modifier = Modifier,
-) {
-    eu.kanade.presentation.updates.components.UpdateBannerItem(
-        title = update.mangaTitle,
-        subtitle = update.chapterName,
-        coverData = update.coverData,
-        isReadOrSeen = update.read,
-        isBookmarked = update.bookmark,
-        isSelected = selected,
-        watchProgress = readProgress,
-        onClick = onClick,
-        onLongClick = onLongClick,
-        onClickCover = onClickCover,
-        trailingContent = {
-            ChapterDownloadIndicator(
-                enabled = onDownloadChapter != null,
-                modifier = Modifier.padding(start = 4.dp),
-                downloadStateProvider = downloadStateProvider,
-                downloadProgressProvider = downloadProgressProvider,
-                onClick = { onDownloadChapter?.invoke(it) },
-            )
-        },
-        modifier = modifier
-    )
+private val TrailingNumber = Regex("""(\d+(?:[.,]\d+)?)\s*$""")
+
+private fun numberLabel(name: String): String? =
+    TrailingNumber.find(name.trim())
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.replace(',', '.')
+
+private fun shortChapterLabel(name: String): String? =
+    numberLabel(name)?.let { "Ch. $it" }
+
+private fun chapterRange(items: List<MangaUpdatesItem>): String? {
+    val first = numberLabel(items.firstOrNull()?.update?.chapterName.orEmpty()) ?: return null
+    val last = numberLabel(items.lastOrNull()?.update?.chapterName.orEmpty()) ?: return null
+    return when {
+        items.size == 1 -> "Ch. $first"
+        first == last -> "Ch. $first"
+        else -> "Ch. $first–$last"
+    }
+}
+
+private fun groupSummary(items: List<MangaUpdatesItem>): String {
+    val unread = items.count { !it.update.read }
+    val base = when (unread) {
+        0 -> if (items.size == 1) "Lu" else "Tout est lu"
+        1 -> "1 nouveau chapitre"
+        else -> "$unread nouveaux chapitres"
+    }
+    return chapterRange(items)?.let { "$base · $it" } ?: base
+}
+
+private fun primaryLabel(item: MangaUpdatesItem): String {
+    val short = shortChapterLabel(item.update.chapterName)
+    return when {
+        item.update.read -> short?.let { "Relire $it" } ?: "Relire"
+        short != null -> "Reprendre $short"
+        else -> "Reprendre"
+    }
 }

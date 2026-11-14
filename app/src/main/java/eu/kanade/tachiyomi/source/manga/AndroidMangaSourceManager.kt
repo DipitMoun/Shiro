@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.source.manga
 
 import android.content.Context
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
+import eu.kanade.tachiyomi.data.multisource.MultiSourceMangaSource
 import eu.kanade.tachiyomi.data.telegram.source.TelegramMangaSource
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -46,6 +47,7 @@ class AndroidMangaSourceManager(
 
     override val catalogueSources: Flow<List<CatalogueSource>> = sourcesMapFlow.map {
         it.values.filterIsInstance<CatalogueSource>()
+            .filterNot { source -> source.id == MultiSourceMangaSource.ID }
     }
 
     init {
@@ -60,6 +62,7 @@ class AndroidMangaSourceManager(
                                 Injekt.get(),
                             ),
                             TelegramMangaSource.ID to TelegramMangaSource(),
+                            MultiSourceMangaSource.ID to MultiSourceMangaSource,
                         ),
                     )
                     extensions.forEach { extension ->
@@ -96,7 +99,9 @@ class AndroidMangaSourceManager(
 
     override fun getOnlineSources() = sourcesMapFlow.value.values.filterIsInstance<HttpSource>()
 
-    override fun getCatalogueSources() = sourcesMapFlow.value.values.filterIsInstance<CatalogueSource>()
+    override fun getCatalogueSources() = sourcesMapFlow.value.values
+        .filterIsInstance<CatalogueSource>()
+        .filterNot { it.id == MultiSourceMangaSource.ID }
 
     override fun getStubSources(): List<StubMangaSource> {
         val onlineSourceIds = getOnlineSources().map { it.id }

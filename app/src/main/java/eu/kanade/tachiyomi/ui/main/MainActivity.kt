@@ -99,6 +99,7 @@ import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.ui.player.ExternalIntents
 import eu.kanade.tachiyomi.ui.player.PlayerActivity
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
+import eu.kanade.tachiyomi.ui.social.SocialFriendsScreen
 import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.util.system.isNavigationBarNeedsScrim
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -568,6 +569,10 @@ class MainActivity : BaseActivity() {
                         navigator.popUntilRoot()
                         navigator.push(MangaExtensionReposScreen(repoUrl))
                     }
+                } // Deep link to add a Shiro friend
+                else if (intent.scheme == "shiro" && intent.data?.host == "social") {
+                    navigator.popUntilRoot()
+                    navigator.push(SocialFriendsScreen(intent.data.toString()))
                 }
                 null
             }

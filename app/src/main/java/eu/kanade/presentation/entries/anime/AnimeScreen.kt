@@ -124,6 +124,7 @@ fun AnimeScreen(
     onWebViewClicked: (() -> Unit)?,
     onWebViewLongClicked: (() -> Unit)?,
     onTrackingClicked: (() -> Unit)?,
+    onChatClicked: (() -> Unit)? = null,
 
     // For tags menu
     onTagSearch: (String) -> Unit,
@@ -198,6 +199,7 @@ fun AnimeScreen(
             onWebViewClicked = onWebViewClicked,
             onWebViewLongClicked = onWebViewLongClicked,
             onTrackingClicked = onTrackingClicked,
+            onChatClicked = onChatClicked,
             onTagSearch = onTagSearch,
             onCopyTagToClipboard = onCopyTagToClipboard,
             onFilterClicked = onFilterButtonClicked,
@@ -245,6 +247,7 @@ fun AnimeScreen(
             onWebViewClicked = onWebViewClicked,
             onWebViewLongClicked = onWebViewLongClicked,
             onTrackingClicked = onTrackingClicked,
+            onChatClicked = onChatClicked,
             onTagSearch = onTagSearch,
             onCopyTagToClipboard = onCopyTagToClipboard,
             onFilterButtonClicked = onFilterButtonClicked,
@@ -296,6 +299,7 @@ private fun AnimeScreenSmallImpl(
     onWebViewClicked: (() -> Unit)?,
     onWebViewLongClicked: (() -> Unit)?,
     onTrackingClicked: (() -> Unit)?,
+    onChatClicked: (() -> Unit)? = null,
 
     // For tags menu
     onTagSearch: (String) -> Unit,
@@ -520,6 +524,7 @@ private fun AnimeScreenSmallImpl(
                             onWebViewClicked = onWebViewClicked,
                             onWebViewLongClicked = onWebViewLongClicked,
                             onTrackingClicked = onTrackingClicked,
+                            onChatClicked = onChatClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
                             sourceMapping = sourceMapping,
@@ -654,6 +659,7 @@ fun AnimeScreenLargeImpl(
     onWebViewClicked: (() -> Unit)?,
     onWebViewLongClicked: (() -> Unit)?,
     onTrackingClicked: (() -> Unit)?,
+    onChatClicked: (() -> Unit)? = null,
 
     // For tags menu
     onTagSearch: (String) -> Unit,
@@ -855,6 +861,7 @@ fun AnimeScreenLargeImpl(
                                 onWebViewClicked = onWebViewClicked,
                                 onWebViewLongClicked = onWebViewLongClicked,
                                 onTrackingClicked = onTrackingClicked,
+                                onChatClicked = onChatClicked,
                                 onEditIntervalClicked = onEditIntervalClicked,
                                 onEditCategory = onEditCategoryClicked,
                                 sourceMapping = sourceMapping,

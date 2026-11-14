@@ -274,6 +274,41 @@ class TelegramLibraryImporter(
     }
 
     /**
+     * Crée (ou retrouve) la fiche bibliothèque d'une œuvre documentaire
+     * (manga/BD) ouverte depuis la source Telegram native.
+     *
+     * Elle reste hors bibliothèque (`favorite = false`) tant que l'utilisateur
+     * ne l'ajoute pas explicitement.
+     */
+    suspend fun ensureMangaWork(
+        chatId: Long,
+        slug: String,
+        title: String,
+        coverUrl: String?,
+    ): Long? {
+        val url = TelegramUrls.manga(chatId, slug)
+        mangaRepository.getMangaByUrlAndSourceId(url, TelegramMangaSource.ID)?.let {
+            return it.id
+        }
+
+        val now = System.currentTimeMillis()
+        return mangaRepository.insertManga(
+            Manga.create().copy(
+                source = TelegramMangaSource.ID,
+                url = url,
+                title = title,
+                thumbnailUrl = coverUrl,
+                favorite = false,
+                dateAdded = now,
+                lastUpdate = now,
+                nextUpdate = now + DAY_MS,
+                initialized = false,
+                lastModifiedAt = now,
+            ),
+        )
+    }
+
+    /**
      * Met à jour une fiche agrégée déjà ouverte après une reconnaissance
      * manuelle. `initialized = false` force AnimeScreen à relire les détails
      * complets depuis TelegramAnimeSource.

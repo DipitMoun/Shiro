@@ -43,6 +43,9 @@ import eu.kanade.tachiyomi.data.telegram.index.TelegramSyncJob
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.di.PreferenceModule
 import eu.kanade.tachiyomi.network.NetworkHelper
+import org.matrix.rustcomponents.sdk.LogLevel
+import org.matrix.rustcomponents.sdk.TracingConfiguration
+import org.matrix.rustcomponents.sdk.initPlatform
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.ui.base.delegate.SecureActivityDelegate
 import eu.kanade.tachiyomi.util.system.DeviceUtil
@@ -87,8 +90,24 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         patchInjekt()
 
         // Matrix Rust SDK: rustls-platform-verifier needs the Android Context
-        // before the first TLS handshake. The native library is loaded first.
-        org.matrix.rustsdk.Android.init(applicationContext)
+        // before the first TLS handshake, then initPlatform starts the FFI
+        // runtime and installs the native verifier.
+        try {
+            org.matrix.rustsdk.Android.init(applicationContext)
+            initPlatform(
+                TracingConfiguration(
+                    logLevel = LogLevel.INFO,
+                    traceLogPacks = emptyList(),
+                    extraTargets = emptyList(),
+                    writeToStdoutOrSystem = true,
+                    writeToFiles = null,
+                    sentryConfig = null,
+                ),
+                useLightweightTokioRuntime = false,
+            )
+        } catch (t: Throwable) {
+            android.util.Log.e("SocialOverlay", "Matrix platform init failed", t)
+        }
 
         GlobalExceptionHandler.initialize(applicationContext, CrashActivity::class.java)
 

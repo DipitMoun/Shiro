@@ -53,4 +53,22 @@ interface MatrixRoomTransport {
      * Called for each [eu.kanade.tachiyomi.data.social.audience.AudiencePlan.invited].
      */
     suspend fun invite(roomId: String, inviteeMxid: String): SocialResult<Unit>
+
+    /**
+     * Creation time of [roomId], read from its `m.room.create` state event.
+     * Used once to distinguish a real legacy room from a room bound to a
+     * recycled SQLite row id.
+     */
+    suspend fun roomCreatedAt(roomId: String): SocialResult<Long?> = SocialResult.Success(null)
+
+    /** Bodies of the thread roots already present in [roomId]. */
+    suspend fun threadRootBodies(roomId: String): SocialResult<List<String>> =
+        SocialResult.Success(emptyList())
+
+    /** Updates a migrated legacy room's user-visible name and topic. */
+    suspend fun updateRoomMetadata(
+        roomId: String,
+        name: String,
+        topic: String,
+    ): SocialResult<Unit> = SocialResult.Success(Unit)
 }

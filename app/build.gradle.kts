@@ -71,6 +71,7 @@ android {
         val release by getting {
             isMinifyEnabled = Config.enableCodeShrink
             isShrinkResources = Config.enableCodeShrink
+            signingConfig = signingConfigs.getByName("release")
 
             proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
 
@@ -122,6 +123,7 @@ android {
     packaging {
         jniLibs {
             pickFirsts += "**/libtdjson.so"
+            useLegacyPackaging = true
         }
         jniLibs {
             keepDebugSymbols += listOf(
@@ -208,6 +210,8 @@ kotlin {
 
 dependencies {
     implementation("io.github.tdlib-android:core:0.1.1")
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation(projects.i18n)
     implementation(projects.i18nAniyomi)
     implementation(projects.core.archive)

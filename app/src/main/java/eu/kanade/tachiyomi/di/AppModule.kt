@@ -28,6 +28,7 @@ import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadProvider
 import eu.kanade.tachiyomi.data.multisource.MultiSourceMappingStore
+import eu.kanade.tachiyomi.data.multisource.MultiSourceMangaWorkOpener
 import eu.kanade.tachiyomi.data.multisource.MultiSourceWorkOpener
 import eu.kanade.tachiyomi.data.multisource.MultiSourceWorkStore
 import eu.kanade.tachiyomi.data.saver.ImageSaver
@@ -38,6 +39,12 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository
 import eu.kanade.tachiyomi.data.social.matrix.catalog.RustSocialThreadCatalog
 import eu.kanade.tachiyomi.data.social.matrix.catalog.SocialThreadCatalog
 import eu.kanade.tachiyomi.data.social.matrix.command.RustCommandDispatcher
+import eu.kanade.tachiyomi.data.social.friends.PersistentSocialFriendStore
+import eu.kanade.tachiyomi.data.social.friends.RustSocialFriendInviteAccepter
+import eu.kanade.tachiyomi.data.social.friends.SocialFriendInviteAccepter
+import eu.kanade.tachiyomi.data.social.friends.SocialFriendStore
+import eu.kanade.tachiyomi.data.social.matrix.media.RustSocialAvatarLoader
+import eu.kanade.tachiyomi.data.social.matrix.media.SocialAvatarLoader
 import eu.kanade.tachiyomi.data.social.matrix.push.PushRegistrar
 import eu.kanade.tachiyomi.data.social.matrix.push.RustPushRegistrar
 import eu.kanade.tachiyomi.data.social.matrix.room.InMemoryRoomBindingStore
@@ -297,6 +304,7 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { MultiSourceWorkStore(app) }
         addSingletonFactory { MultiSourceMappingStore(app) }
         addSingletonFactory { MultiSourceWorkOpener(get(), get()) }
+        addSingletonFactory { MultiSourceMangaWorkOpener(get(), get()) }
 
         // P2-10b - Social Matrix layer
         addSingletonFactory { MatrixStoreKeyProvider(app) }
@@ -315,6 +323,20 @@ class AppModule(val app: Application) : InjektModule {
                 clientProvider = { delegate.clientOrNull() },
                 bindings = get<RoomBindingStore>(),
             )
+        }
+        addSingletonFactory<SocialFriendStore> {
+            PersistentSocialFriendStore(app)
+        }
+        addSingletonFactory<SocialFriendInviteAccepter> {
+            val delegate = get<RustSessionDelegate>()
+            RustSocialFriendInviteAccepter(
+                clientProvider = { delegate.clientOrNull() },
+                friends = get<SocialFriendStore>(),
+            )
+        }
+        addSingletonFactory<SocialAvatarLoader> {
+            val delegate = get<RustSessionDelegate>()
+            RustSocialAvatarLoader(clientProvider = { delegate.clientOrNull() })
         }
         addSingletonFactory<MatrixRoomTransport> {
             val delegate = get<RustSessionDelegate>()

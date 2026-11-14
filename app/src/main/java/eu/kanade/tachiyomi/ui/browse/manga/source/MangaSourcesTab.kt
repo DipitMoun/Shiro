@@ -40,11 +40,14 @@ import eu.kanade.presentation.browse.manga.components.MangaExtensionIcon
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.tachiyomi.data.multisource.MultiSourceMappingStore
+import eu.kanade.tachiyomi.data.telegram.index.TelegramMediaKind
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.ui.browse.manga.source.browse.BrowseMangaSourceScreen
 import eu.kanade.tachiyomi.ui.browse.manga.source.discover.MangaDiscoverScreenModel
 import eu.kanade.tachiyomi.ui.browse.manga.source.globalsearch.GlobalMangaSearchScreen
+import eu.kanade.tachiyomi.ui.browse.telegram.TelegramSourceScreen
+import eu.kanade.tachiyomi.ui.entries.manga.MangaScreen
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.aniyomi.AYMR
@@ -90,6 +93,12 @@ fun Screen.mangaSourcesTab(): TabContent {
         screenModel.load()
     }
 
+    LaunchedEffect(state.openMangaId) {
+        val mangaId = state.openMangaId ?: return@LaunchedEffect
+        screenModel.consumeOpen()
+        navigator.push(MangaScreen(mangaId, fromSource = true))
+    }
+
     return TabContent(
         titleRes = AYMR.strings.label_manga_sources,
         actions = persistentListOf(
@@ -109,7 +118,9 @@ fun Screen.mangaSourcesTab(): TabContent {
                 state = state,
                 contentPadding = contentPadding,
                 onRetry = screenModel::retry,
-                onOpenTelegramSource = { /* TODO Phase B: navigator.push(TelegramSourceScreen()) */ },
+                onOpenTelegramSource = {
+                    navigator.push(TelegramSourceScreen(TelegramMediaKind.DOCUMENT))
+                },
                 onOpenLocalMangaSource = {
                     navigator.push(
                         BrowseMangaSourceScreen(
@@ -118,7 +129,7 @@ fun Screen.mangaSourcesTab(): TabContent {
                         ),
                     )
                 },
-                onOpenWork = { /* TODO Phase B: multisource manga */ },
+                onOpenWork = screenModel::open,
             )
 
             if (showMappingSources) {

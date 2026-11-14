@@ -21,6 +21,24 @@ class InMemoryRoomBindingStore : RoomBindingStore {
         return SocialResult.Success(Unit)
     }
 
+    override suspend fun migrateRoom(from: SocialRoomKey, to: SocialRoomKey): SocialResult<Unit> {
+        val oldPrefix = from.value + SocialRoomKey.SEPARATOR
+        val newPrefix = to.value + SocialRoomKey.SEPARATOR
+        threads.keys.toList()
+            .filter { it.startsWith(oldPrefix) }
+            .forEach { key -> threads[newPrefix + key.removePrefix(oldPrefix)] = threads.getValue(key) }
+        return SocialResult.Success(Unit)
+    }
+
+    override suspend fun roomsForAuthor(
+        authorMxid: String,
+    ): SocialResult<List<Pair<SocialRoomKey, String>>> = SocialResult.Success(
+        rooms.entries.mapNotNull { (key, roomId) ->
+            val parsed = SocialRoomKey.parse(key) ?: return@mapNotNull null
+            if (parsed.authorMxid == authorMxid) parsed to roomId else null
+        },
+    )
+
     override suspend fun resolveThreadRoot(key: SocialThreadKey): SocialResult<String?> =
         SocialResult.Success(threads[key.value])
 

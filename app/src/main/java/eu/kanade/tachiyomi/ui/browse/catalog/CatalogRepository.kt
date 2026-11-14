@@ -53,6 +53,12 @@ class CatalogRepository(
         val fetchedAt: Long,
     )
 
+    private data class CachedAniListId(
+        /** -1 = résolution tentée mais aucune œuvre trouvée. */
+        val id: Int,
+        val at: Long,
+    )
+
     suspend fun search(
         query: String,
         onPartial: (List<CatalogWork>) -> Unit = {},
@@ -120,7 +126,9 @@ class CatalogRepository(
         if (anilistIds.isEmpty()) return@withContext emptyList()
 
         val now = System.currentTimeMillis() / 1000L
-        val nextWeek = now + 7 * 24 * 3600
+        // Un mois : le calendrier mensuel de la page Mises à jour doit être
+        // alimenté au-delà de la semaine courante.
+        val windowEnd = now + 31 * 24 * 3600
 
         val query = """
             query (${'$'}ids: [Int], ${'$'}from: Int, ${'$'}to: Int) {
@@ -143,7 +151,7 @@ class CatalogRepository(
         val vars = buildJsonObject {
             put("ids", JsonArray(anilistIds.map { JsonPrimitive(it) }))
             put("from", JsonPrimitive(now))
-            put("to", JsonPrimitive(nextWeek))
+            put("to", JsonPrimitive(windowEnd))
         }
 
         val response = anilistRequest(query, vars) ?: return@withContext emptyList()
@@ -162,6 +170,66 @@ class CatalogRepository(
                 )
             }
         }.sortedBy { it.airingAt }
+    }
+
+    /**
+     * Retrouve l'identifiant AniList à partir d'un identifiant MyAnimeList.
+     *
+     * AniList reste la seule source fiable pour le planning de diffusion ; MAL,
+     * Kitsu et Shikimori servent à retrouver l'œuvre quand l'utilisateur ne la
+     * suit pas directement sur AniList.
+     */
+    suspend fun resolveAniListIdByMal(malId: Long): Int? = withContext(Dispatchers.IO) {
+        if (malId <= 0L) return@withContext null
+        val key = "mal:$malId"
+        readCachedAniListId(key)?.let { return@withContext it.takeIf { id -> id > 0 } }
+
+        val response = runCatching {
+            anilistRequest(
+                ANILIST_ID_BY_MAL_QUERY,
+                buildJsonObject { put("idMal", JsonPrimitive(malId.toInt())) },
+            )
+        }.getOrNull()
+        val id = response?.let {
+            runCatching { json.decodeFromString<AniListIdResponse>(it).data?.Media?.id }.getOrNull()
+        }
+        writeCachedAniListId(key, id)
+        id
+    }
+
+    /** Retrouve l'identifiant AniList à partir d'un titre (repli multi-fournisseurs). */
+    suspend fun resolveAniListIdByTitle(title: String): Int? = withContext(Dispatchers.IO) {
+        val normalized = normalizeTitle(title)
+        if (normalized.isBlank()) return@withContext null
+        val key = "title:$normalized"
+        readCachedAniListId(key)?.let { return@withContext it.takeIf { id -> id > 0 } }
+
+        val response = runCatching {
+            anilistRequest(
+                ANILIST_ID_BY_SEARCH_QUERY,
+                buildJsonObject { put("search", title) },
+            )
+        }.getOrNull()
+        val id = response?.let {
+            runCatching {
+                json.decodeFromString<AniListResponse>(it).data?.Page?.media?.firstOrNull()?.id
+            }.getOrNull()
+        }
+        writeCachedAniListId(key, id)
+        id
+    }
+
+    private fun readCachedAniListId(key: String): Int? {
+        val now = System.currentTimeMillis()
+        return synchronized(cacheLock) {
+            aniListIdCache[key]?.takeIf { now - it.at < ANILIST_ID_TTL_MS }?.id
+        }
+    }
+
+    private fun writeCachedAniListId(key: String, id: Int?) {
+        synchronized(cacheLock) {
+            aniListIdCache[key] = CachedAniListId(id ?: -1, System.currentTimeMillis())
+        }
     }
 
     @Serializable
@@ -451,6 +519,15 @@ class CatalogRepository(
     private data class AniListResponse(val data: AniListData? = null)
 
     @Serializable
+    private data class AniListIdResponse(val data: AniListIdData? = null)
+
+    @Serializable
+    private data class AniListIdData(val Media: AniListMediaId? = null)
+
+    @Serializable
+    private data class AniListMediaId(val id: Int)
+
+    @Serializable
     private data class AniListDiscoverResponse(val data: AniListDiscoverData? = null)
 
     @Serializable
@@ -582,12 +659,14 @@ class CatalogRepository(
         const val RECOMMENDATIONS_TIMEOUT_MS = 15_000L
         const val FEED_CACHE_TTL_MS = 60 * 60 * 1000L
         const val RECOMMENDATIONS_CACHE_TTL_MS = 60 * 60 * 1000L
+        const val ANILIST_ID_TTL_MS = 6 * 60 * 60 * 1000L
 
         // Partagé entre les instances du repository : changer d'onglet ne doit
         // pas relancer AniList si la page de découverte est recréée.
         val cacheLock = Any()
         var discoverCache: CachedDiscover? = null
         val recommendationsCache = mutableMapOf<String, CachedRecommendations>()
+        val aniListIdCache = mutableMapOf<String, CachedAniListId>()
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
         val COMBINING_MARKS = Regex("\\p{M}+")
         val NON_ALNUM = Regex("[^a-z0-9]+")
@@ -610,6 +689,24 @@ class CatalogRepository(
                   format
                   seasonYear
                   genres
+                }
+              }
+            }
+        """
+
+        const val ANILIST_ID_BY_MAL_QUERY = """
+            query (${'$'}idMal: Int) {
+              Media(idMal: ${'$'}idMal, type: ANIME) {
+                id
+              }
+            }
+        """
+
+        const val ANILIST_ID_BY_SEARCH_QUERY = """
+            query (${'$'}search: String) {
+              Page(page: 1, perPage: 1) {
+                media(search: ${'$'}search, type: ANIME, isAdult: false, sort: SEARCH_MATCH) {
+                  id
                 }
               }
             }

@@ -83,13 +83,40 @@ class RustCommandDispatcher(
                 }
             }
 
-            is SocialCommand.React -> withTimeline(client, command.thread) { timeline ->
-                val ok = timeline.toggleReaction(
-                    EventOrTransactionId.EventId(command.eventId),
-                    command.key,
-                )
-                if (ok) SocialResult.Success("")
-                else SocialResult.Failure(SocialError.Unknown("toggleReaction returned false"))
+            is SocialCommand.React -> {
+                val roomId = resolveRoom(command.thread)
+                    ?: return failure("Room not bound for ${command.thread.describe()}")
+                val room = client.getRoom(roomId)
+                    ?: return failure("Room $roomId not found")
+                val rootId = resolveRoot(command.thread)
+                    ?: return failure("Thread root not bound for ${command.thread.describe()}")
+                val timeline = openTimeline(room, rootId)
+                try {
+                    // Load the current thread window so the target item is
+                    // present, including its aggregated reactions. Without
+                    // this, toggleReaction cannot detect an existing reaction
+                    // and Matrix rejects the duplicate instead of removing it.
+                    timeline.paginateBackwards(100.toUShort())
+                    // true = added, false = removed; both are successful
+                    // outcomes of a toggle.
+                    timeline.toggleReaction(
+                        EventOrTransactionId.EventId(command.eventId),
+                        command.key,
+                    )
+                    SocialResult.Success("")
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (t: Throwable) {
+                    // Matrix rejects adding the same reaction twice. The UI is
+                    // already showing that reaction, so treat it as a no-op.
+                    if (t.message?.contains("same reaction", ignoreCase = true) == true) {
+                        SocialResult.Success("")
+                    } else {
+                        SocialResult.Failure(mapError(t, "react"))
+                    }
+                } finally {
+                    try { timeline.close() } catch (_: Throwable) {}
+                }
             }
 
             is SocialCommand.Edit -> withTimeline(client, command.thread) { timeline ->

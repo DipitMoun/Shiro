@@ -19,6 +19,7 @@ import eu.kanade.presentation.entries.components.EntryBottomActionMenu
 import eu.kanade.tachiyomi.data.download.anime.model.AnimeDownload
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.ui.updates.anime.AnimeUpdatesItem
+import eu.kanade.tachiyomi.util.lang.toLocalDate
 import eu.kanade.tachiyomi.ui.updates.anime.AnimeUpdatesScreenModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -48,7 +49,9 @@ fun AnimeUpdateScreen(
     onMultiMarkAsSeenClicked: (List<AnimeUpdatesItem>, seen: Boolean) -> Unit,
     onMultiDeleteClicked: (List<AnimeUpdatesItem>) -> Unit,
     onUpdateSelected: (AnimeUpdatesItem, Boolean, Boolean, Boolean) -> Unit,
+    onSelectGroup: (List<AnimeUpdatesItem>, Boolean) -> Unit,
     onOpenEpisode: (AnimeUpdatesItem, altPlayer: Boolean) -> Unit,
+    onClickUpcoming: (eu.kanade.tachiyomi.ui.browse.catalog.AiringEvent) -> Unit,
 ) {
     BackHandler(enabled = state.selectionMode, onBack = { onSelectAll(false) })
 
@@ -77,6 +80,7 @@ fun AnimeUpdateScreen(
                 var isRefreshing by remember { mutableStateOf(false) }
 
                       var selectedDate by remember { mutableStateOf<java.time.LocalDate?>(null) }
+                      var expandedGroups by remember { mutableStateOf<Set<String>>(emptySet()) }
                       val models = state.getUiModel()
                       val filteredModels = if (selectedDate == null) models else {
                           val result = mutableListOf<AnimeUpdatesUiModel>()
@@ -85,7 +89,7 @@ fun AnimeUpdateScreen(
                               if (m is AnimeUpdatesUiModel.Header) {
                                   currentDate = m.date
                                   if (m.date == selectedDate) result.add(m)
-                              } else if (m is AnimeUpdatesUiModel.Item && currentDate == selectedDate) {
+                              } else if (m is AnimeUpdatesUiModel.Group && currentDate == selectedDate) {
                                   result.add(m)
                               }
                           }
@@ -111,9 +115,28 @@ fun AnimeUpdateScreen(
                         contentPadding = contentPadding,
                     ) {
                           item(key = "calendar") {
-                              eu.kanade.presentation.updates.components.HorizontalWeekCalendar(
+                              val releaseCounts = remember(state.items, state.upcoming) {
+                                  val now = System.currentTimeMillis() / 1000L
+                                  val counts = mutableMapOf<java.time.LocalDate, Int>()
+                                  state.items.forEach {
+                                      counts.merge(it.update.dateFetch.toLocalDate(), 1, Int::plus)
+                                  }
+                                  state.upcoming
+                                      .filter { it.airingAt >= now && it.episode > 0 }
+                                      .forEach { event ->
+                                          val date = java.time.Instant.ofEpochSecond(event.airingAt)
+                                              .atZone(java.time.ZoneId.systemDefault())
+                                              .toLocalDate()
+                                          counts.merge(date, 1, Int::plus)
+                                      }
+                                  counts
+                              }
+                              eu.kanade.presentation.updates.components.UpdatesCalendarSection(
                                   selectedDate = selectedDate,
-                                  onDateSelected = { selectedDate = if (selectedDate == it) null else it }
+                                  onDateSelected = { selectedDate = if (selectedDate == it) null else it },
+                                  releaseCounts = releaseCounts,
+                                  upcoming = state.upcoming,
+                                  onClickUpcoming = onClickUpcoming,
                               )
                           }
                         animeUpdatesLastUpdatedItem(lastUpdated)
@@ -121,10 +144,20 @@ fun AnimeUpdateScreen(
                         animeUpdatesUiItems(
                             uiModels = filteredModels,
                             selectionMode = state.selectionMode,
+                            expandedGroups = expandedGroups,
+                            onToggleGroup = { key ->
+                                expandedGroups = if (key in expandedGroups) {
+                                    expandedGroups - key
+                                } else {
+                                    expandedGroups + key
+                                }
+                            },
+                            onSelectGroup = onSelectGroup,
                             onUpdateSelected = onUpdateSelected,
                             onClickCover = onClickCover,
                             onClickUpdate = onOpenEpisode,
                             onDownloadEpisode = onDownloadEpisode,
+                            onMarkGroupSeen = onMultiMarkAsSeenClicked,
                         )
                     }
                 }
@@ -185,5 +218,8 @@ private fun AnimeUpdatesBottomBar(
 
 sealed interface AnimeUpdatesUiModel {
     data class Header(val date: LocalDate) : AnimeUpdatesUiModel
-    data class Item(val item: AnimeUpdatesItem) : AnimeUpdatesUiModel
+    data class Group(
+        val key: String,
+        val items: List<AnimeUpdatesItem>,
+    ) : AnimeUpdatesUiModel
 }

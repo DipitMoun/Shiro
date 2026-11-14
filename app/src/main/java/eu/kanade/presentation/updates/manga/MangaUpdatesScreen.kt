@@ -18,6 +18,7 @@ import eu.kanade.presentation.entries.components.EntryBottomActionMenu
 import eu.kanade.presentation.entries.manga.components.ChapterDownloadAction
 import eu.kanade.tachiyomi.data.download.manga.model.MangaDownload
 import eu.kanade.tachiyomi.ui.updates.manga.MangaUpdatesItem
+import eu.kanade.tachiyomi.util.lang.toLocalDate
 import eu.kanade.tachiyomi.ui.updates.manga.MangaUpdatesScreenModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -44,6 +45,7 @@ fun MangaUpdateScreen(
     onMultiMarkAsReadClicked: (List<MangaUpdatesItem>, read: Boolean) -> Unit,
     onMultiDeleteClicked: (List<MangaUpdatesItem>) -> Unit,
     onUpdateSelected: (MangaUpdatesItem, Boolean, Boolean, Boolean) -> Unit,
+    onSelectGroup: (List<MangaUpdatesItem>, Boolean) -> Unit,
     onOpenChapter: (MangaUpdatesItem) -> Unit,
 ) {
     BackHandler(enabled = state.selectionMode, onBack = { onSelectAll(false) })
@@ -71,6 +73,7 @@ fun MangaUpdateScreen(
                 var isRefreshing by remember { mutableStateOf(false) }
 
                       var selectedDate by remember { mutableStateOf<java.time.LocalDate?>(null) }
+                      var expandedGroups by remember { mutableStateOf<Set<String>>(emptySet()) }
                       val models = state.getUiModel()
                       val filteredModels = if (selectedDate == null) models else {
                           val result = mutableListOf<MangaUpdatesUiModel>()
@@ -79,7 +82,7 @@ fun MangaUpdateScreen(
                               if (m is MangaUpdatesUiModel.Header) {
                                   currentDate = m.date
                                   if (m.date == selectedDate) result.add(m)
-                              } else if (m is MangaUpdatesUiModel.Item && currentDate == selectedDate) {
+                              } else if (m is MangaUpdatesUiModel.Group && currentDate == selectedDate) {
                                   result.add(m)
                               }
                           }
@@ -105,9 +108,17 @@ fun MangaUpdateScreen(
                         contentPadding = contentPadding,
                     ) {
                           item(key = "calendar") {
-                              eu.kanade.presentation.updates.components.HorizontalWeekCalendar(
+                              val releaseCounts = remember(state.items) {
+                                  state.items
+                                      .groupingBy { it.update.dateFetch.toLocalDate() }
+                                      .eachCount()
+                              }
+                              eu.kanade.presentation.updates.components.UpdatesCalendarSection(
                                   selectedDate = selectedDate,
-                                  onDateSelected = { selectedDate = if (selectedDate == it) null else it }
+                                  onDateSelected = { selectedDate = if (selectedDate == it) null else it },
+                                  releaseCounts = releaseCounts,
+                                  upcoming = emptyList(),
+                                  onClickUpcoming = {},
                               )
                           }
                         mangaUpdatesLastUpdatedItem(lastUpdated)
@@ -115,10 +126,20 @@ fun MangaUpdateScreen(
                         mangaUpdatesUiItems(
                             uiModels = filteredModels,
                             selectionMode = state.selectionMode,
+                            expandedGroups = expandedGroups,
+                            onToggleGroup = { key ->
+                                expandedGroups = if (key in expandedGroups) {
+                                    expandedGroups - key
+                                } else {
+                                    expandedGroups + key
+                                }
+                            },
+                            onSelectGroup = onSelectGroup,
                             onUpdateSelected = onUpdateSelected,
                             onClickCover = onClickCover,
                             onClickUpdate = onOpenChapter,
                             onDownloadChapter = onDownloadChapter,
+                            onMarkGroupRead = onMultiMarkAsReadClicked,
                         )
                     }
                 }
@@ -164,5 +185,8 @@ private fun MangaUpdatesBottomBar(
 
 sealed interface MangaUpdatesUiModel {
     data class Header(val date: LocalDate) : MangaUpdatesUiModel
-    data class Item(val item: MangaUpdatesItem) : MangaUpdatesUiModel
+    data class Group(
+        val key: String,
+        val items: List<MangaUpdatesItem>,
+    ) : MangaUpdatesUiModel
 }

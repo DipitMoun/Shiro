@@ -6,10 +6,12 @@ import eu.kanade.domain.entries.manga.model.toSManga
 import eu.kanade.tachiyomi.data.cache.MangaCoverCache
 import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.entries.manga.model.Manga
+import tachiyomi.domain.entries.manga.model.MangaUpdate
 import tachiyomi.source.local.entries.manga.isLocal
 import tachiyomi.source.local.image.manga.LocalMangaCoverManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.IOException
 import java.io.InputStream
 import java.time.Instant
 
@@ -56,9 +58,22 @@ suspend fun Manga.editCover(
     coverCache: MangaCoverCache = Injekt.get(),
 ) {
     if (isLocal()) {
-        coverManager.update(toSManga(), stream)
-        updateManga.awaitUpdateCoverLastModified(id)
-    } else if (favorite) {
+        // The local manager creates `cover.jpg` when the entry has none. The
+        // returned URI must be persisted, otherwise the UI keeps loading the
+        // old (empty) thumbnail and the new cover never shows up.
+        val cover = coverManager.update(toSManga(), stream)
+            ?: throw IOException("Cannot write cover for local entry $id")
+        updateManga.await(
+            MangaUpdate(
+                id = id,
+                thumbnailUrl = cover.uri.toString(),
+                coverLastModified = Instant.now().toEpochMilli(),
+            ),
+        )
+    } else {
+        // A custom cover is cached by id, not by library membership: it must
+        // also work for source-only entries (Telegram works are not favorites
+        // until the user adds them to the library).
         coverCache.setCustomCoverToCache(this, stream)
         updateManga.awaitUpdateCoverLastModified(id)
     }

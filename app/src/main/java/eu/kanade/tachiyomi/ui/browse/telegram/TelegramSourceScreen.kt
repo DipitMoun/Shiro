@@ -106,6 +106,7 @@ import eu.kanade.tachiyomi.data.telegram.saved.TelegramSavedWork
 import eu.kanade.tachiyomi.data.telegram.saved.stableKey
 import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramAuthState
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen
+import eu.kanade.tachiyomi.ui.entries.manga.MangaScreen
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
@@ -118,12 +119,14 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
  * Le rendu reprend celui d'une source d'animés classique :
  * barre d'outils, deux filtres « Œuvres » / « Canaux » et grille de couvertures.
  */
-class TelegramSourceScreen : Screen() {
+class TelegramSourceScreen(
+    private val kind: TelegramMediaKind = TelegramMediaKind.VIDEO,
+) : Screen() {
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val model = rememberScreenModel { TelegramScreenModel() }
+        val model = rememberScreenModel { TelegramScreenModel(kind) }
         val state by model.state.collectAsState()
         val snackbarHostState = remember { SnackbarHostState() }
 
@@ -507,8 +510,12 @@ class TelegramSourceScreen : Screen() {
                             if (selectionMode) {
                                 toggleWorkSelection(work, selectedKeys) { selectedKeys = it }
                             } else {
-                                model.openWork(work) { animeId ->
-                                    navigator.push(AnimeScreen(animeId, fromSource = true))
+                                model.openWork(work) { entryId ->
+                                    if (kind == TelegramMediaKind.DOCUMENT) {
+                                        navigator.push(MangaScreen(entryId, fromSource = true))
+                                    } else {
+                                        navigator.push(AnimeScreen(entryId, fromSource = true))
+                                    }
                                 }
                             }
                         },
@@ -532,7 +539,11 @@ class TelegramSourceScreen : Screen() {
                         },
                         onSync = { channel -> model.syncChannelNow(channel.chatId) },
                         onImport = { channel ->
-                            model.importChannel(channel.chatId, includeUnknown = false, includeDocuments = false)
+                            model.importChannel(
+                                channel.chatId,
+                                includeUnknown = false,
+                                includeDocuments = kind == TelegramMediaKind.DOCUMENT,
+                            )
                         },
                         onOpenUnresolved = { channel ->
                             navigator.push(
@@ -596,10 +607,18 @@ class TelegramSourceScreen : Screen() {
                 AddChannelsSheet(
                     chats = state.chats,
                     loading = state.loadingChats,
-                    selected = state.videoChats,
+                    selected = if (kind == TelegramMediaKind.DOCUMENT) {
+                        state.docChats
+                    } else {
+                        state.videoChats
+                    },
                     onReload = model::loadChats,
                     onConfirm = { selection ->
-                        model.saveSelection(selection, state.docChats)
+                        if (kind == TelegramMediaKind.DOCUMENT) {
+                            model.saveSelection(state.videoChats, selection)
+                        } else {
+                            model.saveSelection(selection, state.docChats)
+                        }
                         showChannelSheet = false
                     },
                 )

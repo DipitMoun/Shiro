@@ -8,7 +8,6 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
 import eu.kanade.core.util.addOrRemove
-import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.items.chapter.interactor.SetReadStatus
 import eu.kanade.presentation.entries.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.updates.manga.MangaUpdatesUiModel
@@ -340,6 +339,25 @@ class MangaUpdatesScreenModel(
         selectedPositions[1] = -1
     }
 
+    /** Sélectionne ou désélectionne toutes les sorties d'une œuvre. */
+    fun toggleGroupSelection(items: List<MangaUpdatesItem>, selected: Boolean) {
+        if (items.isEmpty()) return
+        val ids = items.mapTo(HashSet()) { it.update.chapterId }
+        mutableState.update { state ->
+            val newItems = state.items.map {
+                if (it.update.chapterId in ids) {
+                    selectedChapterIds.addOrRemove(it.update.chapterId, selected)
+                    it.copy(selected = selected)
+                } else {
+                    it
+                }
+            }
+            state.copy(items = newItems.toPersistentList())
+        }
+        selectedPositions[0] = -1
+        selectedPositions[1] = -1
+    }
+
     fun invertSelection() {
         mutableState.update { state ->
             val newItems = state.items.map {
@@ -371,14 +389,22 @@ class MangaUpdatesScreenModel(
 
         fun getUiModel(): List<MangaUpdatesUiModel> {
             return items
-                .map { MangaUpdatesUiModel.Item(it) }
-                .insertSeparators { before, after ->
-                    val beforeDate = before?.item?.update?.dateFetch?.toLocalDate()
-                    val afterDate = after?.item?.update?.dateFetch?.toLocalDate()
-                    when {
-                        beforeDate != afterDate && afterDate != null -> MangaUpdatesUiModel.Header(afterDate)
-                        // Return null to avoid adding a separator between two items.
-                        else -> null
+                .groupBy { it.update.dateFetch.toLocalDate() }
+                .flatMap { (date, dateItems) ->
+                    buildList {
+                        add(MangaUpdatesUiModel.Header(date))
+                        dateItems
+                            .groupBy { "${it.update.sourceId}:${it.update.mangaId}" }
+                            .forEach { (key, workItems) ->
+                                add(
+                                    MangaUpdatesUiModel.Group(
+                                        key = key,
+                                        // Du plus ancien au plus récent pour que
+                                        // la ligne commence par le premier chapitre.
+                                        items = workItems.sortedBy { it.update.dateFetch },
+                                    ),
+                                )
+                            }
                     }
                 }
         }

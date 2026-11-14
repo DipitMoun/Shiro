@@ -183,6 +183,30 @@ class SocialOverlayController(
         }
     }
 
+    /**
+     * Opens only the current user's thread for [work] + [episodeKey]. Used by
+     * the work-level chat, where one room (the user's) contains one thread per
+     * episode and friend rooms are not part of that chat surface.
+     */
+    fun openOwnWork(
+        work: WorkIdentity,
+        episodeKey: EpisodeKey,
+        selfMxid: String,
+        selfDisplayName: String? = null,
+    ) {
+        val ref = ThreadRef(selfMxid, work.id, episodeKey)
+        openThreads(
+            descriptors = listOf(
+                SocialThreadDescriptor(
+                    ref = ref,
+                    displayName = selfDisplayName ?: "Moi",
+                    isOwn = true,
+                ),
+            ),
+            selected = ref,
+        )
+    }
+
     /** Selects an already discovered author thread. */
     fun selectThread(thread: ThreadRef) {
         if (_state.value.threads.none { it.ref == thread }) return
@@ -200,9 +224,9 @@ class SocialOverlayController(
         _state.value = _state.value.copy(isOpen = false)
     }
 
-    suspend fun reply(body: String): SocialResult<String> {
+    suspend fun reply(body: String, inReplyToEventId: String? = null): SocialResult<String> {
         val thread = requireThread()
-        return dispatch(SocialCommand.ReplyInAuthorThread(thread, body))
+        return dispatch(SocialCommand.ReplyInAuthorThread(thread, body, inReplyToEventId))
     }
 
     suspend fun react(eventId: String, key: String): SocialResult<String> {

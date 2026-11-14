@@ -8,11 +8,14 @@ import kotlinx.coroutines.delay
 import org.matrix.rustcomponents.sdk.Client
 import org.matrix.rustcomponents.sdk.CreateRoomParameters
 import org.matrix.rustcomponents.sdk.JoinRule
+import org.matrix.rustcomponents.sdk.MsgLikeKind
 import org.matrix.rustcomponents.sdk.PowerLevels
 import org.matrix.rustcomponents.sdk.Room
 import org.matrix.rustcomponents.sdk.RoomHistoryVisibility
 import org.matrix.rustcomponents.sdk.RoomPreset
 import org.matrix.rustcomponents.sdk.RoomVisibility
+import org.matrix.rustcomponents.sdk.TimelineItemContent
+import uniffi.ruma_events.StateEventType
 
 /**
  * P2-06b: production [MatrixRoomTransport] wired to the Rust Matrix SDK.
@@ -131,6 +134,66 @@ class RustMatrixRoomTransport(
             throw c
         } catch (t: Throwable) {
             SocialResult.Failure(mapError(t, "invite($inviteeMxid)"))
+        }
+    }
+
+    override suspend fun roomCreatedAt(roomId: String): SocialResult<Long?> {
+        val client = clientProvider() ?: return notAuthenticated()
+        return try {
+            val room = awaitRoom(client, roomId)
+                ?: return SocialResult.Failure(SocialError.Unknown("Room $roomId not found in store"))
+            val createdAt = room.stateEvents(StateEventType.RoomCreate)
+                .firstOrNull()
+                ?.timestamp
+                ?.toLong()
+            SocialResult.Success(createdAt)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            SocialResult.Failure(mapError(t, "roomCreatedAt"))
+        }
+    }
+
+    override suspend fun threadRootBodies(roomId: String): SocialResult<List<String>> {
+        val client = clientProvider() ?: return notAuthenticated()
+        return try {
+            val room = awaitRoom(client, roomId)
+                ?: return SocialResult.Failure(SocialError.Unknown("Room $roomId not found in store"))
+            val service = room.threadListService()
+            try {
+                service.paginate()
+                val bodies = service.items().mapNotNull { item ->
+                    val content = item.rootEvent.content as? TimelineItemContent.MsgLike
+                    val message = content?.content?.kind as? MsgLikeKind.Message
+                    message?.content?.body
+                }
+                SocialResult.Success(bodies)
+            } finally {
+                try { service.close() } catch (_: Throwable) {}
+            }
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            SocialResult.Failure(mapError(t, "threadRootBodies"))
+        }
+    }
+
+    override suspend fun updateRoomMetadata(
+        roomId: String,
+        name: String,
+        topic: String,
+    ): SocialResult<Unit> {
+        val client = clientProvider() ?: return notAuthenticated()
+        return try {
+            val room = awaitRoom(client, roomId)
+                ?: return SocialResult.Failure(SocialError.Unknown("Room $roomId not found in store"))
+            room.setName(name)
+            room.setTopic(topic)
+            SocialResult.Success(Unit)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            SocialResult.Failure(mapError(t, "updateRoomMetadata"))
         }
     }
 

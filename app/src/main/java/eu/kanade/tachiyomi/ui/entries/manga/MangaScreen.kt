@@ -36,10 +36,12 @@ import eu.kanade.presentation.entries.manga.ChapterSettingsDialog
 import eu.kanade.presentation.entries.manga.DuplicateMangaDialog
 import eu.kanade.presentation.entries.manga.MangaScreen
 import eu.kanade.presentation.entries.manga.components.MangaCoverDialog
+import eu.kanade.presentation.entries.manga.components.MultiSourcePickerDialog
 import eu.kanade.presentation.entries.manga.components.ScanlatorFilterDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
+import eu.kanade.tachiyomi.data.multisource.MultiSourceMangaSource
 import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.manga.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -149,6 +151,8 @@ class MangaScreen(
                     screenModel.showTrackDialog()
                 }
             },
+            onSourcesClicked = { screenModel.showMultiSourcePicker() }
+                .takeIf { successState.source.id == MultiSourceMangaSource.ID },
             onTagSearch = { scope.launch { performGenreSearch(navigator, it, screenModel.source!!) } },
             onFilterButtonClicked = screenModel::showSettingsDialog,
             onRefresh = screenModel::fetchAllFromSource,
@@ -281,6 +285,14 @@ class MangaScreen(
                 } else {
                     LoadingScreen(Modifier.systemBarsPadding())
                 }
+            }
+            is MangaScreenModel.Dialog.MultiSourcePicker -> {
+                MultiSourcePickerDialog(
+                    options = dialog.options,
+                    selectedSourceId = dialog.selectedSourceId,
+                    onSelect = { sourceId -> screenModel.selectMultiSource(successState.manga, sourceId) },
+                    onDismissRequest = onDismissRequest,
+                )
             }
             is MangaScreenModel.Dialog.SetMangaFetchInterval -> {
                 SetIntervalDialog(

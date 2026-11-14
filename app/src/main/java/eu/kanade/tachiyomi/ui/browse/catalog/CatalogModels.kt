@@ -90,6 +90,8 @@ data class AiringEvent(
     val airingAt: Long,
     val title: String,
     val coverUrl: String?,
+    /** Identifiant local quand la prévision vient de la fiche de l'animé. */
+    val animeId: Long? = null,
 )
 
 data class CatalogSourceMatch(

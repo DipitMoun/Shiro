@@ -42,6 +42,9 @@ import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
+import eu.kanade.tachiyomi.ui.social.SocialFriendsScreen
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -77,6 +80,7 @@ object SettingsSocialScreen : SearchableSettings {
 
     @Composable
     override fun getPreferences(): List<Preference> {
+        val navigator = LocalNavigator.currentOrThrow
         val session = remember { Injekt.get<MatrixSessionManager>() }
         val sessionState by session.state.collectAsState()
         val scope = rememberCoroutineScope()
@@ -139,6 +143,13 @@ object SettingsSocialScreen : SearchableSettings {
                         dialog = SocialDialog.Logout
                     }
                 },
+            ),
+            Preference.PreferenceItem.TextPreference(
+                title = "Amis",
+                subtitle = "Liste, lien de profil et QR d’ajout",
+                icon = Icons.Outlined.PeopleAlt,
+                enabled = account != null,
+                onClick = { navigator.push(SocialFriendsScreen()) },
             ),
             Preference.PreferenceItem.InfoPreference(
                 title = stringResource(MR.strings.social_matrix_info),

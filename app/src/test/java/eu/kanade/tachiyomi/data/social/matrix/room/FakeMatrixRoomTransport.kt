@@ -13,6 +13,8 @@ class FakeMatrixRoomTransport : MatrixRoomTransport {
     var sendMessageResult: SocialResult<String> = SocialResult.Success("root0")
     var sendStateEventResult: SocialResult<String> = SocialResult.Success("root0")
     var inviteResult: SocialResult<Unit> = SocialResult.Success(Unit)
+    var roomCreatedAtResult: SocialResult<Long?> = SocialResult.Success(null)
+    var threadRootBodiesResult: SocialResult<List<String>> = SocialResult.Success(emptyList())
 
     var createRoomCalls: Int = 0; private set
     var sendMessageCalls: Int = 0; private set
@@ -65,6 +67,11 @@ class FakeMatrixRoomTransport : MatrixRoomTransport {
         inviteCalls += inviteeMxid
         return inviteResult
     }
+
+    override suspend fun roomCreatedAt(roomId: String): SocialResult<Long?> = roomCreatedAtResult
+
+    override suspend fun threadRootBodies(roomId: String): SocialResult<List<String>> =
+        threadRootBodiesResult
 
     fun failWith(error: SocialError) {
         createRoomResult = SocialResult.Failure(error)

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
@@ -172,6 +173,7 @@ fun MangaActionRow(
     onEditIntervalClicked: (() -> Unit)?,
     onEditCategory: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    onSourcesClicked: (() -> Unit)? = null,
 ) {
     val defaultActionButtonColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
 
@@ -228,6 +230,14 @@ fun MangaActionRow(
                 color = defaultActionButtonColor,
                 onClick = onWebViewClicked,
                 onLongClick = onWebViewLongClicked,
+            )
+        }
+        if (onSourcesClicked != null) {
+            MangaActionButton(
+                title = "Sources",
+                icon = Icons.Outlined.FilterList,
+                color = defaultActionButtonColor,
+                onClick = onSourcesClicked,
             )
         }
     }

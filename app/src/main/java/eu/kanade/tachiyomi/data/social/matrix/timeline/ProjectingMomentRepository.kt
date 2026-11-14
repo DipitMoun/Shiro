@@ -29,13 +29,17 @@ import kotlinx.serialization.json.JsonPrimitive
  * P2-07: SDK-free implementation of [SocialThreadRepository].
  *
  * Consumes [ThreadTimelineSource] events, aggregates reactions and pins, and
- * projects them into [SocialThreadTimeline]. State is local to each observation
- * flow instance; P2-11 hardening may add a shared cache.
+ * projects them into [SocialThreadTimeline]. Per-thread state is cached so
+ * reopening a thread or switching screens never starts from an empty list.
  */
 class ProjectingMomentRepository(
     private val source: ThreadTimelineSource,
     private val bindings: RoomBindingStore,
 ) : SocialThreadRepository {
+
+    // Survives navigation between episodes/screens. The source still rehydrates
+    // from the SDK store on reopen, but the UI never restarts from an empty list.
+    private val threadStates = java.util.concurrent.ConcurrentHashMap<ThreadRef, MutableThreadState>()
 
     override fun observeThread(thread: ThreadRef): Flow<SocialResult<SocialThreadTimeline>> = flow {
         val roomId = resolveRoom(thread)
@@ -45,8 +49,9 @@ class ProjectingMomentRepository(
             return@flow
         }
 
-        val state = MutableThreadState()
-        emit(SocialResult.Success(state.toTimeline(thread, roomId, rootId, TimelineStatus.SYNCING)))
+        val state = threadStates.getOrPut(thread) { MutableThreadState() }
+        val initialStatus = if (state.hasAny()) TimelineStatus.LIVE else TimelineStatus.SYNCING
+        emit(SocialResult.Success(state.toTimeline(thread, roomId, rootId, initialStatus)))
 
         source.observeThread(thread, roomId, rootId).collect { result ->
             when (result) {
@@ -125,7 +130,12 @@ class ProjectingMomentRepository(
             var changed = false
             for (event in events) {
                 when (event.type) {
-                    "m.room.message" -> changed = applyMessage(event) || changed
+                    "m.room.message" -> {
+                        changed = applyMessage(event) || changed
+                        if (items.containsKey(event.eventId)) {
+                            changed = applyReactionSummary(event) || changed
+                        }
+                    }
                     "m.reaction" -> changed = applyReaction(event) || changed
                     "org.shiro.pins" -> changed = applyPins(event) || changed
                 }
@@ -209,6 +219,22 @@ class ProjectingMomentRepository(
             } catch (t: Throwable) {
                 null
             }
+
+        private fun applyReactionSummary(event: TransportEvent): Boolean {
+            val next = mutableMapOf<String, MutableList<ReactionEntry>>()
+            for (reaction in event.reactions) {
+                next.getOrPut(reaction.key) { mutableListOf() }
+                    .add(
+                        ReactionEntry(
+                            sender = reaction.sender,
+                            eventId = "summary:${event.eventId}:${reaction.key}:${reaction.sender}",
+                        ),
+                    )
+            }
+            if (reactions[event.eventId] == next) return false
+            reactions[event.eventId] = next
+            return true
+        }
 
         private fun applyReaction(event: TransportEvent): Boolean {
             val content = parseObject(event.contentJson) ?: return false

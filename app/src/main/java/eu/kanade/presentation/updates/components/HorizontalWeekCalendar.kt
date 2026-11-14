@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,6 +31,7 @@ fun HorizontalWeekCalendar(
     selectedDate: LocalDate?,
     onDateSelected: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
+    releaseCounts: Map<LocalDate, Int> = emptyMap(),
 ) {
     val today = LocalDate.now()
     val startOfWeek = today.minusDays((today.dayOfWeek.value - 1).toLong())
@@ -42,6 +44,7 @@ fun HorizontalWeekCalendar(
         days.forEach { date ->
             val isSelected = date == selectedDate
             val isToday = date == today
+            val releaseCount = releaseCounts[date] ?: 0
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
@@ -79,6 +82,22 @@ fun HorizontalWeekCalendar(
                             else -> MaterialTheme.colorScheme.onSurface
                         }
                     )
+                }
+                if (releaseCount > 0) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = releaseCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
                 }
             }
         }

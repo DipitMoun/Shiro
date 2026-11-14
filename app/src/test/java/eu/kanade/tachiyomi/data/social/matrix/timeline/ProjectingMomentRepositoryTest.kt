@@ -183,6 +183,18 @@ class ProjectingMomentRepositoryTest {
     }
 
     @Test
+    fun `reopening a thread serves its cached messages immediately`() = runBlocking {
+        source.setEvents(thread, listOf(replyEvent("\$r1", 100L, "salut")))
+        repo.observeThread(thread).take(2).toList()
+
+        val reopened = repo.observeThread(thread).first()
+        assertTrue(reopened is SocialResult.Success)
+        val timeline = (reopened as SocialResult.Success).value
+        assertEquals(1, timeline.items.size)
+        assertEquals("salut", (timeline.items.single() as SocialTimelineItem.ReplyItem).body)
+    }
+
+    @Test
     fun `thread root marker is never rendered as a message`() = runBlocking {
         val root = TransportEvent(
             eventId = rootId,

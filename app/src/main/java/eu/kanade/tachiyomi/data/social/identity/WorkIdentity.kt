@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.social.identity
 
 import java.math.BigDecimal
+import java.security.MessageDigest
 
 /**
  * Canonical work identity used by the Matrix social layer.
@@ -25,7 +26,7 @@ enum class WorkScheme(val wireName: String, val priority: Int) {
 data class WorkId private constructor(
     val scheme: WorkScheme,
     val remoteId: String,
-) {
+) : java.io.Serializable {
     val value: String
         get() = "${scheme.wireName}:$remoteId"
 
@@ -41,6 +42,21 @@ data class WorkId private constructor(
             val remoteId = raw.substring(separator + 1)
             if (!REMOTE_ID.matches(remoteId)) return null
             return WorkId(scheme, remoteId)
+        }
+
+        /**
+         * Stable id for an anime stored only in Shiro's local database.
+         *
+         * SQLite row ids can be reused after a deletion, so using the row id
+         * directly as a Matrix work key can make a new anime inherit another
+         * work's room. The source id + canonical source URL identify the work
+         * itself and survive row-id recycling.
+         */
+        fun localStable(sourceId: Long, url: String): WorkId {
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest("$sourceId|$url".toByteArray(Charsets.UTF_8))
+            val fingerprint = digest.take(8).joinToString("") { "%02x".format(it) }
+            return WorkId(WorkScheme.LOCAL, fingerprint)
         }
 
         /**
@@ -73,7 +89,11 @@ data class WorkIdentity(
     val title: String? = null,
     val format: WorkFormat? = null,
     val year: Int? = null,
-) {
+    /** Legacy row-id based key, kept only to migrate pre-fingerprint rooms. */
+    val legacyId: WorkId? = null,
+    /** Wall-clock creation time of the local anime row, in epoch millis. */
+    val addedAt: Long? = null,
+) : java.io.Serializable {
     init {
         require(ids.values.all { it.isNotBlank() }) { "Alias values must not be blank" }
         require(title == null || title.length in 1..200) { "Title must be 1..200 characters" }
@@ -133,7 +153,7 @@ class InMemoryWorkAliasStore : WorkAliasStore {
             .orEmpty()
 }
 
-data class EpisodeKey private constructor(val value: String) {
+data class EpisodeKey private constructor(val value: String) : java.io.Serializable {
     init {
         require(PATTERN.matches(value)) { "Invalid episode key: $value" }
     }

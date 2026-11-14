@@ -34,6 +34,7 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.model.MangaDownload
+import eu.kanade.tachiyomi.data.multisource.MultiSourceMangaSource
 import eu.kanade.tachiyomi.data.telegram.source.TelegramMangaSource
 import eu.kanade.tachiyomi.data.track.EnhancedMangaTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
@@ -394,6 +395,28 @@ class MangaScreenModel(
                 )
             }
         }
+    }
+
+    fun showMultiSourcePicker() {
+        val manga = successState?.manga ?: return
+        if (manga.source != MultiSourceMangaSource.ID) return
+        screenModelScope.launch {
+            val options = MultiSourceMangaSource.availableSources(manga.url)
+            updateSuccessState {
+                it.copy(
+                    dialog = Dialog.MultiSourcePicker(
+                        options = options,
+                        selectedSourceId = MultiSourceMangaSource.preferredSourceId(manga.url),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun selectMultiSource(manga: Manga, sourceId: Long?) {
+        MultiSourceMangaSource.setPreferredSource(manga.url, sourceId)
+        updateSuccessState { it.copy(dialog = null) }
+        screenModelScope.launch { fetchChaptersFromSource(manualFetch = true) }
     }
 
     fun showSetMangaFetchIntervalDialog() {
@@ -1132,6 +1155,10 @@ class MangaScreenModel(
         data class DuplicateManga(val manga: Manga, val duplicate: Manga) : Dialog
         data class Migrate(val newManga: Manga, val oldManga: Manga) : Dialog
         data class SetMangaFetchInterval(val manga: Manga) : Dialog
+        data class MultiSourcePicker(
+            val options: List<eu.kanade.tachiyomi.data.multisource.MangaSourceCoverage>,
+            val selectedSourceId: Long?,
+        ) : Dialog
         data object SettingsSheet : Dialog
         data object TrackSheet : Dialog
         data object FullCover : Dialog

@@ -248,8 +248,8 @@ class SocialOverlayControllerTest {
         val catalog = FakeCatalog(
             SocialResult.Success(
                 listOf(
-                    DiscoveredThread(friendRef, "Kevin", "!friend:example.org", "$friend-root", false),
-                    DiscoveredThread(selfRef, "Moi", "!self:example.org", "$self-root", true),
+                    DiscoveredThread(friendRef, "Kevin", null, "!friend:example.org", "$friend-root", false),
+                    DiscoveredThread(selfRef, "Moi", null, "!self:example.org", "$self-root", true),
                 ),
             ),
         )

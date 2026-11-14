@@ -211,7 +211,7 @@ abstract class HttpSource : CatalogueSource {
      * @return the updated manga.
      */
     @Suppress("DEPRECATION")
-    override suspend fun getMangaDetails(manga: SManga): SManga {
+    open override suspend fun getMangaDetails(manga: SManga): SManga {
         return fetchMangaDetails(manga).awaitSingle()
     }
 
@@ -249,7 +249,7 @@ abstract class HttpSource : CatalogueSource {
      * @return the chapters for the manga.
      */
     @Suppress("DEPRECATION")
-    override suspend fun getChapterList(manga: SManga): List<SChapter> {
+    open override suspend fun getChapterList(manga: SManga): List<SChapter> {
         return fetchChapterList(manga).awaitSingle()
     }
 
@@ -294,7 +294,7 @@ abstract class HttpSource : CatalogueSource {
      * @return the pages for the chapter.
      */
     @Suppress("DEPRECATION")
-    override suspend fun getPageList(chapter: SChapter): List<Page> {
+    open override suspend fun getPageList(chapter: SChapter): List<Page> {
         return fetchPageList(chapter).awaitSingle()
     }
 

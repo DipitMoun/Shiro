@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AttachMoney
 import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
@@ -179,6 +180,7 @@ fun AnimeActionRow(
     onWebViewClicked: (() -> Unit)?,
     onWebViewLongClicked: (() -> Unit)?,
     onTrackingClicked: (() -> Unit)?,
+    onChatClicked: (() -> Unit)? = null,
     onEditIntervalClicked: (() -> Unit)?,
     onEditCategory: (() -> Unit)?,
     sourceMapping: MultiSourceMappingState? = null,
@@ -233,6 +235,15 @@ fun AnimeActionRow(
                 icon = if (trackingCount == 0) Icons.Outlined.Sync else Icons.Outlined.Done,
                 color = if (trackingCount == 0) defaultActionButtonColor else MaterialTheme.colorScheme.primary,
                 onClick = onTrackingClicked,
+            )
+        }
+
+        if (onChatClicked != null) {
+            AnimeActionButton(
+                title = "Chat",
+                icon = Icons.Outlined.ChatBubbleOutline,
+                color = defaultActionButtonColor,
+                onClick = onChatClicked,
             )
         }
 

@@ -145,6 +145,13 @@ data class TransportEvent(
     val contentJson: String,
     /** Event id of the redaction when this event has been redacted. */
     val redactedByEventId: String? = null,
+    /** Aggregated reactions transported with a message item. */
+    val reactions: List<TransportReaction> = emptyList(),
+)
+
+data class TransportReaction(
+    val key: String,
+    val sender: String,
 )
 
 data class SyncRequest(

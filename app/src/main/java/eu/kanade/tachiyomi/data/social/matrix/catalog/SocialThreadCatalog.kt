@@ -21,6 +21,7 @@ import org.matrix.rustcomponents.sdk.TimelineItemContent
 data class DiscoveredThread(
     val ref: ThreadRef,
     val displayName: String?,
+    val avatarUrl: String?,
     val roomId: String,
     val threadRootEventId: String,
     val isOwn: Boolean,
@@ -104,10 +105,18 @@ class RustSocialThreadCatalog(
             } catch (t: Throwable) {
                 null
             } ?: roomKey.authorMxid.substringBefore(':').removePrefix("@")
+            val avatarUrl = try {
+                room.memberAvatarUrl(roomKey.authorMxid)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (t: Throwable) {
+                null
+            }
 
             discovered += DiscoveredThread(
                 ref = ThreadRef(roomKey.authorMxid, roomKey.workId, episodeKey),
                 displayName = displayName,
+                avatarUrl = avatarUrl,
                 roomId = room.id(),
                 threadRootEventId = rootId,
                 isOwn = roomKey.authorMxid == selfMxid,

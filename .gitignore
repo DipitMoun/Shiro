@@ -19,3 +19,13 @@ local.properties
 app/shiro-release.jks
 *.jks
 *.keystore
+
+# Diagnostic scripts (temporaires)
+kotlin-diag-*.txt
+kotlin-diag-diff-*.txt
+
+# Distribution artifacts
+dist/
+
+# AGP generated build configs
+app/src/main/java/org/rustls/platformverifier/BuildConfig.kt

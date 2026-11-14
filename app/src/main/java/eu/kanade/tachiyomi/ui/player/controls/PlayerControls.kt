@@ -95,7 +95,6 @@ val LocalPlayerButtonsClickEvent = staticCompositionLocalOf { {} }
 fun PlayerControls(
     viewModel: PlayerViewModel,
     onBackPress: () -> Unit,
-    onSocialClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.padding
@@ -472,7 +471,6 @@ fun PlayerControls(
                         onAudioLongClick = { viewModel.showPanel(Panels.AudioDelay) },
                         onQualityClick = { viewModel.showSheet(Sheets.QualityTracks) },
                         isEpisodeOnline = isEpisodeOnline,
-                        onSocialClick = onSocialClick,
                         onMoreClick = { viewModel.showSheet(Sheets.More) },
                         onMoreLongClick = { viewModel.showPanel(Panels.VideoFilters) },
                     )

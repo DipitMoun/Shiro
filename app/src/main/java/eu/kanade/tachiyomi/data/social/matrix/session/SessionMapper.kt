@@ -14,7 +14,9 @@ internal fun PersistedSession.toSdk(): Session = Session(
     homeserverUrl = homeserverUrl,
     oauthData = oauthData,
     refreshToken = refreshToken,
-    slidingSyncVersion = slidingSyncVersionFromString(slidingSyncVersion),
+    // Existing installs may have persisted NONE before native sliding sync was
+    // enabled; the client is built with NATIVE, so restore must match it.
+    slidingSyncVersion = SlidingSyncVersion.NATIVE,
 )
 
 internal fun Session.toPersisted(displayName: String? = null): PersistedSession =
@@ -28,8 +30,3 @@ internal fun Session.toPersisted(displayName: String? = null): PersistedSession 
         oauthData = oauthData,
         slidingSyncVersion = slidingSyncVersion.toString(),
     )
-
-private fun slidingSyncVersionFromString(value: String): SlidingSyncVersion = when (value) {
-    "NATIVE" -> SlidingSyncVersion.NATIVE
-    else     -> SlidingSyncVersion.NONE
-}

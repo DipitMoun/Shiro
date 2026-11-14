@@ -26,6 +26,12 @@ interface SocialRoomService {
         episodeKey: String,
         workTitle: String?,
     ): SocialResult<String>
+
+    /** Invites a newly added friend into every work room owned by [selfMxid]. */
+    suspend fun inviteFriendToOwnRooms(
+        friendMxid: String,
+        selfMxid: String,
+    ): SocialResult<Unit>
 }
 
 data class EnsuredRoom(
@@ -56,6 +62,53 @@ class DefaultSocialRoomService(
             return SocialResult.Success(EnsuredRoom(roomId = existing, plan = plan, created = false))
         }
 
+        // Older builds keyed local works by their SQLite row id. SQLite may
+        // recycle that id after a deletion, which would attach a new anime to
+        // a previous work's room. Reuse the legacy room only when its own
+        // creation timestamp proves it was created after this anime was added.
+        val legacyId = work.legacyId
+        val addedAt = work.addedAt
+        if (legacyId != null && addedAt != null && addedAt > 0L) {
+            val legacyKey = SocialRoomKey(authorMxid = authorMxid, workId = legacyId)
+            val legacyRoom = (bindings.resolveRoom(legacyKey) as? SocialResult.Success)?.value
+            if (legacyRoom != null) {
+                val createdAt = (transport.roomCreatedAt(legacyRoom) as? SocialResult.Success)?.value
+                val rootBodies = (transport.threadRootBodies(legacyRoom) as? SocialResult.Success)?.value
+                    ?: emptyList()
+                val title = work.title
+                val sameWork = if (title.isNullOrBlank()) {
+                    true
+                } else {
+                    rootBodies.isEmpty() || rootBodies.all { it.contains(title) }
+                }
+                if (createdAt != null && createdAt >= addedAt && sameWork) {
+                    val bound = bindings.bindRoom(roomKey, legacyRoom)
+                    if (bound is SocialResult.Failure) return bound
+                    val migrated = bindings.migrateRoom(legacyKey, roomKey)
+                    if (migrated is SocialResult.Failure) return migrated
+                    val renamed = transport.updateRoomMetadata(
+                        roomId = legacyRoom,
+                        name = roomKey.roomName(work.title, authorDisplayName),
+                        topic = roomKey.roomTopic(),
+                    )
+                    if (renamed is SocialResult.Failure) {
+                        android.util.Log.w(
+                            "SocialRoom",
+                            "legacy room metadata update failed: ${renamed.error}",
+                        )
+                    }
+                    val plan = AudiencePolicy.plan(
+                        selfUserId = selfMxid,
+                        workId = work.id,
+                        friends = friends,
+                    )
+                    return SocialResult.Success(
+                        EnsuredRoom(roomId = legacyRoom, plan = plan, created = false),
+                    )
+                }
+            }
+        }
+
         val plan = AudiencePolicy.plan(selfUserId = selfMxid, workId = work.id, friends = friends)
 
         val initialState = buildInitialState(roomKey, work, plan)
@@ -72,6 +125,21 @@ class DefaultSocialRoomService(
         if (bound is SocialResult.Failure) return bound
 
         return SocialResult.Success(EnsuredRoom(roomId = roomId, plan = plan, created = true))
+    }
+
+    override suspend fun inviteFriendToOwnRooms(
+        friendMxid: String,
+        selfMxid: String,
+    ): SocialResult<Unit> {
+        val rooms = (bindings.roomsForAuthor(selfMxid) as? SocialResult.Success)?.value
+            ?: return SocialResult.Success(Unit)
+        for ((_, roomId) in rooms) {
+            when (val invited = transport.invite(roomId, friendMxid)) {
+                is SocialResult.Failure -> return invited
+                is SocialResult.Success -> Unit
+            }
+        }
+        return SocialResult.Success(Unit)
     }
 
     override suspend fun ensureThreadRoot(

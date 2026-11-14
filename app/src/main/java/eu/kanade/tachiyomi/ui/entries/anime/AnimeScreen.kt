@@ -54,6 +54,9 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.multisource.MultiSourceAnimeSource
 import eu.kanade.tachiyomi.data.multisource.MultiSourceCompatibility
 import eu.kanade.tachiyomi.data.multisource.MultiSourceMappingState
+import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
+import eu.kanade.tachiyomi.data.social.identity.WorkId
+import eu.kanade.tachiyomi.data.social.identity.WorkIdentity
 import eu.kanade.tachiyomi.data.telegram.source.TelegramAnimeSource
 import eu.kanade.tachiyomi.data.torrent.service.TorrentServerService
 import eu.kanade.tachiyomi.source.anime.isLocalOrStub
@@ -70,6 +73,9 @@ import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.library.anime.AnimeLibraryTab
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
+import eu.kanade.tachiyomi.ui.social.SocialChatContext
+import eu.kanade.tachiyomi.ui.social.SocialChatEpisode
+import eu.kanade.tachiyomi.ui.social.SocialChatScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.toShareIntent
@@ -173,6 +179,24 @@ class AnimeScreen(
             }
         }
 
+        val socialChatEpisodes = remember(successState.anime.id, successState.processedEpisodes) {
+            successState.processedEpisodes
+                .mapNotNull { (it as? EpisodeList.Item)?.episode }
+                .map { episode ->
+                    val number = episode.episodeNumber
+                        .takeIf { it.isFinite() && it >= 0.0 }
+                        ?: 0.0
+                    SocialChatEpisode(
+                        id = episode.id,
+                        key = EpisodeKey.of(number),
+                        number = number,
+                        title = episode.name,
+                        durationSeconds = episode.totalSeconds,
+                    )
+                }
+                .distinctBy { it.key.value }
+        }
+
         AnimeScreen(
             state = successState,
             snackbarHostState = screenModel.snackbarHostState,
@@ -228,6 +252,28 @@ class AnimeScreen(
                     screenModel.showTrackDialog()
                 }
             }.takeIf { successState.anime.fetchType == FetchType.Episodes },
+            onChatClicked = {
+                val anime = successState.anime
+                val workId = WorkId.localStable(anime.source, anime.url)
+                navigator.push(
+                    SocialChatScreen(
+                        SocialChatContext(
+                            animeId = anime.id,
+                            work = WorkIdentity(
+                                id = workId,
+                                ids = mapOf("local" to workId.remoteId),
+                                title = anime.title,
+                                legacyId = WorkId.parse("local:${anime.id}"),
+                                addedAt = anime.dateAdded,
+                            ),
+                            title = anime.title,
+                            posterUrl = anime.thumbnailUrl,
+                            episodes = socialChatEpisodes,
+                        ),
+                    ),
+                )
+                Unit
+            }.takeIf { socialChatEpisodes.isNotEmpty() },
             onTagSearch = { scope.launch { performGenreSearch(navigator, it, screenModel.source!!) } },
             onFilterButtonClicked = screenModel::showSettingsDialog,
             onRefresh = screenModel::fetchAllFromSource,

@@ -75,17 +75,13 @@ import eu.kanade.tachiyomi.animesource.model.HttpServer
 import eu.kanade.tachiyomi.animesource.model.SerializableHoster.Companion.serialize
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
-import eu.kanade.tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
-import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.torrent.service.TorrentServerService
 import eu.kanade.tachiyomi.databinding.PlayerLayoutBinding
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.player.controls.PlayerControls
-import eu.kanade.tachiyomi.ui.social.SocialMomentContext
-import eu.kanade.tachiyomi.ui.social.SocialMomentOverlay
 import eu.kanade.tachiyomi.ui.social.loopWindow
 import eu.kanade.tachiyomi.ui.player.settings.AdvancedPlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
@@ -121,28 +117,13 @@ import uy.kohesive.injekt.api.get
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.time.Instant
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.time.Duration.Companion.seconds
 import androidx.compose.runtime.LaunchedEffect
-import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
-import eu.kanade.tachiyomi.data.social.identity.WorkId
-import eu.kanade.tachiyomi.data.social.identity.WorkIdentity
-import eu.kanade.tachiyomi.data.social.matrix.MomentAnchor
-import eu.kanade.tachiyomi.data.social.matrix.MomentClient
-import eu.kanade.tachiyomi.data.social.matrix.MomentEpisode
-import eu.kanade.tachiyomi.data.social.matrix.MomentPayload
-import eu.kanade.tachiyomi.data.social.matrix.MomentSource
-import eu.kanade.tachiyomi.data.social.matrix.MomentWork
-import eu.kanade.tachiyomi.ui.main.MainActivity
-import eu.kanade.tachiyomi.ui.social.overlay.ConnectionState
-import eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayViewModel
-import eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayViewModelFactory
 
 class PlayerActivity : BaseActivity() {
     private val viewModel by viewModels<PlayerViewModel>(factoryProducer = { PlayerViewModelProviderFactory(this) })
-    private val socialViewModel by viewModels<SocialOverlayViewModel>(factoryProducer = { SocialOverlayViewModelFactory() })
     private val binding by lazy { PlayerLayoutBinding.inflate(layoutInflater) }
     private val playerObserver by lazy { PlayerObserver(this) }
     val player by lazy { binding.player }
@@ -150,6 +131,8 @@ class PlayerActivity : BaseActivity() {
     val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     private var mediaSession: MediaSession? = null
+    private var socialPreviewPositionMs by mutableStateOf<Long?>(null)
+    private var socialPreviewLoop by mutableStateOf(false)
     private val gesturePreferences: GesturePreferences by lazy { viewModel.gesturePreferences }
     private val playerPreferences: PlayerPreferences by lazy { viewModel.playerPreferences }
     private val audioPreferences: AudioPreferences = Injekt.get()
@@ -190,6 +173,8 @@ class PlayerActivity : BaseActivity() {
             hostList: List<Hoster>? = null,
             hostIndex: Int? = null,
             vidIndex: Int? = null,
+            previewPositionMs: Long? = null,
+            previewLoop: Boolean = false,
         ): Intent {
             return Intent(context, PlayerActivity::class.java).apply {
                 putExtra("animeId", animeId)
@@ -197,6 +182,8 @@ class PlayerActivity : BaseActivity() {
                 hostIndex?.let { putExtra("hostIndex", it) }
                 vidIndex?.let { putExtra("vidIndex", it) }
                 hostList?.let { putExtra("hostList", it.serialize()) }
+                previewPositionMs?.let { putExtra("previewPositionMs", it) }
+                if (previewPositionMs != null) putExtra("previewLoop", previewLoop)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
         }
@@ -211,6 +198,10 @@ class PlayerActivity : BaseActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
 
+        socialPreviewPositionMs = intent
+            .getLongExtra("previewPositionMs", -1L)
+            .takeIf { it >= 0L }
+        socialPreviewLoop = intent.getBooleanExtra("previewLoop", false)
         val animeId = intent.extras?.getLong("animeId") ?: -1
         val episodeId = intent.extras?.getLong("episodeId") ?: -1
         val hostList = intent.extras?.getString("hostList") ?: ""
@@ -262,6 +253,10 @@ class PlayerActivity : BaseActivity() {
         enableEdgeToEdge()
         registerSecureActivity(this)
         super.onCreate(savedInstanceState)
+        socialPreviewPositionMs = intent
+            .getLongExtra("previewPositionMs", -1L)
+            .takeIf { it >= 0L }
+        socialPreviewLoop = intent.getBooleanExtra("previewLoop", false)
         setContentView(binding.root)
 
         setupPlayerMPV()
@@ -295,67 +290,26 @@ class PlayerActivity : BaseActivity() {
 
         binding.controls.setContent {
             TachiyomiTheme {
-                var showSocialDemo by remember { mutableStateOf(false) }
-                val anime by viewModel.currentAnime.collectAsState()
-                val episode by viewModel.currentEpisode.collectAsState()
-                val position by viewModel.pos.collectAsState()
                 val duration by viewModel.duration.collectAsState()
-                val socialSourceDurationMs = (duration * 1000).toLong().takeIf { it > 0L }
-                val socialDurationMs = socialSourceDurationMs ?: 1_440_000L
-                val socialWorkId = anime?.let { WorkId.parse("local:" + it.id) }
-                val socialEpisodeNumber = episode?.episode_number?.toDouble()
-                    ?.takeIf { it.isFinite() && it >= 0.0 }
-                val socialEpisodeKey = socialEpisodeNumber?.let(EpisodeKey::of)
-                    ?: EpisodeKey.of(0.0)
-                val socialWork = if (socialWorkId != null) {
-                    WorkIdentity(
-                        id = socialWorkId,
-                        ids = anime?.id?.let { mapOf("local" to it.toString()) } ?: emptyMap(),
-                        title = anime?.title ?: "Anime Inconnu",
-                    )
-                } else {
-                    null
-                }
-
-                fun buildMomentPayload(note: String, anchorMs: Long): MomentPayload? {
-                    val workId = socialWorkId ?: return null
-                    return MomentPayload(
-                        v = MomentPayload.VERSION,
-                        work = MomentWork(
-                            id = workId.value,
-                            ids = anime?.id?.let { mapOf("local" to it.toString()) } ?: emptyMap(),
-                            title = anime?.title,
-                        ),
-                        episode = MomentEpisode(
-                            key = socialEpisodeKey.value,
-                            number = socialEpisodeNumber,
-                            season = null,
-                            kind = "regular",
-                            numbering = "unknown",
-                            title = episode?.name,
-                        ),
-                        moments = listOf(
-                            MomentAnchor(
-                                positionMs = anchorMs.coerceAtLeast(0L),
-                                beforeMs = 15_000L,
-                                afterMs = 15_000L,
-                            ),
-                        ),
-                        note = note.takeIf { it.isNotBlank() },
-                        source = MomentSource(
-                            key = "local:${anime?.id ?: "unknown"}",
-                            kind = "stream",
-                            durationMs = socialSourceDurationMs,
-                        ),
-                        capturedAt = Instant.now().toString(),
-                        client = MomentClient("Shiro", BuildConfig.VERSION_NAME),
-                    )
-                }
-
-                fun clearSocialLoop() {
-                    MPVLib.setPropertyString("ab-loop-a", "no")
-                    MPVLib.setPropertyString("ab-loop-b", "no")
+                LaunchedEffect(duration, socialPreviewPositionMs, socialPreviewLoop) {
+                    val previewPositionMs = socialPreviewPositionMs ?: return@LaunchedEffect
+                    if (duration <= 0f) return@LaunchedEffect
+                    val loop = socialPreviewLoop
+                    val startMs = if (loop) {
+                        val window = loopWindow(previewPositionMs, (duration * 1000).toLong())
+                        MPVLib.setPropertyDouble("ab-loop-a", window.first / 1000.0)
+                        MPVLib.setPropertyDouble("ab-loop-b", window.last / 1000.0)
+                        window.first
+                    } else {
+                        MPVLib.setPropertyDouble("ab-loop-a", -1.0)
+                        MPVLib.setPropertyDouble("ab-loop-b", -1.0)
+                        previewPositionMs
+                    }
                     MPVLib.setPropertyBoolean("mute", false)
+                    viewModel.seekTo((startMs / 1000).toInt())
+                    viewModel.unpause()
+                    socialPreviewPositionMs = null
+                    socialPreviewLoop = false
                 }
 
                 Box(Modifier.fillMaxSize()) {
@@ -367,14 +321,6 @@ class PlayerActivity : BaseActivity() {
                             } else {
                                 finish()
                             }
-                        },
-                        onSocialClick = if (BuildConfig.DEBUG) {
-                            {
-                                viewModel.pause()
-                                showSocialDemo = true
-                            }
-                        } else {
-                            null
                         },
                         modifier = Modifier.onGloballyPositioned {
                             pipRect = run {
@@ -389,110 +335,6 @@ class PlayerActivity : BaseActivity() {
                         },
                     )
 
-                    val socialState by socialViewModel.state.collectAsState()
-                    LaunchedEffect(Unit) { socialViewModel.restore() }
-                    LaunchedEffect(showSocialDemo, socialState.isConnected) {
-                        if (showSocialDemo) {
-                            socialViewModel.connect()
-                            val account = (socialState.connection as? ConnectionState.Connected)?.account
-                            if (account != null && socialWork != null) {
-                                socialViewModel.bootstrap(
-                                    mxid = account.userId,
-                                    work = socialWork,
-                                    episodeKey = socialEpisodeKey.value,
-                                    workTitle = anime?.title,
-                                    selfDisplayName = account.displayName,
-                                )
-                            }
-                        } else {
-                            socialViewModel.close()
-                        }
-                    }
-                    LaunchedEffect(socialState) {
-                        android.util.Log.d(
-                            "SocialOverlay",
-                            "connected=" + socialState.isConnected +
-                                " thread=" + socialState.thread +
-                                " error=" + socialState.lastError,
-                        )
-                    }
-
-                    if (showSocialDemo) {
-                        SocialMomentOverlay(
-                            context = SocialMomentContext(
-                                workTitle = anime?.title ?: "Inconnu",
-                                episodeLabel = episode?.name ?: "S01E001",
-                                positionMs = (position * 1000).toLong(),
-                                durationMs = socialDurationMs,
-                            ),
-                            posterUrl = anime?.thumbnailUrl,
-                            matrixState = socialState,
-                            onSendMatrix = { text, publish, anchorMs ->
-                                socialViewModel.send(
-                                    text = text,
-                                    publish = publish,
-                                    payload = if (publish) buildMomentPayload(text, anchorMs) else null,
-                                )
-                            },
-                            onReactMatrix = { eventId, key ->
-                                socialViewModel.react(eventId, key)
-                            },
-                            onSelectThread = socialViewModel::selectThread,
-                            onOpenSettings = {
-                                startActivity(
-                                    Intent(this@PlayerActivity, MainActivity::class.java).apply {
-                                        action = Constants.INTENT_SOCIAL_SETTINGS
-                                        addFlags(
-                                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                                                Intent.FLAG_ACTIVITY_SINGLE_TOP,
-                                        )
-                                    },
-                                )
-                            },
-                            onRetryMatrix = {
-                                val account = (socialState.connection as? ConnectionState.Connected)?.account
-                                if (account != null && socialWork != null) {
-                                    socialViewModel.bootstrap(
-                                        mxid = account.userId,
-                                        work = socialWork,
-                                        episodeKey = socialEpisodeKey.value,
-                                        workTitle = anime?.title,
-                                        selfDisplayName = account.displayName,
-                                    )
-                                }
-                            },
-                            onClose = { showSocialDemo = false },
-                            onResume = { positionMs ->
-                                showSocialDemo = false
-                                clearSocialLoop()
-                                val targetSeconds = (positionMs / 1000).toInt()
-                                if (duration.toInt() <= 0 || targetSeconds in 0..duration.toInt()) viewModel.seekTo(targetSeconds)
-                                viewModel.unpause()
-                            },
-                            onPreviewStart = { anchorMs ->
-                                val window = loopWindow(anchorMs, socialDurationMs)
-                                MPVLib.setPropertyDouble("ab-loop-a", window.first / 1000.0)
-                                MPVLib.setPropertyDouble("ab-loop-b", window.last / 1000.0)
-                                MPVLib.setPropertyBoolean("mute", true)
-                                viewModel.seekTo((window.first / 1000).toInt())
-                                viewModel.unpause()
-                            },
-                            onPreviewStop = { anchorMs ->
-                                clearSocialLoop()
-                                viewModel.pause()
-                                viewModel.seekTo((anchorMs / 1000).toInt())
-                            },
-                            onPreviewMute = { muted ->
-                                MPVLib.setPropertyBoolean("mute", muted)
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-
-                    // DEMO overlay (garde pour la phase 1)
-                    if (showSocialDemo && !socialState.isConnected && false) {
-
-                    }
                 }
             }
         }
