@@ -99,3 +99,7 @@ offline-*.txt
 
 # Session 6 backups
 session6-patchA-*/
+build-*.log
+*.bak-*
+session-fix-*/
+screenshot-*.png
