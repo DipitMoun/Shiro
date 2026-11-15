@@ -7,6 +7,7 @@ import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.PeopleAlt
 import androidx.compose.material.icons.outlined.QueryStats
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
@@ -40,6 +41,7 @@ fun MoreScreen(
     navStyle: NavStyle,
     onClickAlt: () -> Unit,
     onClickDownloadQueue: () -> Unit,
+    onClickSocial: () -> Unit,
     onClickCategories: () -> Unit,
     onClickStats: () -> Unit,
     onClickStorage: () -> Unit,
@@ -118,6 +120,14 @@ fun MoreScreen(
                     },
                     icon = Icons.Outlined.GetApp,
                     onPreferenceClick = onClickDownloadQueue,
+                )
+            }
+            item {
+                TextPreferenceWidget(
+                    title = stringResource(MR.strings.pref_category_social),
+                    subtitle = stringResource(MR.strings.pref_social_summary),
+                    icon = Icons.Outlined.PeopleAlt,
+                    onPreferenceClick = onClickSocial,
                 )
             }
             item {

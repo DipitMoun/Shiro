@@ -214,12 +214,6 @@ object SettingsMainScreen : Screen() {
             screen = SettingsTrackingScreen,
         ),
         Item(
-            titleRes = MR.strings.pref_category_social,
-            subtitleRes = MR.strings.pref_social_summary,
-            icon = Icons.Outlined.PeopleAlt,
-            screen = SettingsSocialScreen,
-        ),
-        Item(
             titleRes = MR.strings.browse,
             subtitleRes = MR.strings.pref_browse_summary,
             icon = Icons.Outlined.Explore,

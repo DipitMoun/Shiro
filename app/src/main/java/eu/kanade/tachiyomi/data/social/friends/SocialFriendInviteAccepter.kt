@@ -26,6 +26,8 @@ data class SocialRoomInvite(
     val roomId: String,
     val name: String,
     val inviterMxid: String?,
+    val inviterDisplayName: String? = null,
+    val inviterAvatarUrl: String? = null,
 )
 
 class RustSocialFriendInviteAccepter(
@@ -60,10 +62,31 @@ class RustSocialFriendInviteAccepter(
                     if (room.membership() != Membership.INVITED) return@mapNotNull null
                     val inviter = room.inviter()?.userId
                     if (inviter != null && friends.isFriend(inviter)) return@mapNotNull null
+                    if (inviter != null && friends.isRejected(inviter)) return@mapNotNull null
+                    val displayName = inviter?.let { mxid ->
+                        try {
+                            room.memberDisplayName(mxid)
+                        } catch (c: CancellationException) {
+                            throw c
+                        } catch (_: Throwable) {
+                            null
+                        }
+                    }
+                    val avatarUrl = inviter?.let { mxid ->
+                        try {
+                            room.memberAvatarUrl(mxid)
+                        } catch (c: CancellationException) {
+                            throw c
+                        } catch (_: Throwable) {
+                            null
+                        }
+                    }
                     SocialRoomInvite(
                         roomId = room.id(),
                         name = room.displayName()?.takeIf { it.isNotBlank() } ?: "Room Matrix",
                         inviterMxid = inviter,
+                        inviterDisplayName = displayName,
+                        inviterAvatarUrl = avatarUrl,
                     )
                 },
             )

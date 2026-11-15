@@ -19,6 +19,7 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.core.preference.asState
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.more.MoreScreen
+import eu.kanade.presentation.more.settings.screen.SettingsSocialScreen
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
@@ -74,6 +75,7 @@ data object MoreTab : Tab {
             navStyle = navStyle,
             onClickAlt = { navigator.push(navStyle.moreTab) },
             onClickDownloadQueue = { navigator.push(DownloadsTab) },
+            onClickSocial = { navigator.push(SettingsSocialScreen()) },
             onClickCategories = { navigator.push(CategoriesTab) },
             onClickStats = { navigator.push(StatsTab) },
             onClickStorage = { navigator.push(StorageTab) },

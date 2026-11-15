@@ -24,6 +24,8 @@ interface SocialFriendStore {
     suspend fun add(record: SocialFriendRecord)
     suspend fun remove(mxid: String)
     fun isFriend(mxid: String): Boolean
+    suspend fun rejectFriendRequest(mxid: String) {}
+    fun isRejected(mxid: String): Boolean = false
     fun asAudienceFriends(): List<SocialFriend> = friends.value.map {
         SocialFriend(userId = it.mxid, displayName = it.displayName, hasWork = true)
     }
@@ -37,6 +39,11 @@ class PersistentSocialFriendStore(context: Context) : SocialFriendStore {
     private val json = Json { ignoreUnknownKeys = true }
     private val _friends = MutableStateFlow(load())
     override val friends: StateFlow<List<SocialFriendRecord>> = _friends.asStateFlow()
+
+    private val rejectedFile = File(context.filesDir, "social/rejected_mxids.json").apply {
+        parentFile?.mkdirs()
+    }
+    private val _rejectedMxids = MutableStateFlow(loadRejected())
 
     override suspend fun add(record: SocialFriendRecord) {
         if (!SocialProfileLink.isValidMxid(record.mxid)) return
@@ -57,6 +64,14 @@ class PersistentSocialFriendStore(context: Context) : SocialFriendStore {
 
     override fun isFriend(mxid: String): Boolean = _friends.value.any { it.mxid == mxid }
 
+    override suspend fun rejectFriendRequest(mxid: String) {
+        if (!SocialProfileLink.isValidMxid(mxid)) return
+        _rejectedMxids.value = _rejectedMxids.value + mxid
+        saveRejected()
+    }
+
+    override fun isRejected(mxid: String): Boolean = _rejectedMxids.value.contains(mxid)
+
     private fun load(): List<SocialFriendRecord> = try {
         if (file.exists()) {
             json.decodeFromString<List<SocialFriendRecord>>(file.readText())
@@ -72,6 +87,24 @@ class PersistentSocialFriendStore(context: Context) : SocialFriendStore {
             file.writeText(json.encodeToString(_friends.value))
         } catch (_: Throwable) {
             // Keep the in-memory list usable even if the disk write fails.
+        }
+    }
+
+    private fun loadRejected(): Set<String> = try {
+        if (rejectedFile.exists()) {
+            json.decodeFromString<Set<String>>(rejectedFile.readText())
+        } else {
+            emptySet()
+        }
+    } catch (_: Throwable) {
+        emptySet()
+    }
+
+    private fun saveRejected() {
+        try {
+            rejectedFile.writeText(json.encodeToString(_rejectedMxids.value))
+        } catch (_: Throwable) {
+            // Keep the in-memory set usable even if the disk write fails.
         }
     }
 }

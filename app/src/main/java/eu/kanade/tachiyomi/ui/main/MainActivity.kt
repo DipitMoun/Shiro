@@ -79,6 +79,8 @@ import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.player.service.HttpServerService
+import eu.kanade.tachiyomi.data.social.friends.SocialFriendInviteAccepter
+import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
 import eu.kanade.tachiyomi.data.updater.AppUpdateChecker
 import eu.kanade.tachiyomi.data.updater.RELEASE_URL
 import eu.kanade.tachiyomi.extension.anime.api.AnimeExtensionApi
@@ -98,6 +100,7 @@ import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
 import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.ui.player.ExternalIntents
 import eu.kanade.tachiyomi.ui.player.PlayerActivity
+import eu.kanade.presentation.more.settings.screen.SettingsSocialScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.social.SocialFriendsScreen
 import eu.kanade.tachiyomi.util.system.dpToPx
@@ -127,6 +130,8 @@ import tachiyomi.domain.entries.anime.interactor.GetAnime
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.util.collectAsState
@@ -171,6 +176,18 @@ class MainActivity : BaseActivity() {
         if (!isTaskRoot) {
             finish()
             return
+        }
+
+        // Auto-accept friend invites at boot so the user never needs Element.io.
+        lifecycleScope.launchIO {
+            runCatching {
+                val session = Injekt.get<MatrixSessionManager>()
+                val accepter = Injekt.get<SocialFriendInviteAccepter>()
+                session.restore()
+                accepter.acceptInvitesFromFriends()
+            }.onFailure {
+                logcat(LogPriority.WARN) { "social boot auto-accept failed: ${it.message}" }
+            }
         }
 
         setComposeContent {
@@ -244,6 +261,8 @@ class MainActivity : BaseActivity() {
                 ) { contentPadding ->
                     // Consume insets already used by app state banners
                     Box {
+                        // Social friend invite popup (global, above the navigator)
+                        SocialFriendInvitePopup()
                         // Shows current screen
                         DefaultNavigatorScreenTransition(
                             navigator = navigator,
@@ -502,7 +521,7 @@ class MainActivity : BaseActivity() {
             }
             Constants.INTENT_SOCIAL_SETTINGS -> {
                 navigator.popUntilRoot()
-                navigator.push(SettingsScreen(SettingsScreen.Destination.Social))
+                navigator.push(SettingsSocialScreen())
                 null
             }
             Intent.ACTION_SEARCH, Intent.ACTION_SEND, "com.google.android.gms.actions.SEARCH_ACTION" -> {

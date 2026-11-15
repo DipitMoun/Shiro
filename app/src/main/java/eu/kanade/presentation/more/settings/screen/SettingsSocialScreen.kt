@@ -1,13 +1,24 @@
 package eu.kanade.presentation.more.settings.screen
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.PeopleAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -18,30 +29,41 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.PreferenceScaffold
-import eu.kanade.presentation.util.LocalBackPress
+import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.data.social.friends.SocialFriendRecord
+import eu.kanade.tachiyomi.data.social.friends.SocialFriendStore
 import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
+import eu.kanade.tachiyomi.data.social.matrix.SocialAccount
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
+import eu.kanade.tachiyomi.data.social.matrix.media.SocialAvatarLoader
 import eu.kanade.tachiyomi.ui.social.SocialFriendsScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -55,15 +77,12 @@ import uy.kohesive.injekt.api.get
  * Dedicated Matrix account screen. The player overlay no longer embeds a login
  * form; it only redirects here when no session is available.
  */
-object SettingsSocialScreen : SearchableSettings {
-
-    @ReadOnlyComposable
-    @Composable
-    override fun getTitleRes() = MR.strings.pref_category_social
+class SettingsSocialScreen : Screen() {
 
     @Composable
     override fun Content() {
         val session = remember { Injekt.get<MatrixSessionManager>() }
+        val navigator = LocalNavigator.currentOrThrow
         LaunchedEffect(Unit) {
             if (session.state.value is SocialSessionState.Unauthenticated) {
                 session.restore()
@@ -71,21 +90,23 @@ object SettingsSocialScreen : SearchableSettings {
         }
 
         PreferenceScaffold(
-            titleRes = getTitleRes(),
-            onBackPressed = LocalBackPress.current,
-            actions = { AppBarAction() },
+            titleRes = MR.strings.pref_category_social,
+            onBackPressed = navigator::pop,
             itemsProvider = { getPreferences() },
         )
     }
 
     @Composable
-    override fun getPreferences(): List<Preference> {
+    private fun getPreferences(): List<Preference> {
         val navigator = LocalNavigator.currentOrThrow
         val session = remember { Injekt.get<MatrixSessionManager>() }
         val sessionState by session.state.collectAsState()
         val scope = rememberCoroutineScope()
         var dialog by remember { mutableStateOf<SocialDialog?>(null) }
         var loginError by remember { mutableStateOf<SocialError?>(null) }
+        val friendsStore = remember { Injekt.get<SocialFriendStore>() }
+        val avatarLoader = remember { Injekt.get<SocialAvatarLoader>() }
+        val friends by friendsStore.friends.collectAsState()
 
         when (dialog) {
             SocialDialog.Login -> MatrixLoginDialog(
@@ -129,32 +150,58 @@ object SettingsSocialScreen : SearchableSettings {
             )
         }
 
-        return listOf(
-            Preference.PreferenceItem.TextPreference(
-                title = stringResource(MR.strings.social_matrix_account),
-                subtitle = status,
-                icon = Icons.Outlined.PeopleAlt,
-                enabled = sessionState !is SocialSessionState.Authenticating,
-                onClick = {
-                    if (account == null) {
-                        loginError = null
-                        dialog = SocialDialog.Login
-                    } else {
-                        dialog = SocialDialog.Logout
-                    }
-                },
-            ),
-            Preference.PreferenceItem.TextPreference(
-                title = "Amis",
-                subtitle = "Liste, lien de profil et QR d’ajout",
-                icon = Icons.Outlined.PeopleAlt,
-                enabled = account != null,
-                onClick = { navigator.push(SocialFriendsScreen()) },
-            ),
-            Preference.PreferenceItem.InfoPreference(
-                title = stringResource(MR.strings.social_matrix_info),
-            ),
-        )
+        return buildList<Preference> {
+            add(
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.social_matrix_account),
+                    content = {
+                        MatrixAccountCard(
+                            account = account,
+                            status = status,
+                            sessionState = sessionState,
+                            onClick = {
+                                if (account == null) {
+                                    loginError = null
+                                    dialog = SocialDialog.Login
+                                } else {
+                                    dialog = SocialDialog.Logout
+                                }
+                            },
+                        )
+                    },
+                ),
+            )
+            friends.forEach { friend ->
+                add(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = friend.displayName ?: friend.mxid,
+                        content = {
+                            FriendCard(
+                                friend = friend,
+                                avatarLoader = avatarLoader,
+                                onClick = { navigator.push(SocialFriendsScreen()) },
+                            )
+                        },
+                    ),
+                )
+            }
+            add(
+                Preference.PreferenceItem.CustomPreference(
+                    title = "Amis",
+                    content = {
+                        SocialFriendsCard(
+                            enabled = account != null,
+                            onClick = { navigator.push(SocialFriendsScreen()) },
+                        )
+                    },
+                ),
+            )
+            add(
+                Preference.PreferenceItem.InfoPreference(
+                    title = stringResource(MR.strings.social_matrix_info),
+                ),
+            )
+        }
     }
 }
 
@@ -288,4 +335,215 @@ private fun MatrixLogoutDialog(
             }
         },
     )
+}
+
+@Composable
+private fun MatrixAccountCard(
+    account: SocialAccount?,
+    status: String,
+    sessionState: SocialSessionState,
+    onClick: () -> Unit,
+) {
+    val avatarLoader = remember { Injekt.get<SocialAvatarLoader>() }
+    val avatarBitmap by produceState<ImageBitmap?>(initialValue = null, account?.userId) {
+        value = if (account != null) {
+            avatarLoader.loadOwnAvatar(112)?.let { bytes ->
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            }
+        } else {
+            null
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(
+                enabled = sessionState !is SocialSessionState.Authenticating,
+                onClick = onClick,
+            )
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val bitmap = avatarBitmap
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.PeopleAlt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(MR.strings.social_matrix_account),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            imageVector = Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .padding(start = 4.dp)
+                .size(20.dp),
+        )
+    }
+}
+
+@Composable
+private fun FriendCard(
+    friend: SocialFriendRecord,
+    avatarLoader: SocialAvatarLoader,
+    onClick: () -> Unit,
+) {
+    val avatarBitmap by produceState<ImageBitmap?>(initialValue = null, friend.mxid) {
+        value = avatarLoader.loadProfileAvatar(friend.mxid)?.let { bytes ->
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        }
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val bitmap = avatarBitmap
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.PeopleAlt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = friend.displayName ?: friend.mxid.substringBefore(':').removePrefix("@"),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = friend.mxid,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            imageVector = Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .padding(start = 4.dp)
+                .size(20.dp),
+        )
+    }
+}
+
+@Composable
+private fun SocialFriendsCard(enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.PeopleAlt,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Amis",
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "Liste, lien de profil et QR d'ajout",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            imageVector = Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .padding(start = 4.dp)
+                .size(20.dp),
+        )
+    }
 }
