@@ -35,13 +35,23 @@ data class DiscoveredThread(
  * bindings before returning, so [ThreadRef] stays usable by the existing
  * [eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository].
  */
+
+/** One author work room, as discovered for the friend library (V2.1). */
+data class AuthorRoom(
+    val roomId: String,
+    val roomName: String,
+    val workId: eu.kanade.tachiyomi.data.social.identity.WorkId?,
+    val topic: String,
+)
 interface SocialThreadCatalog {
     suspend fun discover(
         work: WorkIdentity,
         episodeKey: EpisodeKey,
         selfMxid: String,
     ): SocialResult<List<DiscoveredThread>>
-}
+
+    /** V2.1: list every joined room owned by [authorMxid], regardless of work. */
+    suspend fun discoverRoomsFor(authorMxid: String): SocialResult<List<AuthorRoom>>}
 
 /**
  * Production catalog backed by the joined Matrix rooms.
@@ -126,6 +136,39 @@ class RustSocialThreadCatalog(
         return SocialResult.Success(discovered)
     }
 
+    override suspend fun discoverRoomsFor(authorMxid: String): SocialResult<List<AuthorRoom>> {
+        val client = clientProvider() ?: return SocialResult.Failure(
+            SocialError.Auth(AuthFailureReason.NOT_ALLOWED, "No Matrix session active"),
+        )
+        val rooms = try {
+            client.rooms()
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            return SocialResult.Failure(SocialError.Unknown("rooms() failed: ${t.message}", t))
+        }
+        val out = mutableListOf<AuthorRoom>()
+        for (room in rooms) {
+            val info = try {
+                room.roomInfo()
+            } catch (c: CancellationException) {
+                throw c
+            } catch (t: Throwable) {
+                continue
+            }
+            if (info.membership != Membership.JOINED) continue
+            val topic = info.topic ?: continue
+            val roomKey = SocialRoomKey.parseTopic(topic) ?: continue
+            if (roomKey.authorMxid != authorMxid) continue
+            out += AuthorRoom(
+                roomId = room.id(),
+                roomName = room.displayName()?.takeIf { it.isNotBlank() } ?: roomKey.roomName(null, null),
+                workId = roomKey.workId,
+                topic = topic,
+            )
+        }
+        return SocialResult.Success(out)
+    }
     private suspend fun resolveRoot(room: Room, threadKey: SocialThreadKey): String? {
         when (val cached = bindings.resolveThreadRoot(threadKey)) {
             is SocialResult.Success -> cached.value?.let { return it }

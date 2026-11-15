@@ -64,6 +64,7 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
 import eu.kanade.tachiyomi.data.social.matrix.media.SocialAvatarLoader
+import eu.kanade.presentation.social.FriendLibraryScreen
 import eu.kanade.tachiyomi.ui.social.SocialFriendsScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -179,7 +180,7 @@ class SettingsSocialScreen : Screen() {
                             FriendCard(
                                 friend = friend,
                                 avatarLoader = avatarLoader,
-                                onClick = { navigator.push(SocialFriendsScreen()) },
+                                onClick = { navigator.push(FriendLibraryScreen(authorMxid = friend.mxid, displayName = friend.displayName)) },
                             )
                         },
                     ),
