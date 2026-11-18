@@ -83,10 +83,8 @@ class BackupRestorer(
         val backup = BackupDecoder(context).decode(uri)
 
         // Store source mapping for error messages
-        val backupAnimeMaps = backup.backupAnimeSources
-        mangaSourceMapping = backupAnimeMaps.associate { it.sourceId to it.name }
-        val backupMangaMaps = backup.backupSources
-        mangaSourceMapping = backupMangaMaps.associate { it.sourceId to it.name }
+        animeSourceMapping = backup.backupAnimeSources.associate { it.sourceId to it.name }
+        mangaSourceMapping = backup.backupSources.associate { it.sourceId to it.name }
 
         if (options.libraryEntries) {
             restoreAmount += backup.backupManga.size + backup.backupAnime.size
@@ -141,10 +139,10 @@ class BackupRestorer(
         }
     }
 
-    private fun CoroutineScope.restoreCategories(
+    private suspend fun CoroutineScope.restoreCategories(
         backupAnimeCategories: List<BackupCategory>,
         backupMangaCategories: List<BackupCategory>,
-    ) = launch {
+    ) {
         ensureActive()
         animeCategoriesRestorer(backupAnimeCategories)
         mangaCategoriesRestorer(backupMangaCategories)

@@ -25,7 +25,9 @@ import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.flow.update
+import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.LazyColumnWithAction
@@ -46,11 +48,17 @@ class CreateBackupScreen : Screen() {
             contract = ActivityResultContracts.CreateDocument("application/*"),
         ) {
             if (it != null) {
-                context.contentResolver.takePersistableUriPermission(
-                    it,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                )
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        it,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                } catch (e: SecurityException) {
+                    // Some document providers only expose a temporary grant.
+                    // The backup job can still write immediately with that grant.
+                    logcat(LogPriority.ERROR, e) { "Backup provider does not support persistable URI grants" }
+                }
                 model.createBackup(context, it)
                 navigator.pop()
             }

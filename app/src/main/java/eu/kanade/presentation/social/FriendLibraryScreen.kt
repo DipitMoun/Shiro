@@ -56,6 +56,7 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.catalog.AuthorRoom
 import eu.kanade.tachiyomi.data.social.matrix.catalog.SocialThreadCatalog
 import eu.kanade.tachiyomi.data.social.matrix.media.SocialAvatarLoader
+import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogRepository
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogWork
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen
@@ -76,7 +77,7 @@ class FriendLibraryScreen(
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val catalog = remember { Injekt.get<SocialThreadCatalog>() }
-        val catalogRepo = remember { CatalogRepository(Injekt.get()) }
+        val catalogRepo = remember { CatalogRepository(Injekt.get<NetworkHelper>()) }
         val avatarLoader = remember { Injekt.get<SocialAvatarLoader>() }
         val getAnimeFavorites = remember { Injekt.get<GetAnimeFavorites>() }
         val multiSourceOpener = remember { MultiSourceWorkOpener() }
