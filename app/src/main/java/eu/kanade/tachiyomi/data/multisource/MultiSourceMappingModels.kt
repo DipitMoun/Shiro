@@ -16,6 +16,31 @@ data class MultiSourceEpisodeRef(
     val episodeUrl: String,
     val episodeNumber: Int,
     val episodeName: String,
+    /** Manga chapters only: upload date, scanlator and the source's own metadata. */
+    val dateUpload: Long = 0L,
+    val scanlator: String? = null,
+    val memo: String? = null,
+)
+
+/** Source line shown in the manga sources sheet. */
+data class MangaSourceCompatibility(
+    val sourceId: Long,
+    val sourceName: String,
+    val extension: eu.kanade.tachiyomi.extension.manga.model.MangaExtension.Installed?,
+    val compatibility: Float,
+    val coveredChapters: Int,
+    val assignedChapters: Int,
+)
+
+/** Mapping state of a multi-source manga, mirror of [MultiSourceMappingState]. */
+data class MangaMappingState(
+    val loading: Boolean = true,
+    val totalChapters: Int = 0,
+    val assignedChapters: Int = 0,
+    val complete: Boolean = false,
+    val sources: List<MangaSourceCompatibility> = emptyList(),
+    val preferredSourceId: Long? = null,
+    val error: String? = null,
 )
 
 /** Ligne de compatibilité affichée dans la modal des sources. */
@@ -156,6 +181,28 @@ class MultiSourceMappingStore(context: Context) {
         return runCatching { json.decodeFromString<MultiSourceMappingReport>(raw) }.getOrNull()
     }
 
+    /** Manga sources taking part in the mapping (kept apart from the anime ones). */
+    fun getSelectedMangaSourceIds(): Set<Long>? {
+        val raw = prefs.getStringSet(SELECTED_MANGA_SOURCES_KEY, null) ?: return null
+        return raw.mapNotNull { it.toLongOrNull() }.toSet()
+    }
+
+    fun setSelectedMangaSourceIds(ids: Set<Long>) {
+        if (getSelectedMangaSourceIds() == ids) return
+        prefs.edit()
+            .putStringSet(SELECTED_MANGA_SOURCES_KEY, ids.map { it.toString() }.toSet())
+            .apply()
+    }
+
+    /** Forgets the mapping of a work: it is rebuilt the next time it is needed. */
+    fun clear(workUrl: String) {
+        prefs.edit()
+            .remove(workUrl)
+            .remove("$workUrl$ALTERNATIVES_SUFFIX")
+            .remove("$workUrl$REPORT_SUFFIX")
+            .apply()
+    }
+
     fun getSelectedSourceIds(): Set<Long>? {
         val raw = prefs.getStringSet(SELECTED_SOURCES_KEY, null) ?: return null
         return raw.mapNotNull { it.toLongOrNull() }.toSet()
@@ -194,6 +241,7 @@ class MultiSourceMappingStore(context: Context) {
         private const val REPORT_SUFFIX = "#report"
         private const val ALTERNATIVES_SUFFIX = "#alternatives"
         private const val SELECTED_SOURCES_KEY = "selected_mapping_sources"
+        private const val SELECTED_MANGA_SOURCES_KEY = "selected_mapping_manga_sources"
         private val SOURCE_ID = Regex("\"sourceId\"\\s*:\\s*(\\d+)")
     }
 }

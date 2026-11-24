@@ -31,7 +31,8 @@ import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AttachMoney
-import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
@@ -174,6 +175,7 @@ fun MangaActionRow(
     onEditCategory: (() -> Unit)?,
     modifier: Modifier = Modifier,
     onSourcesClicked: (() -> Unit)? = null,
+    sourceMapping: eu.kanade.tachiyomi.data.multisource.MangaMappingState? = null,
 ) {
     val defaultActionButtonColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
 
@@ -233,11 +235,31 @@ fun MangaActionRow(
             )
         }
         if (onSourcesClicked != null) {
+            val loading = sourceMapping?.loading != false && sourceMapping != null
+            val complete = sourceMapping?.complete == true
+            val percent = if (sourceMapping != null && sourceMapping.totalChapters > 0) {
+                (sourceMapping.assignedChapters * 100 / sourceMapping.totalChapters).coerceIn(0, 100)
+            } else {
+                0
+            }
             MangaActionButton(
-                title = "Sources",
-                icon = Icons.Outlined.FilterList,
-                color = defaultActionButtonColor,
+                title = when {
+                    loading -> "Sources…"
+                    complete -> "Sources"
+                    else -> "Sources $percent%"
+                },
+                icon = when {
+                    loading -> Icons.Outlined.Sync
+                    complete -> Icons.Outlined.CheckCircle
+                    else -> Icons.Outlined.WarningAmber
+                },
+                color = when {
+                    complete -> MaterialTheme.colorScheme.primary
+                    loading -> defaultActionButtonColor
+                    else -> MaterialTheme.colorScheme.error
+                },
                 onClick = onSourcesClicked,
+                loading = loading,
             )
         }
     }
@@ -673,6 +695,7 @@ private fun RowScope.MangaActionButton(
     color: Color,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    loading: Boolean = false,
 ) {
     TextButton(
         onClick = onClick,
@@ -680,12 +703,20 @@ private fun RowScope.MangaActionButton(
         onLongClick = onLongClick,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(20.dp),
-            )
+            if (loading) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = color,
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 text = title,

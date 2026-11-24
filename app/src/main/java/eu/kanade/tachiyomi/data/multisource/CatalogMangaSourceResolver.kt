@@ -43,90 +43,41 @@ data class ResolvedMangaPages(
 )
 
 /**
- * Résout une œuvre manga du catalogue sur les extensions installées.
+ * Finds a catalog manga on the installed extensions.
  *
- * Le moteur manga n'a pas de mapping persisté : à l'ouverture d'une œuvre, on
- * cherche son titre sur les sources activées, on garde la meilleure
- * correspondance et on réutilise ses chapitres. La correspondance est mise en
- * cache pour la session.
+ * Every source that has the work comes back with its chapters; [MultiSourceMangaMapper] turns
+ * that into the persisted chapter mapping, the same way the anime mapping works.
  */
 class CatalogMangaSourceResolver(
     private val sourceManager: MangaSourceManager = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
-    private val workStore: MultiSourceWorkStore = Injekt.get(),
 ) {
 
-    private data class CachedCoverage(
-        val coverage: MangaSourceCoverage?,
-        val at: Long,
-    )
-
-    private val cache = mutableMapOf<String, CachedCoverage>()
-
-    suspend fun coverage(work: CatalogWork, workUrl: String? = null): MangaSourceCoverage? =
-        withContext(Dispatchers.IO) {
-            val preferred = workUrl?.let { workStore.preferredSource(it) }
-            val key = "${work.id}#${preferred ?: 0}"
-            val now = System.currentTimeMillis()
-            synchronized(cache) { cache[key] }
-                ?.takeIf { now - it.at < CACHE_TTL_MS }
-                ?.let { return@withContext it.coverage }
-
-            val coverage = withTimeoutOrNull(TOTAL_TIMEOUT_MS) { findCoverage(work, preferred) }
-            synchronized(cache) { cache[key] = CachedCoverage(coverage, now) }
-            coverage
-        }
-
-    /** Sources qui contiennent réellement l'œuvre, pour le sélecteur manuel. */
-    suspend fun availableSources(work: CatalogWork): List<MangaSourceCoverage> =
-        withContext(Dispatchers.IO) {
-            searchSources(work, enabledSources(), searchQueries(work), graceAfterFirstMs = null)
-                .sortedByDescending { it.chapters.size }
-        }
-
-    fun invalidate(work: CatalogWork) {
-        synchronized(cache) {
-            cache.keys.filter { it.startsWith("${work.id}#") }.forEach(cache::remove)
-        }
-    }
-
-    private suspend fun findCoverage(
+    /**
+     * The sources that have [work], with their chapters. Sources are searched a few at a time;
+     * slow ones are abandoned once another already covers the work.
+     */
+    suspend fun coverages(
         work: CatalogWork,
-        preferredSourceId: Long?,
-    ): MangaSourceCoverage? {
-        val found = searchSources(
-            work,
-            enabledSources(),
-            searchQueries(work),
-            graceAfterFirstMs = OTHER_SOURCES_GRACE_MS,
-            stopAtSourceId = preferredSourceId,
-        )
-        // The user's choice wins; otherwise the source with the most chapters.
-        val best = found.firstOrNull { it.sourceId == preferredSourceId }
-            ?: found.maxByOrNull { it.chapters.size }
-        if (best != null) {
-            MultiSourceDebugLog.log(
-                "manga",
-                "coverage work=${work.title} source=${best.sourceName} chapters=${best.chapters.size} " +
-                    "candidates=${found.size}",
-            )
-        }
-        return best
+        selectedSourceIds: Set<Long>?,
+        prioritySourceIds: Set<Long> = emptySet(),
+    ): List<MangaSourceCoverage> = withContext(Dispatchers.IO) {
+        val sources = enabledSources()
+            .filter { selectedSourceIds == null || it.id in selectedSourceIds }
+            .sortedByDescending { it.id in prioritySourceIds }
+        searchSources(work, sources, searchQueries(work))
     }
 
     /**
-     * Searches [sources] for [work] with a few of them at a time. Slow sources are abandoned
-     * instead of awaited: with [graceAfterFirstMs] the search ends shortly after the first source
-     * that has the work, with null it waits for every source. [stopAtSourceId] ends it at once
-     * when that source answers.
+     * Searches [sources] for [work] with a few of them at a time. Once one source covers the
+     * work the others only get a short grace period; the rest is abandoned rather than awaited.
      */
     private suspend fun searchSources(
         work: CatalogWork,
         sources: List<CatalogueSource>,
         queries: List<String>,
-        graceAfterFirstMs: Long?,
-        stopAtSourceId: Long? = null,
     ): List<MangaSourceCoverage> {
+        val expected = work.episodes ?: 0
         val results = java.util.Collections.synchronizedList(mutableListOf<MangaSourceCoverage>())
         val gate = Semaphore(PARALLEL_SOURCES)
         // Own scope: a source stuck in blocking code must not hold the caller back.
@@ -149,18 +100,33 @@ class CatalogMangaSourceResolver(
         }
 
         val startedAt = System.currentTimeMillis()
-        var firstAt = 0L
+        var settledAt = 0L
         while (jobs.any { it.isActive }) {
             delay(POLL_INTERVAL_MS)
             val now = System.currentTimeMillis()
-            val snapshot = synchronized(results) { results.toList() }
-            if (snapshot.isNotEmpty() && firstAt == 0L) firstAt = now
-            if (stopAtSourceId != null && snapshot.any { it.sourceId == stopAtSourceId }) break
-            if (graceAfterFirstMs != null && firstAt != 0L && now - firstAt >= graceAfterFirstMs) break
+            if (settledAt == 0L) {
+                val found = synchronized(results) { results.toList() }
+                val settled = if (expected > 0) {
+                    found.any { it.chapters.size >= expected * FULL_COVERAGE_RATIO }
+                } else {
+                    found.isNotEmpty()
+                }
+                if (settled) settledAt = now
+            }
+            if (settledAt != 0L) {
+                val grace = if (expected > 0) FULL_COVERAGE_GRACE_MS else UNKNOWN_COUNT_GRACE_MS
+                if (now - settledAt >= grace) break
+            }
             if (now - startedAt >= TOTAL_TIMEOUT_MS) break
         }
         scope.cancel()
-        return synchronized(results) { results.toList() }
+        val found = synchronized(results) { results.toList() }
+        MultiSourceDebugLog.log(
+            "manga",
+            "coverage work=${work.title} found=${found.size}/${sources.size} " +
+                found.joinToString(" ") { "${it.sourceName}=${it.chapters.size}" },
+        )
+        return found
     }
 
     private suspend fun resolveCoverage(
@@ -168,28 +134,31 @@ class CatalogMangaSourceResolver(
         work: CatalogWork,
         queries: List<String>,
     ): MangaSourceCoverage? {
+        val expected = work.episodes ?: 0
         val filters = runCatching { source.getFilterList() }.getOrDefault(FilterList())
         for (query in queries) {
             val page = runCatching {
                 source.getSearchManga(1, query, filters)
             }.getOrNull() ?: continue
 
-            val manga = page.mangas
+            val candidates = page.mangas
                 .filter { seasonCompatible(it.title, work) }
-                .maxByOrNull { titleScore(it.title, work) }
-                ?: continue
-            if (titleScore(manga.title, work) < MIN_TITLE_SCORE) continue
+                .map { it to titleScore(it.title, work) }
+                .filter { (_, score) -> score >= MIN_TITLE_SCORE }
+                .sortedByDescending { (_, score) -> score }
+            if (candidates.isEmpty()) continue
+            val bestScore = candidates.first().second
 
-            val chapters = runCatching {
-                source.getMangaUpdate(manga, emptyList(), fetchDetails = false, fetchChapters = true).chapters
+            // The best title is not always the right entry (another season, a spin-off): when it
+            // covers too little, the next close candidate gets a chance.
+            var chosen: Pair<SManga, Map<Int, SChapter>>? = null
+            for ((manga, score) in candidates.take(MAX_CANDIDATES_PER_QUERY)) {
+                if (score < bestScore - CANDIDATE_SCORE_MARGIN) break
+                val byNumber = fetchChapterMap(source, manga) ?: continue
+                if (chosen == null || byNumber.size > chosen.second.size) chosen = manga to byNumber
+                if (expected <= 0 || byNumber.size >= expected * ENOUGH_COVERAGE_RATIO) break
             }
-                .getOrNull()
-                .orEmpty()
-            val byNumber = linkedMapOf<Int, SChapter>()
-            chapters.forEach { chapter ->
-                chapterNumber(chapter)?.let { number -> byNumber.putIfAbsent(number, chapter) }
-            }
-            if (byNumber.isEmpty()) continue
+            val (manga, byNumber) = chosen ?: continue
 
             return MangaSourceCoverage(
                 sourceId = source.id,
@@ -201,45 +170,21 @@ class CatalogMangaSourceResolver(
         return null
     }
 
-    /**
-     * Pages d'un chapitre. En cas d'échec de la source principale, on réessaie
-     * sur les autres sources activées.
-     */
-    suspend fun pages(workUrl: String, chapterNumber: Int): ResolvedMangaPages? =
-        withContext(Dispatchers.IO) {
-            val work = workStore.get(workUrl) ?: return@withContext null
-            val primary = coverage(work, workUrl)
-            val candidates = mutableListOf<MangaSourceCoverage>()
-            primary?.let(candidates::add)
-            for (source in enabledSources()) {
-                if (source.id == primary?.sourceId) continue
-                val other = runCatching {
-                    withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
-                        resolveCoverage(source, work, searchQueries(work))
-                    }
-                }.getOrNull()
-                if (other != null && chapterNumber in other.chapters) {
-                    candidates += other
-                }
-            }
+    /** Chapters of [manga] by number; a whole-number chapter wins over a fractional one. */
+    private suspend fun fetchChapterMap(source: CatalogueSource, manga: SManga): Map<Int, SChapter>? {
+        val chapters = runCatching {
+            source.getMangaUpdate(manga, emptyList(), fetchDetails = false, fetchChapters = true).chapters
+        }.getOrNull() ?: return null
 
-            for (candidate in candidates) {
-                val chapter = candidate.chapters[chapterNumber] ?: continue
-                val source = sourceManager.get(candidate.sourceId) as? HttpSource ?: continue
-                val pages = runCatching { source.getPageList(chapter) }
-                    .onFailure {
-                        logcat(LogPriority.WARN, it) {
-                            "Multi-source manga : pages impossibles sur ${candidate.sourceName}"
-                        }
-                    }
-                    .getOrNull()
-                    .orEmpty()
-                if (pages.isNotEmpty()) {
-                    return@withContext ResolvedMangaPages(source, pages)
-                }
+        return chapters
+            .mapNotNull { chapter -> chapterNumber(chapter)?.let { it to chapter } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (number, group) ->
+                group.firstOrNull { it.chapter_number == number.toFloat() } ?: group.first()
             }
-            null
-        }
+            .toSortedMap()
+            .takeIf { it.isNotEmpty() }
+    }
 
     private fun enabledSources(): List<CatalogueSource> {
         val enabledLanguages = sourcePreferences.enabledLanguages().get()
@@ -270,10 +215,10 @@ class CatalogMangaSourceResolver(
     private fun chapterNumber(chapter: SChapter): Int? {
         val number = chapter.chapter_number
         if (number > 0f) return number.roundToInt()
-        return TRAILING_NUMBER.find(chapter.name)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.toIntOrNull()
+        // Extensions written for extensions-lib 1.6 often leave the number unset: read the name.
+        return LABELLED_NUMBER.find(chapter.name)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: TRAILING_NUMBER.find(chapter.name)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: FIRST_NUMBER.find(chapter.name)?.groupValues?.getOrNull(1)?.toIntOrNull()
     }
 
     private fun titleScore(sourceTitle: String, work: CatalogWork): Double {
@@ -346,11 +291,15 @@ class CatalogMangaSourceResolver(
     }
 
     private companion object {
-        const val CACHE_TTL_MS = 30 * 60 * 1000L
         const val SOURCE_TIMEOUT_MS = 15_000L
         const val TOTAL_TIMEOUT_MS = 30_000L
-        const val OTHER_SOURCES_GRACE_MS = 3_000L
-        const val PARALLEL_SOURCES = 4
+        const val FULL_COVERAGE_RATIO = 0.95
+        const val FULL_COVERAGE_GRACE_MS = 4_000L
+        const val UNKNOWN_COUNT_GRACE_MS = 8_000L
+        const val MAX_CANDIDATES_PER_QUERY = 3
+        const val CANDIDATE_SCORE_MARGIN = 0.15
+        const val ENOUGH_COVERAGE_RATIO = 0.6
+        const val PARALLEL_SOURCES = 6
         const val POLL_INTERVAL_MS = 100L
         const val MIN_TITLE_SCORE = 0.45
         const val MAX_SEARCH_QUERIES = 4
@@ -362,5 +311,7 @@ class CatalogMangaSourceResolver(
         val SHORT_SEASON = Regex("(?i)(?:^|\\s)S(\\d{1,2})(?:\\s|$)")
         val BRACKETED_CONTENT = Regex("\\([^)]*\\)|\\[[^]]*]")
         val TRAILING_NUMBER = Regex("(?i)\\s(\\d{1,2})$")
+        val LABELLED_NUMBER = Regex("(?i)(?:chapter|chapitre|chap\\.?|ch\\.?|ep\\.?|#)\\s*(\\d{1,4})")
+        val FIRST_NUMBER = Regex("(\\d{1,4})")
     }
 }

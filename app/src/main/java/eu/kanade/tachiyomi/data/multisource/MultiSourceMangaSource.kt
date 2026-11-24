@@ -39,7 +39,8 @@ object MultiSourceMangaSource : HttpSource() {
     private val store: MultiSourceWorkStore
         get() = Injekt.get()
 
-    private val resolver: CatalogMangaSourceResolver by lazy { CatalogMangaSourceResolver() }
+    private val mapper: MultiSourceMangaMapper
+        get() = Injekt.get()
 
     /** Source réelle utilisée pour une URL de page donnée (images). */
     private val pageSources = Collections.synchronizedMap(LinkedHashMap<String, HttpSource>())
@@ -56,27 +57,23 @@ object MultiSourceMangaSource : HttpSource() {
     }
 
     override suspend fun getChapterList(manga: SManga): List<SChapter> {
-        val work = store.get(manga.url) ?: return emptyList()
-        return resolver.coverage(work, manga.url)?.chapters
-            ?.entries
-            ?.sortedBy { it.key }
-            ?.map { (number, chapter) ->
-                SChapter.create().apply {
-                    url = "${manga.url}$CHAPTER_MARKER$number"
-                    name = chapter.name.ifBlank { "Chapitre $number" }
-                    chapter_number = number.toFloat()
-                    date_upload = chapter.date_upload
-                    scanlator = chapter.scanlator
-                }
+        mapper.ensure(manga.url) ?: return emptyList()
+        return mapper.chapters(manga.url).map { ref ->
+            SChapter.create().apply {
+                url = "${manga.url}$CHAPTER_MARKER${ref.episodeNumber}"
+                name = ref.episodeName.ifBlank { "Chapitre ${ref.episodeNumber}" }
+                chapter_number = ref.episodeNumber.toFloat()
+                date_upload = ref.dateUpload
+                scanlator = ref.scanlator
             }
-            .orEmpty()
+        }
     }
 
     override suspend fun getPageList(chapter: SChapter): List<Page> {
         val workUrl = chapter.url.substringBefore(CHAPTER_MARKER)
         val number = chapter.url.substringAfter(CHAPTER_MARKER).toIntOrNull() ?: return emptyList()
 
-        val resolved = resolver.pages(workUrl, number)
+        val resolved = mapper.pages(workUrl, number)
         if (resolved == null) {
             logcat(LogPriority.WARN) {
                 "Multi-source manga : aucune source pour $workUrl chapitre $number"
@@ -155,16 +152,11 @@ object MultiSourceMangaSource : HttpSource() {
     // Sélection manuelle de la source
     // ------------------------------------------------------------------
 
-    suspend fun availableSources(mangaUrl: String): List<MangaSourceCoverage> {
-        val work = store.get(mangaUrl) ?: return emptyList()
-        return resolver.availableSources(work)
-    }
-
     fun preferredSourceId(mangaUrl: String): Long? = store.preferredSource(mangaUrl)
 
     fun setPreferredSource(mangaUrl: String, sourceId: Long?) {
         store.setPreferredSource(mangaUrl, sourceId)
-        store.get(mangaUrl)?.let(resolver::invalidate)
+        mapper.invalidate(mangaUrl)
     }
 
     private const val MAX_PAGE_SOURCES = 1_000

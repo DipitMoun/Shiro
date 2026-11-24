@@ -133,6 +133,7 @@ fun MangaScreen(
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
     onSourcesClicked: (() -> Unit)? = null,
+    sourceMapping: eu.kanade.tachiyomi.data.multisource.MangaMappingState? = null,
 ) {
     val context = LocalContext.current
     val onCopyTagToClipboard: (tag: String) -> Unit = {
@@ -182,6 +183,7 @@ fun MangaScreen(
             onInvertSelection = onInvertSelection,
             onSettingsClicked = onSettingsClicked,
             onSourcesClicked = onSourcesClicked,
+            sourceMapping = sourceMapping,
         )
     } else {
         MangaScreenLargeImpl(
@@ -219,6 +221,7 @@ fun MangaScreen(
             onInvertSelection = onInvertSelection,
             onSettingsClicked = onSettingsClicked,
             onSourcesClicked = onSourcesClicked,
+            sourceMapping = sourceMapping,
         )
     }
 }
@@ -272,6 +275,7 @@ private fun MangaScreenSmallImpl(
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
     onSourcesClicked: (() -> Unit)? = null,
+    sourceMapping: eu.kanade.tachiyomi.data.multisource.MangaMappingState? = null,
 ) {
     val chapterListState = rememberLazyListState()
 
@@ -425,6 +429,7 @@ private fun MangaScreenSmallImpl(
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
                             onSourcesClicked = onSourcesClicked,
+            sourceMapping = sourceMapping,
                         )
                     }
 
@@ -523,6 +528,7 @@ fun MangaScreenLargeImpl(
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
     onSourcesClicked: (() -> Unit)? = null,
+    sourceMapping: eu.kanade.tachiyomi.data.multisource.MangaMappingState? = null,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
@@ -664,6 +670,7 @@ fun MangaScreenLargeImpl(
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
                             onSourcesClicked = onSourcesClicked,
+            sourceMapping = sourceMapping,
                         )
                         ExpandableMangaDescription(
                             defaultExpandState = true,

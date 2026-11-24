@@ -427,37 +427,6 @@ class MangaScreenModel(
         }
     }
 
-    fun showMultiSourcePicker() {
-        val manga = successState?.manga ?: return
-        if (manga.source != MultiSourceMangaSource.ID) return
-        val selectedSourceId = MultiSourceMangaSource.preferredSourceId(manga.url)
-        // The dialog opens at once: searching every source takes a while, and a button that
-        // seems to do nothing for that long looks broken.
-        updateSuccessState {
-            it.copy(dialog = Dialog.MultiSourcePicker(emptyList(), selectedSourceId, isLoading = true))
-        }
-        screenModelScope.launch {
-            val options = MultiSourceMangaSource.availableSources(manga.url)
-            updateSuccessState { state ->
-                // The user may have closed the dialog meanwhile.
-                if (state.dialog !is Dialog.MultiSourcePicker) {
-                    state
-                } else {
-                    state.copy(dialog = Dialog.MultiSourcePicker(options, selectedSourceId, isLoading = false))
-                }
-            }
-        }
-    }
-
-    fun selectMultiSource(manga: Manga, sourceId: Long?) {
-        MultiSourceMangaSource.setPreferredSource(manga.url, sourceId)
-        updateSuccessState { it.copy(dialog = null, isRefreshingData = true) }
-        screenModelScope.launch {
-            fetchFromSource(fetchDetails = false, fetchChapters = true, manualFetch = true)
-            updateSuccessState { it.copy(isRefreshingData = false) }
-        }
-    }
-
     fun showSetMangaFetchIntervalDialog() {
         val manga = successState?.manga ?: return
         updateSuccessState {
@@ -1159,12 +1128,6 @@ class MangaScreenModel(
         data class DuplicateManga(val manga: Manga, val duplicate: Manga) : Dialog
         data class Migrate(val newManga: Manga, val oldManga: Manga) : Dialog
         data class SetMangaFetchInterval(val manga: Manga) : Dialog
-        data class MultiSourcePicker(
-            val options: List<eu.kanade.tachiyomi.data.multisource.MangaSourceCoverage>,
-            val selectedSourceId: Long?,
-            /** The sources are still being searched: the dialog shows a spinner meanwhile. */
-            val isLoading: Boolean = false,
-        ) : Dialog
         data object SettingsSheet : Dialog
         data object TrackSheet : Dialog
         data object FullCover : Dialog

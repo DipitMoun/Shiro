@@ -6,7 +6,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,11 +39,12 @@ import eu.kanade.presentation.entries.manga.ChapterSettingsDialog
 import eu.kanade.presentation.entries.manga.DuplicateMangaDialog
 import eu.kanade.presentation.entries.manga.MangaScreen
 import eu.kanade.presentation.entries.manga.components.MangaCoverDialog
-import eu.kanade.presentation.entries.manga.components.MultiSourcePickerDialog
+import eu.kanade.presentation.entries.manga.components.MultiSourceMangaCompatibilityContent
 import eu.kanade.presentation.entries.manga.components.ScanlatorFilterDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
+import eu.kanade.tachiyomi.data.multisource.MangaMappingState
 import eu.kanade.tachiyomi.data.multisource.MultiSourceMangaSource
 import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.manga.isLocalOrStub
@@ -103,6 +107,19 @@ class MangaScreen(
 
         val successState = state as MangaScreenModel.State.Success
         val isHttpSource = remember { successState.source is HttpSource }
+        val isMultiSource = successState.manga.source == MultiSourceMangaSource.ID
+
+        val mappingModel = if (isMultiSource) {
+            rememberScreenModel { MultiSourceMangaMappingScreenModel(successState.manga.url) }
+        } else {
+            null
+        }
+        val mappingState = mappingModel?.state?.collectAsStateWithLifecycle()?.value
+        var showSources by rememberSaveable { mutableStateOf(false) }
+
+        LaunchedEffect(isMultiSource, successState.manga.url) {
+            mappingModel?.load()
+        }
 
         LaunchedEffect(successState.manga, screenModel.source) {
             if (isHttpSource) {
@@ -113,6 +130,24 @@ class MangaScreen(
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e) { "Failed to get manga URL" }
                 }
+            }
+        }
+
+        if (showSources && isMultiSource) {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = { showSources = false },
+                sheetState = sheetState,
+            ) {
+                MultiSourceMangaCompatibilityContent(
+                    state = mappingState ?: MangaMappingState(),
+                    onReload = {
+                        mappingModel?.retry()
+                    },
+                    onSelectSource = { sourceId ->
+                        mappingModel?.selectSource(sourceId) { screenModel.fetchAllFromSource(manualFetch = true) }
+                    },
+                )
             }
         }
 
@@ -151,8 +186,8 @@ class MangaScreen(
                     screenModel.showTrackDialog()
                 }
             },
-            onSourcesClicked = { screenModel.showMultiSourcePicker() }
-                .takeIf { successState.source.id == MultiSourceMangaSource.ID },
+            onSourcesClicked = { showSources = true }.takeIf { isMultiSource },
+            sourceMapping = mappingState,
             onTagSearch = { scope.launch { performGenreSearch(navigator, it, screenModel.source!!) } },
             onFilterButtonClicked = screenModel::showSettingsDialog,
             onRefresh = screenModel::fetchAllFromSource,
@@ -285,15 +320,6 @@ class MangaScreen(
                 } else {
                     LoadingScreen(Modifier.systemBarsPadding())
                 }
-            }
-            is MangaScreenModel.Dialog.MultiSourcePicker -> {
-                MultiSourcePickerDialog(
-                    options = dialog.options,
-                    selectedSourceId = dialog.selectedSourceId,
-                    isLoading = dialog.isLoading,
-                    onSelect = { sourceId -> screenModel.selectMultiSource(successState.manga, sourceId) },
-                    onDismissRequest = onDismissRequest,
-                )
             }
             is MangaScreenModel.Dialog.SetMangaFetchInterval -> {
                 SetIntervalDialog(

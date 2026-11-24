@@ -70,7 +70,7 @@ fun Screen.mangaSourcesTab(): TabContent {
         installedExtensions.flatMap { it.sources }.map { it.id }.toSet()
     }
     var selectedSourceIds by remember(installedExtensions) {
-        mutableStateOf(mappingStore.getSelectedSourceIds() ?: allSourceIds)
+        mutableStateOf(mappingStore.getSelectedMangaSourceIds() ?: allSourceIds)
     }
     var showMappingSources by remember { mutableStateOf(false) }
 
@@ -81,12 +81,12 @@ fun Screen.mangaSourcesTab(): TabContent {
         } else {
             selectedSourceIds + ids
         }
-        mappingStore.setSelectedSourceIds(selectedSourceIds)
+        mappingStore.setSelectedMangaSourceIds(selectedSourceIds)
     }
 
     val selectAllExtensions = {
         selectedSourceIds = allSourceIds
-        mappingStore.setSelectedSourceIds(allSourceIds)
+        mappingStore.setSelectedMangaSourceIds(allSourceIds)
     }
 
     LaunchedEffect(Unit) {
