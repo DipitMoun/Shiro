@@ -14,8 +14,16 @@ import kotlinx.serialization.json.Json
  */
 class PersistentSessionCredentialStore(context: Context) : SessionCredentialStore {
 
-    private val file = File(context.filesDir, "social/matrix/session.json").apply {
+    private val file = sessionFile(context).apply {
         parentFile?.mkdirs()
+    }
+
+    companion object {
+        private fun sessionFile(context: Context) = File(context.filesDir, "social/matrix/session.json")
+
+        /** Cheap check usable outside DI, e.g. from a boot receiver. */
+        fun hasPersistedSession(context: Context): Boolean =
+            sessionFile(context).let { it.isFile && it.length() > 0L }
     }
     private val json = Json { ignoreUnknownKeys = true }
 

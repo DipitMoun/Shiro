@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 
 /**
  * P2-10a: SDK-free controller that drives the social overlay state.
@@ -100,6 +102,7 @@ class SocialOverlayController(
      * threads from another episode being reused when creation fails.
      */
     fun prepareWork() {
+        logcat(LogPriority.ERROR) { "SWITCH controller.prepareWork: threads vides" }
         timelineJob?.cancel()
         timelineJob = null
         _state.value = _state.value.copy(
@@ -109,6 +112,9 @@ class SocialOverlayController(
             timeline = null,
             timelines = emptyMap(),
             lastError = null,
+            activeRoomId = null,
+            activeAuthorMxid = null,
+            roomTimeline = null,
         )
     }
 
@@ -139,6 +145,9 @@ class SocialOverlayController(
             timeline = null,
             timelines = emptyMap(),
             lastError = null,
+            activeRoomId = null,
+            activeAuthorMxid = null,
+            roomTimeline = null,
         )
 
         timelineJob = scope.launch {
@@ -173,6 +182,7 @@ class SocialOverlayController(
                 }
             }
             val selected = descriptors.firstOrNull { it.isOwn }?.ref ?: descriptors.firstOrNull()?.ref
+            logcat(LogPriority.ERROR) { "SWITCH controller.openWork: threads=${descriptors.map { it.ref.authorMxid }} selected=${selected?.authorMxid}" }
             _state.value = _state.value.copy(
                 threads = descriptors,
                 thread = selected,
@@ -207,14 +217,74 @@ class SocialOverlayController(
         )
     }
 
+    /** Opens a room in flat mode (no thread filter). */
+    fun openRoom(roomId: String, authorMxid: String) {
+        timelineJob?.cancel()
+        timelineJob = scope.launch {
+            _state.value = _state.value.copy(
+                isOpen = true,
+                activeRoomId = roomId,
+                activeAuthorMxid = authorMxid,
+                roomTimeline = null,
+                lastError = null,
+            )
+            timelineRepo.observeRoom(roomId, authorMxid).collect { result ->
+                when (result) {
+                    is SocialResult.Success -> {
+                        _state.value = _state.value.copy(
+                            roomTimeline = result.value,
+                            lastError = null,
+                        )
+                    }
+                    is SocialResult.Failure -> {
+                        _state.value = _state.value.copy(lastError = result.error)
+                    }
+                }
+            }
+        }
+    }
+
     /** Selects an already discovered author thread. */
     fun selectThread(thread: ThreadRef) {
-        if (_state.value.threads.none { it.ref == thread }) return
-        _state.value = _state.value.copy(
-            thread = thread,
-            timeline = _state.value.timelines[thread],
-            lastError = null,
-        )
+        val target = _state.value.threads.find { it.ref.authorMxid == thread.authorMxid }
+        if (target == null) {
+            logcat(LogPriority.ERROR) { "SWITCH controller.selectThread IGNORE: auteur=${thread.authorMxid} threads=${_state.value.threads.map { it.ref.authorMxid }}" }
+            return
+        }
+        val actualThread = target.ref
+        logcat(LogPriority.ERROR) { "SWITCH controller.selectThread OK: auteur=${actualThread.authorMxid} cached=${_state.value.timelines.containsKey(actualThread)}" }
+        val cached = _state.value.timelines[actualThread]
+        if (cached != null) {
+            _state.value = _state.value.copy(
+                thread = actualThread,
+                timeline = cached,
+                lastError = null,
+                activeRoomId = null,
+                activeAuthorMxid = null,
+                roomTimeline = null,
+            )
+        } else {
+            _state.value = _state.value.copy(
+                thread = actualThread,
+                timeline = null,
+                lastError = null,
+                activeRoomId = null,
+                activeAuthorMxid = null,
+                roomTimeline = null,
+            )
+            scope.launch {
+                timelineRepo.observeThread(actualThread).collect { result ->
+                    if (result is SocialResult.Success) {
+                        val updatedMap = _state.value.timelines.toMutableMap()
+                        updatedMap[actualThread] = result.value
+                        _state.value = _state.value.copy(
+                            timeline = result.value,
+                            timelines = updatedMap,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     /** Closes the overlay (does not cancel the session). */
@@ -225,27 +295,49 @@ class SocialOverlayController(
     }
 
     suspend fun reply(body: String, inReplyToEventId: String? = null): SocialResult<String> {
-        val thread = requireThread()
-        return dispatch(SocialCommand.ReplyInAuthorThread(thread, body, inReplyToEventId))
+        val roomId = _state.value.activeRoomId
+        return if (roomId != null) {
+            dispatch(SocialCommand.SendToRoom(roomId, body, inReplyToEventId))
+        } else {
+            dispatch(SocialCommand.ReplyInAuthorThread(requireThread(), body, inReplyToEventId))
+        }
     }
 
     suspend fun react(eventId: String, key: String): SocialResult<String> {
-        val thread = requireThread()
-        return dispatch(SocialCommand.React(thread, eventId, key))
+        val roomId = _state.value.activeRoomId
+        return if (roomId != null) {
+            dispatch(SocialCommand.ReactInRoom(roomId, eventId, key))
+        } else {
+            dispatch(SocialCommand.React(requireThread(), eventId, key))
+        }
     }
 
     suspend fun edit(eventId: String, body: String): SocialResult<String> {
-        val thread = requireThread()
-        return dispatch(SocialCommand.Edit(thread, eventId, body))
+        val roomId = _state.value.activeRoomId
+        return if (roomId != null) {
+            dispatch(SocialCommand.EditInRoom(roomId, eventId, body))
+        } else {
+            dispatch(SocialCommand.Edit(requireThread(), eventId, body))
+        }
     }
 
     suspend fun redact(eventId: String, reason: String? = null): SocialResult<String> {
-        val thread = requireThread()
-        return dispatch(SocialCommand.Redact(thread, eventId, reason))
+        val roomId = _state.value.activeRoomId
+        return if (roomId != null) {
+            dispatch(SocialCommand.RedactInRoom(roomId, eventId, reason))
+        } else {
+            dispatch(SocialCommand.Redact(requireThread(), eventId, reason))
+        }
     }
 
-    suspend fun publish(payload: MomentPayload): SocialResult<String> =
-        dispatch(SocialCommand.PublishToMyThread(payload))
+    suspend fun publish(payload: MomentPayload): SocialResult<String> {
+        val roomId = _state.value.activeRoomId
+        return if (roomId != null) {
+            dispatch(SocialCommand.PublishToRoom(roomId, payload))
+        } else {
+            dispatch(SocialCommand.PublishToMyThread(payload))
+        }
+    }
 
     /** P2-10c: restores a persisted session, if any. Safe on fresh install. */
     suspend fun restore(): SocialResult<eu.kanade.tachiyomi.data.social.matrix.SocialAccount?> {
@@ -278,6 +370,9 @@ class SocialOverlayController(
             timeline = null,
             timelines = emptyMap(),
             lastError = null,
+            activeRoomId = null,
+            activeAuthorMxid = null,
+            roomTimeline = null,
         )
         timelineJob = scope.launch {
             observeThreads(descriptors)

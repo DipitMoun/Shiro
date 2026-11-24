@@ -96,6 +96,28 @@ class TelegramSavedWorkStore(context: Context) {
         }
     }
 
+    /** Raw JSON of the store, used by backups. */
+    fun exportJson(): String? = synchronized(lock) {
+        _works.value.takeIf { it.isNotEmpty() }?.let { json.encodeToString(it) }
+    }
+
+    /**
+     * Adds the works of a backup. Works already present locally are kept as is, so a restore
+     * never undoes a newer local correction.
+     */
+    fun importJson(raw: String) {
+        val restored = runCatching { json.decodeFromString<List<TelegramSavedWork>>(raw) }
+            .getOrElse {
+                logcat(LogPriority.WARN, it) { "Œuvres Telegram du backup illisibles" }
+                return
+            }
+        synchronized(lock) {
+            val localIds = _works.value.mapTo(mutableSetOf()) { it.id }
+            val added = restored.filterNot { it.id in localIds }
+            if (added.isNotEmpty()) persist(_works.value + added)
+        }
+    }
+
     private fun persist(works: List<TelegramSavedWork>) {
         runCatching {
             val parent = file.parentFile

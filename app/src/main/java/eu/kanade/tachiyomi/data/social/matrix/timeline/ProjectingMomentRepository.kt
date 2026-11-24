@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.data.social.matrix.timeline
 
+import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
+import eu.kanade.tachiyomi.data.social.identity.WorkId
 import eu.kanade.tachiyomi.data.social.matrix.DeliveryState
 import eu.kanade.tachiyomi.data.social.matrix.MomentPayload
 import eu.kanade.tachiyomi.data.social.matrix.ReactionEntry
@@ -40,6 +42,26 @@ class ProjectingMomentRepository(
     // Survives navigation between episodes/screens. The source still rehydrates
     // from the SDK store on reopen, but the UI never restarts from an empty list.
     private val threadStates = java.util.concurrent.ConcurrentHashMap<ThreadRef, MutableThreadState>()
+    private val roomStates = java.util.concurrent.ConcurrentHashMap<String, MutableThreadState>()
+
+    override fun observeRoom(roomId: String, authorMxid: String): Flow<SocialResult<SocialThreadTimeline>> = flow {
+        val state = roomStates.getOrPut(roomId) { MutableThreadState() }
+        val roomThread = ThreadRef(authorMxid, WorkId.localStable(0L, roomId), EpisodeKey.MAIN)
+        emit(SocialResult.Success(state.toTimeline(roomThread, roomId, "", TimelineStatus.SYNCING)))
+
+        source.observeRoom(roomId).collect { result ->
+            when (result) {
+                is SocialResult.Success -> {
+                    state.apply(result.value)
+                    val status = if (state.hasAny()) TimelineStatus.LIVE else TimelineStatus.SYNCING
+                    emit(SocialResult.Success(state.toTimeline(roomThread, roomId, "", status)))
+                }
+                is SocialResult.Failure -> {
+                    emit(SocialResult.Success(state.toTimeline(roomThread, roomId, "", TimelineStatus.OFFLINE)))
+                }
+            }
+        }
+    }
 
     override fun observeThread(thread: ThreadRef): Flow<SocialResult<SocialThreadTimeline>> = flow {
         val roomId = resolveRoom(thread)

@@ -30,15 +30,16 @@ class RustPushRegistrar(
     @Volatile
     private var registeredEndpoint: String? = null
 
-    override suspend fun register(endpoint: String): SocialResult<Unit> {
+    override suspend fun register(pushkey: String, gatewayUrl: String): SocialResult<Unit> {
         val client = clientProvider() ?: return notAuthenticated()
 
         return try {
-            val identifiers = PusherIdentifiers(appId = appId, pushkey = endpoint)
+            val identifiers = PusherIdentifiers(appId = appId, pushkey = pushkey)
             val data = HttpPusherData(
-                url = endpoint,
+                url = gatewayUrl,
                 format = PushFormat.EVENT_ID_ONLY,
-                defaultPayload = "",
+                // Parsed as JSON by the SDK: an empty string fails with "EOF while parsing".
+                defaultPayload = null,
             )
             val kind = PusherKind.Http(data)
             client.setPusher(
@@ -50,7 +51,7 @@ class RustPushRegistrar(
                 lang,
                 false,
             )
-            registeredEndpoint = endpoint
+            registeredEndpoint = pushkey
             SocialResult.Success(Unit)
         } catch (c: CancellationException) {
             throw c

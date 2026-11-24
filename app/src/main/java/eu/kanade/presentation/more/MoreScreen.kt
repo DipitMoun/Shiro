@@ -41,7 +41,7 @@ fun MoreScreen(
     navStyle: NavStyle,
     onClickAlt: () -> Unit,
     onClickDownloadQueue: () -> Unit,
-    onClickSocial: () -> Unit,
+    onClickUpdates: () -> Unit,
     onClickCategories: () -> Unit,
     onClickStats: () -> Unit,
     onClickStorage: () -> Unit,
@@ -124,10 +124,9 @@ fun MoreScreen(
             }
             item {
                 TextPreferenceWidget(
-                    title = stringResource(MR.strings.pref_category_social),
-                    subtitle = stringResource(MR.strings.pref_social_summary),
-                    icon = Icons.Outlined.PeopleAlt,
-                    onPreferenceClick = onClickSocial,
+                    title = stringResource(MR.strings.label_recent_updates),
+                    icon = ImageVector.vectorResource(R.drawable.ic_updates_outline_24dp),
+                    onPreferenceClick = onClickUpdates,
                 )
             }
             item {

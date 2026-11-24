@@ -63,11 +63,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -101,12 +103,16 @@ import java.time.format.DateTimeFormatter
  * `org.shiro.moment`. The 30 s preview stays local and is never sent to Matrix.
  */
 class SocialChatScreen(
-    private val chatContext: SocialChatContext,
+    private val initialContext: SocialChatContext,
 ) : Screen() {
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
+        // Opened from a room (Messages, notification): episodes are resolved from the library.
+        val chatContext by produceState(initialContext, initialContext) {
+            value = eu.kanade.presentation.social.SocialChatContextResolver.enrich(initialContext)
+        }
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val model = rememberScreenModel { SocialChatScreenModel() }
@@ -120,7 +126,7 @@ class SocialChatScreen(
         val selectedEpisode = chatContext.episodes.firstOrNull { it.key.value == selectedKey }
         val account = state.account
         val pending = remember { mutableStateListOf<SocialChatPending>() }
-        val composerChips = remember(selectedEpisode?.key) { mutableStateListOf<Long>() }
+        val composerChips = remember { mutableStateListOf<Long>() }
         var showTimecodePicker by remember { mutableStateOf(false) }
         var showCommands by remember { mutableStateOf(false) }
         var actionItem by remember { mutableStateOf<SocialTimelineItem?>(null) }
@@ -146,24 +152,43 @@ class SocialChatScreen(
             }
         }
 
-        LaunchedEffect(account?.userId, selectedEpisode?.key) {
+        LaunchedEffect(
+            account?.userId,
+            chatContext.work.id,
+            chatContext.initialRoomId,
+            chatContext.initialAuthorMxid,
+        ) {
             val currentAccount = account ?: return@LaunchedEffect
-            val episode = selectedEpisode ?: return@LaunchedEffect
-            model.selectEpisode(
-                context = chatContext,
-                selfMxid = currentAccount.userId,
-                selfDisplayName = currentAccount.displayName
-                    ?: currentAccount.userId.substringBefore(':').removePrefix("@"),
-                episode = episode,
-            )
+            val initialRoomId = chatContext.initialRoomId
+            if (initialRoomId != null) {
+                model.openRoomDirect(
+                    roomId = initialRoomId,
+                    authorMxid = chatContext.initialAuthorMxid ?: currentAccount.userId,
+                    context = chatContext,
+                )
+            } else {
+                model.selectWork(
+                    context = chatContext,
+                    selfMxid = currentAccount.userId,
+                    selfDisplayName = currentAccount.displayName
+                        ?: currentAccount.userId.substringBefore(':').removePrefix("@"),
+                )
+            }
         }
 
         // `state.thread` and `state.timeline` are kept in sync by the controller.
         // They reflect the active author (self by default, a friend after a tap).
-        val timeline = state.timeline
+        androidx.compose.runtime.DisposableEffect(state.activeRoomId) {
+            eu.kanade.tachiyomi.ui.social.SocialNotificationState.activeRoomId = state.activeRoomId
+            onDispose {
+                eu.kanade.tachiyomi.ui.social.SocialNotificationState.activeRoomId = null
+            }
+        }
+
+        val timeline = if (state.activeRoomId != null) state.roomTimeline else state.timeline
         val items = timeline?.items.orEmpty()
 
-        LaunchedEffect(state.thread) {
+        LaunchedEffect(state.thread, state.activeRoomId) {
             pending.clear()
             replyTarget = null
             actionItem = null
@@ -218,7 +243,7 @@ class SocialChatScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    val activeAuthor = state.thread?.authorMxid
+                                    val activeAuthor = state.activeAuthorMxid ?: state.thread?.authorMxid
                                     val selfMxid = account?.userId
                                     if (
                                         activeAuthor != null &&
@@ -243,26 +268,6 @@ class SocialChatScreen(
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                             }
                         },
-                        actions = {
-                            val selfParticipant = account?.let { participants[it.userId] }
-                            FriendsBubbles(
-                                self = selfParticipant,
-                                friends = friends,
-                                activeMxid = state.thread?.authorMxid,
-                                threadsLoaded = state.threads.isNotEmpty(),
-                                onSelect = { participant ->
-                                    if (selectedEpisode != null) {
-                                        model.selectThread(
-                                            ThreadRef(
-                                                authorMxid = participant.mxid,
-                                                workId = chatContext.work.id,
-                                                episodeKey = selectedEpisode.key,
-                                            ),
-                                        )
-                                    }
-                                },
-                            )
-                        },
                     )
                 },
             ) { contentPadding ->
@@ -272,10 +277,13 @@ class SocialChatScreen(
                         .padding(contentPadding)
                         .imePadding(),
                 ) {
-                EpisodeRail(
-                    episodes = chatContext.episodes,
-                    selectedKey = selectedKey,
-                    onSelect = { selectedKey = it.key.value },
+                FriendsRail(
+                    self = account?.let { participants[it.userId] },
+                    friends = friends,
+                    activeMxid = state.activeAuthorMxid ?: state.thread?.authorMxid,
+                    onSelect = { participant ->
+                        model.selectSalon(participant, chatContext)
+                    },
                 )
 
                 Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -390,9 +398,11 @@ class SocialChatScreen(
         if (showTimecodePicker && selectedEpisode != null) {
             TimecodePickerDialog(
                 animeTitle = chatContext.title,
+                episodes = chatContext.episodes,
                 episode = selectedEpisode,
                 onDismiss = { showTimecodePicker = false },
-                onPick = { positionMs ->
+                onPick = { momentEpisode, positionMs ->
+                    selectedKey = momentEpisode.key.value
                     if (composerChips.size < 5) composerChips += positionMs
                     showTimecodePicker = false
                 },
@@ -616,48 +626,60 @@ private fun ChatBackground(posterUrl: String?) {
 }
 
 @Composable
-private fun FriendsBubbles(
+private fun FriendsRail(
     self: SocialChatFriend?,
     friends: List<SocialChatFriend>,
     activeMxid: String?,
-    threadsLoaded: Boolean,
     onSelect: (SocialChatFriend) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.padding(end = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    LazyColumn(
+        modifier = Modifier
+            .width(62.dp)
+            .fillMaxHeight()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         self?.let { participant ->
-            val isActive = participant.mxid == activeMxid
-            ParticipantAvatar(
-                participant = participant,
-                size = 30.dp,
-                isActive = isActive,
-                onClick = if (!isActive && threadsLoaded) {
-                    { onSelect(participant) }
-                } else {
-                    null
-                },
-            )
-        }
-        friends
-            .filter { it.mxid != self?.mxid }
-            .take(if (self != null) 4 else 5)
-            .forEach { friend ->
-                val isActive = friend.mxid == activeMxid
-                ParticipantAvatar(
-                    participant = friend,
-                    size = 30.dp,
-                    isActive = isActive,
-                    onClick = if (!isActive && threadsLoaded) {
-                        { onSelect(friend) }
-                    } else {
-                        null
-                    },
+            item(key = "self") {
+                FriendRailAvatar(
+                    participant = participant,
+                    isActive = participant.mxid == activeMxid,
+                    onSelect = onSelect,
                 )
             }
+        }
+        items(
+            friends.filter { it.mxid != self?.mxid },
+            key = { it.mxid },
+        ) { friend ->
+            FriendRailAvatar(
+                participant = friend,
+                isActive = friend.mxid == activeMxid,
+                onSelect = onSelect,
+            )
+        }
     }
+}
+
+@Composable
+private fun FriendRailAvatar(
+    participant: SocialChatFriend,
+    isActive: Boolean,
+    onSelect: (SocialChatFriend) -> Unit,
+) {
+    ParticipantAvatar(
+        participant = participant,
+        size = 38.dp,
+        isActive = isActive,
+        enabled = participant.hasRoom,
+        onClick = if (!isActive && participant.hasRoom) {
+            { onSelect(participant) }
+        } else {
+            null
+        },
+    )
 }
 
 @Composable
@@ -990,6 +1012,7 @@ private fun ParticipantAvatar(
     size: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
     isActive: Boolean = false,
+    enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
 ) {
     val bitmap = remember(participant.avatarBytes) {
@@ -1001,6 +1024,7 @@ private fun ParticipantAvatar(
     // Message avatars (onClick == null, isActive == false) keep their previous look.
     val baseModifier = modifier
         .size(size)
+        .alpha(if (enabled) 1f else 0.35f)
         .clip(CircleShape)
         .then(
             when {
@@ -1320,24 +1344,31 @@ private fun ChatComposer(
 @Composable
 private fun TimecodePickerDialog(
     animeTitle: String,
+    episodes: List<SocialChatEpisode>,
     episode: SocialChatEpisode,
     onDismiss: () -> Unit,
-    onPick: (Long) -> Unit,
+    onPick: (SocialChatEpisode, Long) -> Unit,
 ) {
-    val maxMinutes = (episode.durationSeconds / 60L).toInt().coerceAtLeast(0)
-    var minute by remember(episode.key.value) { mutableIntStateOf(0) }
-    var seconds by remember(episode.key.value) { mutableIntStateOf(0) }
+    var selectedKey by remember(episode.key.value) { mutableStateOf(episode.key.value) }
+    val chosenEpisode = episodes.firstOrNull { it.key.value == selectedKey } ?: episode
+    val maxMinutes = (chosenEpisode.durationSeconds / 60L).toInt().coerceAtLeast(0)
+    var minute by remember(chosenEpisode.key.value) { mutableIntStateOf(0) }
+    var seconds by remember(chosenEpisode.key.value) { mutableIntStateOf(0) }
     val maxSecondsForMinute = if (
-        episode.durationSeconds > 0L &&
+        chosenEpisode.durationSeconds > 0L &&
         minute == maxMinutes
     ) {
-        (episode.durationSeconds % 60L).toInt()
+        (chosenEpisode.durationSeconds % 60L).toInt()
     } else {
         59
     }
     val effectiveSeconds = seconds.coerceAtMost(maxSecondsForMinute)
     val pickedSeconds = (minute * 60L + effectiveSeconds).let { total ->
-        if (episode.durationSeconds > 0L) total.coerceAtMost(episode.durationSeconds) else total
+        if (chosenEpisode.durationSeconds > 0L) {
+            total.coerceAtMost(chosenEpisode.durationSeconds)
+        } else {
+            total
+        }
     }
 
     AlertDialog(
@@ -1346,7 +1377,7 @@ private fun TimecodePickerDialog(
             Column {
                 Text(animeTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    text = "${episode.key.value} · ${formatTimecode(episode.durationSeconds * 1000L)}",
+                    text = "${chosenEpisode.key.value} · ${formatTimecode(chosenEpisode.durationSeconds * 1000L)}",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -1355,6 +1386,34 @@ private fun TimecodePickerDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    episodes.forEach { candidate ->
+                        Surface(
+                            color = if (candidate.key == chosenEpisode.key) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            },
+                            shape = RoundedCornerShape(7.dp),
+                            modifier = Modifier.clickable {
+                                selectedKey = candidate.key.value
+                                minute = 0
+                                seconds = 0
+                            },
+                        ) {
+                            Text(
+                                text = candidate.key.value,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
                 Text("Choisis la minute", fontSize = 11.sp)
                 LazyColumn(
                     modifier = Modifier
@@ -1372,10 +1431,10 @@ private fun TimecodePickerDialog(
                                 .clickable {
                                     minute = value
                                     val max = if (
-                                        episode.durationSeconds > 0L &&
+                                        chosenEpisode.durationSeconds > 0L &&
                                         value == maxMinutes
                                     ) {
-                                        (episode.durationSeconds % 60L).toInt()
+                                        (chosenEpisode.durationSeconds % 60L).toInt()
                                     } else {
                                         59
                                     }
@@ -1405,7 +1464,7 @@ private fun TimecodePickerDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onPick(pickedSeconds * 1000L) }) {
+            Button(onClick = { onPick(chosenEpisode, pickedSeconds * 1000L) }) {
                 Text("Insérer")
             }
         },

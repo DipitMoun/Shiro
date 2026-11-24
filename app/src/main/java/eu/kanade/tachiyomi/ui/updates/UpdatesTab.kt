@@ -47,7 +47,8 @@ data object UpdatesTab : Tab {
     @Composable
     override fun Content() {
         val context = LocalContext.current
-        val fromMore = currentNavigationStyle() == NavStyle.MOVE_UPDATES_TO_MORE
+        // Shiro: Updates moved to More for good, Social took its bottom bar slot.
+        val fromMore = true
 
         TabbedScreen(
             titleRes = MR.strings.label_recent_updates,

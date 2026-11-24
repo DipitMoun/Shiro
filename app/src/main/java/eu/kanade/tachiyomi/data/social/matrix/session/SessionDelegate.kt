@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.social.matrix.session
 
 import eu.kanade.tachiyomi.data.social.matrix.MatrixTransport
+import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 
 /**
@@ -25,6 +26,18 @@ interface SessionDelegate {
     ): SocialResult<PersistedSession>
 
     /**
+     * Starts a browser-based (OAuth/OIDC) sign-in or sign-up and resolves to the URL to open.
+     * [create] opens the account creation page instead of the login page. The attempt is
+     * finished by [finishOAuth] once the browser redirects back into the app.
+     */
+    suspend fun startOAuth(homeserverUrl: String, create: Boolean): SocialResult<String> =
+        SocialResult.Failure(SocialError.Unknown("OAuth sign-in is not supported"))
+
+    /** Completes the attempt begun by [startOAuth] from the redirect [callbackUrl]. */
+    suspend fun finishOAuth(callbackUrl: String): SocialResult<PersistedSession> =
+        SocialResult.Failure(SocialError.Unknown("OAuth sign-in is not supported"))
+
+    /**
      * Restores a `Client` from [session] and validates it. On success, resolves
      * to the session snapshot after any refresh (tokens may have rotated).
      */
@@ -32,6 +45,12 @@ interface SessionDelegate {
 
     /** Shuts the underlying `Client` down and frees native resources. */
     suspend fun close(): SocialResult<Unit>
+
+    /**
+     * Deletes the account-scoped local SDK store after [close]. Used on logout so
+     * a different Matrix account never reopens the previous account's crypto store.
+     */
+    suspend fun wipeLocalData(): SocialResult<Unit> = SocialResult.Success(Unit)
 
     /**
      * Transport bound to the live session, or null when no client is open.

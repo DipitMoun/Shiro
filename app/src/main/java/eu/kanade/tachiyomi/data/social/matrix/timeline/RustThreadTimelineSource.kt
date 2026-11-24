@@ -57,6 +57,16 @@ class RustThreadTimelineSource(
         thread: ThreadRef,
         roomId: String,
         threadRootEventId: String,
+    ): Flow<SocialResult<List<TransportEvent>>> =
+        observeRoomTimeline(roomId, threadRootEventId, strictThreadFilter = true)
+
+    override fun observeRoom(roomId: String): Flow<SocialResult<List<TransportEvent>>> =
+        observeRoomTimeline(roomId, threadRootEventId = "", strictThreadFilter = false)
+
+    private fun observeRoomTimeline(
+        roomId: String,
+        threadRootEventId: String,
+        strictThreadFilter: Boolean,
     ): Flow<SocialResult<List<TransportEvent>>> = callbackFlow {
         val client = sessionDelegate.clientOrNull()
         if (client == null) {
@@ -94,7 +104,7 @@ class RustThreadTimelineSource(
         }
 
         val state = MutableStateFlow<List<TransportEvent>>(emptyList())
-        val accumulator = EventAccumulator(threadRootEventId)
+        val accumulator = EventAccumulator(threadRootEventId, strictThreadFilter)
 
         val listener = object : TimelineListener {
             override fun onUpdate(diff: List<TimelineDiff>) {
@@ -190,7 +200,7 @@ class RustThreadTimelineSource(
      * are handled by falling back to a full `Reset` on the next batch, which
      * the SDK emits whenever it needs to reconcile.
      */
-    private class EventAccumulator(private val threadRootEventId: String) {
+    private class EventAccumulator(private val threadRootEventId: String, private val strictThreadFilter: Boolean = true) {
         private val events = LinkedHashMap<String, TransportEvent>()
         // The SDK diff indices refer to the full room timeline, not to the
         // reduced thread view. Keep every index aligned, even when an item is
@@ -282,6 +292,7 @@ class RustThreadTimelineSource(
         }
 
         private fun belongsToObservedThread(eventId: String, type: String, rawJson: String): Boolean {
+            if (!strictThreadFilter) return true
             if (type != "m.room.message") return true
             if (eventId == threadRootEventId) return true
             val relatedEventId = runCatching {

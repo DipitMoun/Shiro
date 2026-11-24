@@ -5,6 +5,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 import java.io.File
 
 /**
@@ -138,6 +140,32 @@ class TelegramWorkOverrideStore(context: Context) {
             }
             updated
         }
+
+    /** Raw JSON of the corrections, used by backups. */
+    fun exportJson(): String? {
+        val current = snapshot()
+        return current.takeIf { it != TelegramWorkOverrides() }?.let { json.encodeToString(it) }
+    }
+
+    /**
+     * Merges the corrections of a backup. Local corrections win on conflict, so a restore
+     * never undoes a newer manual change.
+     */
+    fun importJson(raw: String) {
+        val restored = runCatching { json.decodeFromString<TelegramWorkOverrides>(raw) }
+            .getOrElse {
+                logcat(LogPriority.WARN, it) { "Corrections Telegram du backup illisibles" }
+                return
+            }
+        update { local ->
+            TelegramWorkOverrides(
+                merges = restored.merges + local.merges,
+                titles = restored.titles + local.titles,
+                hidden = restored.hidden + local.hidden,
+                metadata = restored.metadata + local.metadata,
+            )
+        }
+    }
 
     private fun read(): TelegramWorkOverrides {
         if (!file.isFile) return TelegramWorkOverrides()

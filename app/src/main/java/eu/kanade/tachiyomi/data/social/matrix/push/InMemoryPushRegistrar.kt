@@ -17,9 +17,11 @@ class InMemoryPushRegistrar : PushRegistrar {
     var lastRegisterResult: SocialResult<Unit> = SocialResult.Success(Unit)
     var lastUnregisterResult: SocialResult<Unit> = SocialResult.Success(Unit)
 
-    override suspend fun register(endpoint: String): SocialResult<Unit> {
+    override suspend fun register(endpoint: String): SocialResult<Unit> = register(endpoint, endpoint)
+
+    override suspend fun register(pushkey: String, gatewayUrl: String): SocialResult<Unit> {
         if (lastRegisterResult is SocialResult.Success) {
-            currentEndpoint = endpoint
+            currentEndpoint = pushkey
         }
         return lastRegisterResult
     }

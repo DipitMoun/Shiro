@@ -40,6 +40,10 @@ class PendingMatrixSessionManager : MatrixSessionManager {
 
     override fun transportOrNull(): MatrixTransport? = null
 
+    override fun clientOrNull(): org.matrix.rustcomponents.sdk.Client? = null
+
+    override fun roomListServiceOrNull(): org.matrix.rustcomponents.sdk.RoomListService? = null
+
     private fun <T> notImplemented(op: String): SocialResult<T> = SocialResult.Failure(
         SocialError.Auth(
             reason = AuthFailureReason.NOT_ALLOWED,

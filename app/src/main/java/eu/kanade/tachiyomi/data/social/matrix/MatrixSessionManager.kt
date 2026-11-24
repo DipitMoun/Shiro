@@ -15,6 +15,13 @@ import kotlinx.coroutines.flow.StateFlow
  * depend on this interface directly.
  */
 interface MatrixSessionManager : SocialSession {
+    fun clientOrNull(): org.matrix.rustcomponents.sdk.Client?
+
+    /**
+     * Room list owned by the active sync service, or null while it is not ready.
+     * Callers must never build a second sync service.
+     */
+    fun roomListServiceOrNull(): org.matrix.rustcomponents.sdk.RoomListService?
 
     /**
      * Account bound to the current authenticated session, or null while
@@ -34,6 +41,17 @@ interface MatrixSessionManager : SocialSession {
         password: String,
         deviceDisplayName: String? = null,
     ): SocialResult<SocialAccount>
+
+    /**
+     * Starts a browser sign-in ([create] = false) or sign-up ([create] = true) and resolves
+     * to the URL to open. The user comes back through [completeOAuth].
+     */
+    suspend fun startOAuth(homeserverUrl: String, create: Boolean): SocialResult<String> =
+        SocialResult.Failure(SocialError.Unknown("OAuth sign-in is not supported"))
+
+    /** Finishes the sign-in from the redirect URL the browser sent back to the app. */
+    suspend fun completeOAuth(callbackUrl: String): SocialResult<SocialAccount> =
+        SocialResult.Failure(SocialError.Unknown("OAuth sign-in is not supported"))
 
     /**
      * Reads any persisted credentials and rebuilds the client.

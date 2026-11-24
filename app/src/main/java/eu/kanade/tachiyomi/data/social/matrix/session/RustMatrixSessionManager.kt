@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.social.matrix.session
 
 import eu.kanade.tachiyomi.data.social.matrix.AuthFailureReason
 import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
+import eu.kanade.tachiyomi.data.social.matrix.session.RustSessionDelegate
 import eu.kanade.tachiyomi.data.social.matrix.MatrixTransport
 import eu.kanade.tachiyomi.data.social.matrix.SocialAccount
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class RustMatrixSessionManager(
     private val delegate: SessionDelegate,
     private val credentialStore: SessionCredentialStore,
+    private val accountDataCleaner: SocialAccountDataCleaner = NoOpSocialAccountDataCleaner,
 ) : MatrixSessionManager {
 
     private val _state = MutableStateFlow<SocialSessionState>(SocialSessionState.Unauthenticated)
@@ -51,6 +53,38 @@ class RustMatrixSessionManager(
             return login
         }
         val session = (login as SocialResult.Success).value
+
+        val save = credentialStore.save(session)
+        if (save is SocialResult.Failure) {
+            _state.value = SocialSessionState.Error(save.error)
+            return save
+        }
+
+        val account = session.toAccount()
+        _account.value = account
+        _state.value = SocialSessionState.Authenticated(account)
+        return SocialResult.Success(account)
+    }
+
+    override suspend fun startOAuth(homeserverUrl: String, create: Boolean): SocialResult<String> {
+        _state.value = SocialSessionState.Authenticating(homeserverUrl)
+        val started = delegate.startOAuth(homeserverUrl, create)
+        // The user now leaves for the browser: nothing is signed in until [completeOAuth].
+        _state.value = when (started) {
+            is SocialResult.Failure -> SocialSessionState.Error(started.error)
+            is SocialResult.Success -> SocialSessionState.Unauthenticated
+        }
+        return started
+    }
+
+    override suspend fun completeOAuth(callbackUrl: String): SocialResult<SocialAccount> {
+        _state.value = SocialSessionState.Authenticating(homeserverUrl = null)
+        val finished = delegate.finishOAuth(callbackUrl)
+        if (finished is SocialResult.Failure) {
+            _state.value = SocialSessionState.Error(finished.error)
+            return finished
+        }
+        val session = (finished as SocialResult.Success).value
 
         val save = credentialStore.save(session)
         if (save is SocialResult.Failure) {
@@ -98,7 +132,16 @@ class RustMatrixSessionManager(
     }
 
     override suspend fun logout(): SocialResult<Unit> {
-        delegate.close() // best-effort: even a failing close must not block the clear
+        val closed = delegate.close() // best-effort: never block clearing local data
+        if (closed is SocialResult.Failure) {
+            android.util.Log.e("SocialOverlay", "logout: client close failed", null)
+        }
+        val wiped = delegate.wipeLocalData()
+        if (wiped is SocialResult.Failure) {
+            android.util.Log.e("SocialOverlay", "logout: Matrix store wipe failed", null)
+        }
+        accountDataCleaner.clear()
+
         val cleared = credentialStore.clear()
         if (cleared is SocialResult.Failure) {
             _state.value = SocialSessionState.Error(cleared.error)
@@ -108,6 +151,12 @@ class RustMatrixSessionManager(
         _state.value = SocialSessionState.Unauthenticated
         return SocialResult.Success(Unit)
     }
+
+
+    override fun clientOrNull(): org.matrix.rustcomponents.sdk.Client? = (delegate as? RustSessionDelegate)?.clientOrNull()
+
+    override fun roomListServiceOrNull(): org.matrix.rustcomponents.sdk.RoomListService? =
+        (delegate as? RustSessionDelegate)?.roomListServiceOrNull()
 
     override fun transportOrNull(): MatrixTransport? =
         if (_state.value is SocialSessionState.Authenticated) delegate.transportOrNull() else null

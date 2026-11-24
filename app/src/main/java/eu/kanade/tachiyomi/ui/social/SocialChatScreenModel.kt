@@ -11,8 +11,8 @@ import eu.kanade.tachiyomi.data.social.matrix.MomentPayload
 import eu.kanade.tachiyomi.data.social.matrix.MomentSource
 import eu.kanade.tachiyomi.data.social.matrix.MomentWork
 import eu.kanade.tachiyomi.data.social.matrix.SocialCommandDispatcher
+import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
-import eu.kanade.tachiyomi.data.social.matrix.SocialRoomKey
 import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
 import eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository
 import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
@@ -23,6 +23,8 @@ import eu.kanade.tachiyomi.data.social.matrix.media.SocialAvatarLoader
 import eu.kanade.tachiyomi.data.social.matrix.push.PushRegistrar
 import eu.kanade.tachiyomi.data.social.matrix.room.SocialRoomService
 import eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayController
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,6 +69,7 @@ class SocialChatScreenModel(
     val selfAvatar: StateFlow<ByteArray?> = _selfAvatar.asStateFlow()
 
     private var ensuredRoomForWork = false
+    private var ensuredRoomId: String? = null
 
     init {
         controller.connect()
@@ -79,17 +82,30 @@ class SocialChatScreenModel(
         }
     }
 
-    fun selectEpisode(
+    fun selectWork(
         context: SocialChatContext,
         selfMxid: String,
         selfDisplayName: String?,
-        episode: SocialChatEpisode,
+    ) {
+        screenModelScope.launch {
+            logcat(LogPriority.ERROR) { "SWITCH model.selectWork: work=${context.work.id.value}" }
+            controller.prepareWork()
+            val roomId = ensureRoom(context, selfMxid, selfDisplayName) ?: return@launch
+            controller.openRoom(roomId, selfMxid)
+            refreshFriends(context)
+        }
+    }
+
+    /** Opens the exact room carried by a notification, without ensuring a new one. */
+    fun openRoomDirect(
+        roomId: String,
+        authorMxid: String,
+        context: SocialChatContext,
     ) {
         screenModelScope.launch {
             controller.prepareWork()
-            if (!ensureRoom(context, selfMxid, selfDisplayName)) return@launch
-            openEpisode(context, selfMxid, selfDisplayName, episode)
-            refreshFriends(context, selfMxid, episode)
+            controller.openRoom(roomId, authorMxid)
+            refreshFriends(context)
         }
     }
 
@@ -102,7 +118,6 @@ class SocialChatScreenModel(
     ) {
         val body = text.trim()
         if (body.isEmpty() && positions.isEmpty()) return
-        if (state.value.thread == null) return
         screenModelScope.launch {
             if (positions.isEmpty()) {
                 controller.reply(body, inReplyToEventId)
@@ -120,39 +135,49 @@ class SocialChatScreenModel(
     }
 
     fun react(eventId: String, key: String) {
-        if (state.value.thread == null) return
         screenModelScope.launch { controller.react(eventId, key) }
+    }
+
+    /** Switches the chat view to the flat room of [participant]. */
+    fun selectSalon(participant: SocialChatFriend, context: SocialChatContext) {
+        screenModelScope.launch {
+            val result = catalog.discoverRoomsFor(participant.mxid)
+            val room = (result as? SocialResult.Success)
+                ?.value
+                ?.firstOrNull { it.workId == context.work.id }
+            if (room != null) {
+                logcat(LogPriority.ERROR) { "SWITCH room: ${participant.mxid} -> ${room.roomId}" }
+                controller.openRoom(room.roomId, participant.mxid)
+            } else {
+                logcat(LogPriority.ERROR) { "SWITCH room: ${participant.mxid} ABSENT" }
+                controller.reportError(SocialError.Unknown("Pas encore de salon pour ${participant.name}"))
+            }
+        }
     }
 
     /** Switches the chat view to the thread owned by [ref.authorMxid]. */
     fun selectThread(ref: ThreadRef) {
+        logcat(LogPriority.ERROR) { "SWITCH model.selectThread: auteur=${ref.authorMxid}" }
         controller.selectThread(ref)
     }
 
-    private suspend fun refreshFriends(
-        context: SocialChatContext,
-        selfMxid: String,
-        episode: SocialChatEpisode,
-    ) {
+    private suspend fun refreshFriends(context: SocialChatContext) {
         if (_selfAvatar.value == null) {
             _selfAvatar.value = avatarLoader.loadOwnAvatar()
         }
-        val discovered = when (val result = catalog.discover(context.work, episode.key, selfMxid)) {
-            is SocialResult.Success -> result.value.associateBy { it.ref.authorMxid }
-            is SocialResult.Failure -> emptyMap()
-        }
         val friends = mutableListOf<SocialChatFriend>()
         friendStore.friends.value.forEach { record ->
-            val thread = discovered[record.mxid]
             val name = record.displayName
-                ?: thread?.displayName
                 ?: record.mxid.substringBefore(':').removePrefix("@")
             val avatar = avatarLoader.loadProfileAvatar(record.mxid)
-                ?: thread?.avatarUrl?.let { avatarLoader.loadAvatar(it) }
+            val rooms = catalog.discoverRoomsFor(record.mxid)
+            val hasRoom = rooms is SocialResult.Success &&
+                rooms.value.any { it.workId == context.work.id }
             friends += SocialChatFriend(
                 mxid = record.mxid,
                 name = name,
                 avatarBytes = avatar,
+                hasRoom = hasRoom,
             )
         }
         _friends.value = friends
@@ -205,8 +230,8 @@ class SocialChatScreenModel(
         context: SocialChatContext,
         selfMxid: String,
         selfDisplayName: String?,
-    ): Boolean {
-        if (ensuredRoomForWork) return true
+    ): String? {
+        if (ensuredRoomForWork) return ensuredRoomId
         val result = roomService.ensureRoom(
             authorMxid = selfMxid,
             authorDisplayName = selfDisplayName,
@@ -217,32 +242,13 @@ class SocialChatScreenModel(
         return when (result) {
             is SocialResult.Success -> {
                 ensuredRoomForWork = true
-                true
+                ensuredRoomId = result.value.roomId
+                result.value.roomId
             }
             is SocialResult.Failure -> {
                 controller.reportError(result.error)
-                false
+                null
             }
-        }
-    }
-
-    private suspend fun openEpisode(
-        context: SocialChatContext,
-        selfMxid: String,
-        selfDisplayName: String?,
-        episode: SocialChatEpisode,
-    ) {
-        val roomKey = SocialRoomKey(authorMxid = selfMxid, workId = context.work.id)
-        when (val root = roomService.ensureThreadRoot(roomKey, episode.key.value, context.title)) {
-            is SocialResult.Success -> {
-                controller.openWork(
-                    work = context.work,
-                    episodeKey = episode.key,
-                    selfMxid = selfMxid,
-                    selfDisplayName = selfDisplayName,
-                )
-            }
-            is SocialResult.Failure -> controller.reportError(root.error)
         }
     }
 }

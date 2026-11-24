@@ -18,7 +18,14 @@ interface PushRegistrar {
      * Registers or replaces the pusher for [endpoint].
      * The server-visible app_id is fixed by the implementation.
      */
-    suspend fun register(endpoint: String): SocialResult<Unit>
+    suspend fun register(endpoint: String): SocialResult<Unit> = register(pushkey = endpoint, gatewayUrl = endpoint)
+
+    /**
+     * Registers or replaces a pusher whose [pushkey] differs from the gateway URL, as with
+     * Firebase: the pushkey is the FCM registration token, [gatewayUrl] the Matrix push
+     * gateway notify endpoint that relays to FCM.
+     */
+    suspend fun register(pushkey: String, gatewayUrl: String): SocialResult<Unit>
 
     /** Removes any pusher previously registered for this device. */
     suspend fun unregister(): SocialResult<Unit>

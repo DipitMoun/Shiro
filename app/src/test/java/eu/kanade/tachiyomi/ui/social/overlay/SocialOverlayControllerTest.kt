@@ -61,6 +61,8 @@ class SocialOverlayControllerTest {
             SocialResult.Failure(SocialError.Auth(AuthFailureReason.UNKNOWN))
         override suspend fun restore(): SocialResult<SocialAccount?> = SocialResult.Success(null)
         override suspend fun logout(): SocialResult<Unit> = SocialResult.Success(Unit)
+        override fun clientOrNull(): org.matrix.rustcomponents.sdk.Client? = null
+        override fun roomListServiceOrNull(): org.matrix.rustcomponents.sdk.RoomListService? = null
         override fun transportOrNull(): MatrixTransport? = null
         fun set(s: SocialSessionState) { flow.value = s }
     }
@@ -82,6 +84,11 @@ class SocialOverlayControllerTest {
             episodeKey: EpisodeKey,
             selfMxid: String,
         ): SocialResult<List<DiscoveredThread>> = result
+
+        override suspend fun discoverRoomsFor(
+            authorMxid: String,
+        ): SocialResult<List<eu.kanade.tachiyomi.data.social.matrix.catalog.AuthorRoom>> =
+            SocialResult.Success(emptyList())
     }
 
     @Test
@@ -275,7 +282,7 @@ class SocialOverlayControllerTest {
         )
 
         assertEquals(2, c.state.value.threads.size)
-        assertEquals(friendRef, c.state.value.thread)
+        assertEquals(selfRef, c.state.value.thread)
         assertEquals(2, c.state.value.timelines.size)
 
         c.selectThread(selfRef)

@@ -11,8 +11,13 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.SocialRoomKey
 import eu.kanade.tachiyomi.data.social.matrix.SocialThreadKey
 import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
+import eu.kanade.tachiyomi.data.social.matrix.room.MatrixRoomTransport
 import eu.kanade.tachiyomi.data.social.matrix.room.RoomBindingStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import org.matrix.rustcomponents.sdk.Client
 import org.matrix.rustcomponents.sdk.DateDividerMode
 import org.matrix.rustcomponents.sdk.EditedContent
@@ -42,6 +47,7 @@ import uniffi.matrix_sdk_ui.TimelineReadReceiptTracking
 class RustCommandDispatcher(
     private val clientProvider: () -> Client?,
     private val bindings: RoomBindingStore,
+    private val roomTransport: MatrixRoomTransport,
 ) : SocialCommandDispatcher {
 
     override suspend fun execute(command: SocialCommand): SocialResult<String> {
@@ -57,6 +63,12 @@ class RustCommandDispatcher(
                 timeline.sendReply(content, target)
                 SocialResult.Success("")
             }
+
+            is SocialCommand.SendToRoom ->
+                roomTransport.sendMessage(
+                    roomId = command.roomId,
+                    contentJson = textContent(command.body, command.inReplyToEventId),
+                )
 
             is SocialCommand.PublishToMyThread -> {
                 val payload = command.payload
@@ -81,6 +93,20 @@ class RustCommandDispatcher(
                     timeline.sendWithExtraContent(content, extra)
                     SocialResult.Success("")
                 }
+            }
+
+            is SocialCommand.PublishToRoom -> {
+                val payload = command.payload
+                val validation = MomentPayloadCodec.validate(payload)
+                if (validation.isNotEmpty()) {
+                    return failure("Invalid moment payload: ${validation.joinToString("; ")}")
+                }
+                val content = buildJsonObject {
+                    put("msgtype", "m.text")
+                    put("body", MomentPayloadCodec.fallbackBody(payload))
+                    put("org.shiro.moment", json.parseToJsonElement(MomentPayloadCodec.encode(payload)))
+                }
+                roomTransport.sendMessage(command.roomId, content.toString())
             }
 
             is SocialCommand.React -> {
@@ -119,6 +145,30 @@ class RustCommandDispatcher(
                 }
             }
 
+            is SocialCommand.ReactInRoom -> {
+                val room = client.getRoom(command.roomId)
+                    ?: return failure("Room ${command.roomId} not found")
+                val timeline = openLiveTimeline(room)
+                try {
+                    timeline.paginateBackwards(100.toUShort())
+                    timeline.toggleReaction(
+                        EventOrTransactionId.EventId(command.eventId),
+                        command.key,
+                    )
+                    SocialResult.Success("")
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (t: Throwable) {
+                    if (t.message?.contains("same reaction", ignoreCase = true) == true) {
+                        SocialResult.Success("")
+                    } else {
+                        SocialResult.Failure(mapError(t, "react"))
+                    }
+                } finally {
+                    try { timeline.close() } catch (_: Throwable) {}
+                }
+            }
+
             is SocialCommand.Edit -> withTimeline(client, command.thread) { timeline ->
                 val content = timeline.makeTextContent(command.body)
                     ?: return@withTimeline failure("createMessageContent returned null")
@@ -129,12 +179,44 @@ class RustCommandDispatcher(
                 SocialResult.Success("")
             }
 
+            is SocialCommand.EditInRoom -> {
+                val room = client.getRoom(command.roomId)
+                    ?: return failure("Room ${command.roomId} not found")
+                val timeline = openLiveTimeline(room)
+                try {
+                    val content = timeline.makeTextContent(command.body)
+                        ?: return failure("createMessageContent returned null")
+                    timeline.edit(
+                        EventOrTransactionId.EventId(command.eventId),
+                        EditedContent.RoomMessage(content),
+                    )
+                    SocialResult.Success("")
+                } finally {
+                    try { timeline.close() } catch (_: Throwable) {}
+                }
+            }
+
             is SocialCommand.Redact -> withTimeline(client, command.thread) { timeline ->
                 timeline.redactEvent(
                     EventOrTransactionId.EventId(command.eventId),
                     command.reason,
                 )
                 SocialResult.Success("")
+            }
+
+            is SocialCommand.RedactInRoom -> {
+                val room = client.getRoom(command.roomId)
+                    ?: return failure("Room ${command.roomId} not found")
+                val timeline = openLiveTimeline(room)
+                try {
+                    timeline.redactEvent(
+                        EventOrTransactionId.EventId(command.eventId),
+                        command.reason,
+                    )
+                    SocialResult.Success("")
+                } finally {
+                    try { timeline.close() } catch (_: Throwable) {}
+                }
             }
         }
     }
@@ -172,6 +254,33 @@ class RustCommandDispatcher(
         )
         return room.timelineWithConfiguration(config)
     }
+
+    private suspend fun openLiveTimeline(room: Room): Timeline {
+        val config = TimelineConfiguration(
+            focus = TimelineFocus.Live(hideThreadedEvents = false),
+            filter = TimelineFilter.All,
+            internalIdPrefix = "",
+            dateDividerMode = DateDividerMode.DAILY,
+            trackReadReceipts = TimelineReadReceiptTracking.DISABLED,
+            reportUtds = false,
+        )
+        return room.timelineWithConfiguration(config)
+    }
+
+    private fun textContent(body: String, inReplyToEventId: String?): String =
+        buildJsonObject {
+            put("msgtype", "m.text")
+            put("body", body)
+            if (inReplyToEventId != null) {
+                putJsonObject("m.relates_to") {
+                    putJsonObject("m.in_reply_to") {
+                        put("event_id", inReplyToEventId)
+                    }
+                }
+            }
+        }.toString()
+
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     /** Builds a text content. Returns null on any SDK exception. */
     private fun Timeline.makeTextContent(body: String) =

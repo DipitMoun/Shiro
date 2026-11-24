@@ -2,8 +2,11 @@ package eu.kanade.tachiyomi.data.social.matrix
 
 import android.content.Context
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.matrix.rustcomponents.sdk.Client
 import org.matrix.rustcomponents.sdk.ClientBuilder
+import org.matrix.rustcomponents.sdk.ClientSessionDelegate
 import org.matrix.rustcomponents.sdk.SlidingSyncVersionBuilder
 import org.matrix.rustcomponents.sdk.SqliteStoreBuilder
 
@@ -34,7 +37,10 @@ class RustMatrixClientFactory(
      *
      * @throws MatrixStoreKeyException if the Keystore entry cannot be read.
      */
-    suspend fun create(homeserverUrl: String): Client {
+    suspend fun create(
+        homeserverUrl: String,
+        sessionDelegate: ClientSessionDelegate? = null,
+    ): Client {
         val passphrase = keyProvider.getPassphrase()
         val passphraseText = String(passphrase, Charsets.UTF_8)
         passphrase.fill(0)
@@ -48,6 +54,7 @@ class RustMatrixClientFactory(
         ).passphrase(passphraseText)
 
         return ClientBuilder()
+            .apply { if (sessionDelegate != null) setSessionDelegate(sessionDelegate) }
             .homeserverUrl(homeserverUrl)
             .sqliteStore(storeBuilder)
             .slidingSyncVersionBuilder(SlidingSyncVersionBuilder.NATIVE)
@@ -55,6 +62,23 @@ class RustMatrixClientFactory(
             .autoEnableCrossSigning(autoEnableCrossSigning = true)
             .autoEnableBackups(autoEnableBackups = true)
             .build()
+    }
+
+    /**
+     * Deletes the local Rust SDK SQLite store and its cache. Must only be called
+     * after the live client has been closed, otherwise files stay locked.
+     */
+    suspend fun wipeLocalStore(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val dataDir = File(context.filesDir, STORE_DATA_DIR)
+            val cacheDir = File(context.cacheDir, STORE_CACHE_DIR)
+            val dataDeleted = !dataDir.exists() || dataDir.deleteRecursively()
+            val cacheDeleted = !cacheDir.exists() || cacheDir.deleteRecursively()
+            dataDeleted && cacheDeleted
+        } catch (t: Throwable) {
+            android.util.Log.e("SocialOverlay", "wipeLocalStore failed", t)
+            false
+        }
     }
 
     companion object {

@@ -1,5 +1,11 @@
 package eu.kanade.tachiyomi.ui.main
 
+
+
+import eu.kanade.tachiyomi.ui.social.SocialChatContext
+import eu.kanade.tachiyomi.ui.social.SocialChatScreen
+import eu.kanade.tachiyomi.data.social.identity.WorkId
+import eu.kanade.tachiyomi.data.social.identity.WorkIdentity
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.Application
@@ -79,7 +85,8 @@ import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadCache
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.player.service.HttpServerService
-import eu.kanade.tachiyomi.data.social.friends.SocialFriendInviteAccepter
+import eu.kanade.tachiyomi.data.social.friends.SocialInviteMonitor
+import eu.kanade.tachiyomi.data.social.matrix.session.MatrixSessionBootstrap
 import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
 import eu.kanade.tachiyomi.data.updater.AppUpdateChecker
 import eu.kanade.tachiyomi.data.updater.RELEASE_URL
@@ -162,6 +169,16 @@ class MainActivity : BaseActivity() {
         registerSecureActivity(this)
     }
 
+        override fun onResume() {
+        super.onResume()
+        eu.kanade.tachiyomi.ui.social.SocialNotificationState.isAppForeground = true
+    }
+
+    override fun onPause() {
+        eu.kanade.tachiyomi.ui.social.SocialNotificationState.isAppForeground = false
+        super.onPause()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val isLaunch = savedInstanceState == null
 
@@ -171,6 +188,7 @@ class MainActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
 
         val didMigration = Migrator.awaitAndRelease()
+        eu.kanade.tachiyomi.data.notification.Notifications.createChannels(this)
 
         // Do not let the launcher create a new activity http://stackoverflow.com/questions/16283079
         if (!isTaskRoot) {
@@ -178,15 +196,35 @@ class MainActivity : BaseActivity() {
             return
         }
 
-        // Auto-accept friend invites at boot so the user never needs Element.io.
+        // Restore the Matrix session and keep the sync service running: it joins rooms of
+        // existing friends and surfaces new friend requests live. Also covers a first login
+        // from the settings, which no longer needs an app restart.
         lifecycleScope.launchIO {
             runCatching {
                 val session = Injekt.get<MatrixSessionManager>()
-                val accepter = Injekt.get<SocialFriendInviteAccepter>()
-                session.restore()
-                accepter.acceptInvitesFromFriends()
+                MatrixSessionBootstrap.ensureRestored(session)
+                session.state.collect { state ->
+                    val pushManager = Injekt.get<eu.kanade.tachiyomi.data.social.matrix.push.SocialPushManager>()
+                    when (state) {
+                        is eu.kanade.tachiyomi.data.social.matrix.SocialSessionState.Authenticated -> {
+                            // Live listeners run in-process while the app is open: no service needed.
+                            Injekt.get<eu.kanade.tachiyomi.data.social.matrix.sync.SocialLiveListener>().start()
+                            Injekt.get<SocialInviteMonitor>().refresh()
+                            pushManager.ensureRegistered()
+                            // Always on: OEM freezers (Transsion Hiber, MIUI...) freeze an app woken
+                            // by a push within seconds; only a running foreground service is spared.
+                            eu.kanade.tachiyomi.data.social.matrix.sync.MatrixSyncService.start(this@MainActivity)
+                        }
+                        // Next login (maybe another account) must register its own pusher.
+                        is eu.kanade.tachiyomi.data.social.matrix.SocialSessionState.Unauthenticated -> {
+                            pushManager.reset()
+                            eu.kanade.tachiyomi.data.social.matrix.sync.MatrixSyncService.stop(this@MainActivity)
+                        }
+                        else -> Unit
+                    }
+                }
             }.onFailure {
-                logcat(LogPriority.WARN) { "social boot auto-accept failed: ${it.message}" }
+                logcat(LogPriority.WARN) { "social startup failed: ${it.message}" }
             }
         }
 
@@ -314,23 +352,9 @@ class MainActivity : BaseActivity() {
 
             var showChangelog by remember { mutableStateOf(didMigration && !BuildConfig.DEBUG) }
             if (showChangelog) {
-                AlertDialog(
-                    onDismissRequest = { showChangelog = false },
-                    title = {
-                        Text(
-                            text = stringResource(MR.strings.updated_version, BuildConfig.VERSION_NAME),
-                        )
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { openInBrowser(RELEASE_URL) }) {
-                            Text(text = stringResource(MR.strings.whats_new))
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { showChangelog = false }) {
-                            Text(text = stringResource(MR.strings.action_ok))
-                        }
-                    },
+                eu.kanade.presentation.more.WhatsNewDialog(
+                    versionName = BuildConfig.VERSION_NAME,
+                    onDismiss = { showChangelog = false },
                 )
             }
         }
@@ -489,6 +513,26 @@ class MainActivity : BaseActivity() {
             )
         }
 
+        if (intent.hasExtra("roomId") || intent.action?.startsWith("social.room.") == true) {
+            return openSocialRoomIntent(intent, navigator)
+        }
+
+        val oauthCallback = intent.data?.takeIf { it.scheme == "dev.workers.dipitmoun" && it.path == "/oauth" }
+        if (oauthCallback != null) {
+            val callbackUrl = oauthCallback.toString()
+            // Consumed once: a recreated activity must not replay the one-shot callback.
+            intent.data = null
+            lifecycleScope.launch {
+                val session = Injekt.get<eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager>()
+                val result = session.completeOAuth(callbackUrl)
+                if (result is eu.kanade.tachiyomi.data.social.matrix.SocialResult.Failure) {
+                    toast("Connexion impossible : ${result.error}")
+                }
+            }
+            ready = true
+            return true
+        }
+
         val tabToOpen = when (intent.action) {
             Constants.SHORTCUT_ANIMELIB -> HomeScreen.Tab.AnimeLib()
             Constants.SHORTCUT_LIBRARY -> HomeScreen.Tab.Library()
@@ -589,10 +633,11 @@ class MainActivity : BaseActivity() {
                         navigator.push(MangaExtensionReposScreen(repoUrl))
                     }
                 } // Deep link to add a Shiro friend
-                else if (intent.scheme == "shiro" && intent.data?.host == "social") {
-                    navigator.popUntilRoot()
-                    navigator.push(SocialFriendsScreen(intent.data.toString()))
-                }
+                    else if (intent.scheme == "shiro" && intent.data?.host == "social") {
+                        navigator.popUntilRoot()
+                        navigator.push(SocialFriendsScreen(intent.data.toString()))
+                    }
+
                 null
             }
             else -> return false
@@ -602,6 +647,37 @@ class MainActivity : BaseActivity() {
             lifecycleScope.launch { HomeScreen.openTab(tabToOpen) }
         }
 
+        ready = true
+        return true
+    }
+
+    private fun openSocialRoomIntent(intent: Intent, navigator: Navigator): Boolean {
+        val roomId = intent.getStringExtra("roomId") ?: return false
+        val workIdString = intent.getStringExtra("workId") ?: return false
+        val workId = WorkId.parse(workIdString) ?: return false
+        val authorMxid = intent.getStringExtra("authorMxid") ?: return false
+        val roomTitle = intent.getStringExtra("roomTitle")
+            ?.takeIf { it.isNotBlank() }
+            ?.take(200)
+            ?: "Salon Matrix"
+
+        val chatContext = SocialChatContext(
+            animeId = 0L,
+            work = WorkIdentity(
+                id = workId,
+                ids = mapOf(workId.scheme.wireName to workId.remoteId),
+                title = roomTitle,
+                legacyId = workId,
+                addedAt = null,
+            ),
+            title = roomTitle,
+            posterUrl = null,
+            episodes = emptyList(),
+            initialRoomId = roomId,
+            initialAuthorMxid = authorMxid,
+        )
+        navigator.popUntilRoot()
+        navigator.push(SocialChatScreen(chatContext))
         ready = true
         return true
     }

@@ -45,6 +45,17 @@ class PersistentRoomBindingStore(context: Context) : RoomBindingStore {
         }
     }
 
+    override suspend fun clear() {
+        cache = mutableMapOf()
+        try {
+            if (file.exists() && !file.delete()) {
+                file.writeText("{}")
+            }
+        } catch (_: Throwable) {
+            // Cache is already empty; disk cleanup is best-effort.
+        }
+    }
+
     override suspend fun resolveRoom(key: SocialRoomKey): SocialResult<String?> =
         SocialResult.Success(load()[key.value])
 

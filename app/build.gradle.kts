@@ -19,8 +19,58 @@ val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
+
+// Signing secrets are never committed. Set them as environment variables or in
+// the git-ignored local.properties file. Keystore path and alias may be overridden
+// for a machine-specific location.
+fun signingValue(name: String): String? =
+    System.getenv(name) ?: localProperties.getProperty(name)
 val telegramApiId = localProperties.getProperty("TELEGRAM_API_ID")?.toIntOrNull() ?: 0
 val telegramApiHash = localProperties.getProperty("TELEGRAM_API_HASH").orEmpty()
+
+// Firebase Cloud Messaging (social push). google-services.json is git-ignored and read here
+// instead of applying the Google Services plugin, so builds without it (CI, forks) still work
+// with push disabled, and variants missing from the file do not break the build.
+data class FirebaseConfig(val projectId: String, val senderId: String, val apiKey: String, val appIds: String)
+val firebaseConfig: FirebaseConfig = run {
+    val file = file("google-services.json")
+    if (!file.isFile) return@run FirebaseConfig("", "", "", "")
+    @Suppress("UNCHECKED_CAST")
+    val root = groovy.json.JsonSlurper().parse(file) as Map<String, Any?>
+    val project = root["project_info"] as Map<String, Any?>
+    val clients = root["client"] as List<Map<String, Any?>>
+    fun Map<String, Any?>.map(key: String) = this[key] as Map<String, Any?>
+    val appIds = clients.joinToString(";") { client ->
+        val info = client.map("client_info")
+        "${info.map("android_client_info")["package_name"]}=${info["mobilesdk_app_id"]}"
+    }
+    @Suppress("UNCHECKED_CAST")
+    val apiKey = (clients.first()["api_key"] as List<Map<String, Any?>>).first()["current_key"].toString()
+    FirebaseConfig(
+        projectId = project["project_id"].toString(),
+        senderId = project["project_number"].toString(),
+        apiKey = apiKey,
+        appIds = appIds,
+    )
+}
+
+// The "Quoi de neuf" section of WHATS-NEW.md is bundled as an asset and shown after an update.
+val whatsNewDir = layout.buildDirectory.dir("generated/whatsnew")
+val generateWhatsNew by tasks.registering {
+    val source = rootProject.file("WHATS-NEW.md")
+    val output = whatsNewDir.map { it.file("whats-new.md") }
+    inputs.file(source)
+    outputs.file(output)
+    doLast {
+        val lines = source.readLines()
+        val start = lines.indexOfFirst { it.trim() == "### Quoi de neuf" }
+        require(start >= 0) { "WHATS-NEW.md: section '### Quoi de neuf' not found" }
+        val body = lines.drop(start + 1).takeWhile { !it.startsWith("### ") && it.trim() != "---" }
+        output.get().asFile.apply { parentFile.mkdirs() }.writeText(body.joinToString("\n").trim() + "\n")
+    }
+}
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }
+    .configureEach { dependsOn(generateWhatsNew) }
 
 android {
     namespace = "eu.kanade.tachiyomi"
@@ -30,13 +80,18 @@ android {
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
-        versionCode = 132
-        versionName = "0.18.2.1"
+        versionCode = 133
+        versionName = "0.19.0"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
         buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${firebaseConfig.projectId}\"")
+        buildConfigField("String", "FIREBASE_SENDER_ID", "\"${firebaseConfig.senderId}\"")
+        buildConfigField("String", "FIREBASE_API_KEY", "\"${firebaseConfig.apiKey}\"")
+        buildConfigField("String", "FIREBASE_APP_IDS", "\"${firebaseConfig.appIds}\"")
+        buildConfigField("String", "SOCIAL_PUSH_GATEWAY", "\"https://shiro-push.dipitmoun.workers.dev/_matrix/push/v1/notify\"")
 
         // Put these fields in acra.properties
         // val acraProperties = Properties()
@@ -55,10 +110,10 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("shiro-release.jks")
-            storePassword = "shiro123"
-            keyAlias = "shiro"
-            keyPassword = "shiro123"
+            storeFile = file(signingValue("SHIRO_KEYSTORE_PATH") ?: "shiro-release.jks")
+            storePassword = signingValue("SHIRO_STORE_PASSWORD")
+            keyAlias = signingValue("SHIRO_KEY_ALIAS") ?: "shiro"
+            keyPassword = signingValue("SHIRO_KEY_PASSWORD")
         }
     }
 
@@ -107,6 +162,7 @@ android {
     }
 
     sourceSets {
+        getByName("main").assets.srcDir(whatsNewDir)
         getByName("preview").res.srcDirs("src/debug/res")
         getByName("benchmark").res.srcDirs("src/debug/res")
     }
@@ -244,6 +300,10 @@ dependencies {
 
     // Matrix social SDK
     implementation(libs.matrix.sdk.android)
+
+    // Social push (FCM), initialized manually from google-services.json values
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     implementation(libs.jna) {
         artifact {
             name = "jna"

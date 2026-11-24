@@ -24,6 +24,10 @@ data class SocialOverlayState(
     val timelines: Map<ThreadRef, SocialThreadTimeline> = emptyMap(),
     val lastError: SocialError? = null,
     val isSending: Boolean = false,
+    /** Active room for flat (no-thread) mode. */
+    val activeRoomId: String? = null,
+    val activeAuthorMxid: String? = null,
+    val roomTimeline: SocialThreadTimeline? = null,
 ) {
     val isConnected: Boolean get() = connection is ConnectionState.Connected
     val account: SocialAccount? get() = (connection as? ConnectionState.Connected)?.account

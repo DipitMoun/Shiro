@@ -26,6 +26,9 @@ interface SocialFriendStore {
     fun isFriend(mxid: String): Boolean
     suspend fun rejectFriendRequest(mxid: String) {}
     fun isRejected(mxid: String): Boolean = false
+
+    /** Removes every friend and rejected request for the current account. */
+    suspend fun clearAll() {}
     fun asAudienceFriends(): List<SocialFriend> = friends.value.map {
         SocialFriend(userId = it.mxid, displayName = it.displayName, hasWork = true)
     }
@@ -71,6 +74,25 @@ class PersistentSocialFriendStore(context: Context) : SocialFriendStore {
     }
 
     override fun isRejected(mxid: String): Boolean = _rejectedMxids.value.contains(mxid)
+
+    override suspend fun clearAll() {
+        _friends.value = emptyList()
+        _rejectedMxids.value = emptySet()
+        try {
+            if (file.exists() && !file.delete()) {
+                file.writeText("[]")
+            }
+        } catch (_: Throwable) {
+            // In-memory state is already cleared; disk cleanup is best-effort.
+        }
+        try {
+            if (rejectedFile.exists() && !rejectedFile.delete()) {
+                rejectedFile.writeText("[]")
+            }
+        } catch (_: Throwable) {
+            // In-memory state is already cleared; disk cleanup is best-effort.
+        }
+    }
 
     private fun load(): List<SocialFriendRecord> = try {
         if (file.exists()) {

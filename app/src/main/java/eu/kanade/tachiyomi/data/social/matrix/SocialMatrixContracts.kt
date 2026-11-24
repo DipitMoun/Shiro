@@ -330,6 +330,12 @@ interface SocialThreadRepository {
      */
     fun observeThread(thread: ThreadRef): Flow<SocialResult<SocialThreadTimeline>>
 
+    /** Continuous observation of a whole room, without thread filtering. */
+    fun observeRoom(roomId: String, authorMxid: String): Flow<SocialResult<SocialThreadTimeline>> =
+        kotlinx.coroutines.flow.flowOf(
+            SocialResult.Failure(SocialError.Unknown("Room observation not supported")),
+        )
+
     /** Fetches one page of older items from a [SocialThreadTimeline.olderCursor]. */
     suspend fun pageBack(thread: ThreadRef, cursor: String): SocialResult<TimelinePage>
 }
@@ -352,6 +358,40 @@ sealed interface SocialCommand {
         val body: String,
         /** Moment being answered, used for `m.in_reply_to`. */
         val inReplyToEventId: String? = null,
+    ) : SocialCommand
+
+    /** Plain message sent directly to a room, without any thread relation. */
+    data class SendToRoom(
+        val roomId: String,
+        val body: String,
+        val inReplyToEventId: String? = null,
+    ) : SocialCommand
+
+    /** Moment sent directly to a room, without any thread relation. */
+    data class PublishToRoom(
+        val roomId: String,
+        val payload: MomentPayload,
+    ) : SocialCommand
+
+    /** `m.reaction` on an event of a flat room timeline. */
+    data class ReactInRoom(
+        val roomId: String,
+        val eventId: String,
+        val key: String,
+    ) : SocialCommand
+
+    /** `m.replace` edit of an event in a flat room timeline. */
+    data class EditInRoom(
+        val roomId: String,
+        val eventId: String,
+        val body: String,
+    ) : SocialCommand
+
+    /** Redaction of an event in a flat room timeline. */
+    data class RedactInRoom(
+        val roomId: String,
+        val eventId: String,
+        val reason: String? = null,
     ) : SocialCommand
 
     /**

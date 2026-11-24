@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialCommand
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
+import eu.kanade.tachiyomi.data.social.matrix.room.FakeMatrixRoomTransport
 import eu.kanade.tachiyomi.data.social.matrix.room.InMemoryRoomBindingStore
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -23,7 +24,11 @@ class RustCommandDispatcherTest {
 
     @Test
     fun `execute returns Auth failure when no session`() = runBlocking {
-        val dispatcher = RustCommandDispatcher({ null }, InMemoryRoomBindingStore())
+        val dispatcher = RustCommandDispatcher(
+            { null },
+            InMemoryRoomBindingStore(),
+            FakeMatrixRoomTransport(),
+        )
         val result = dispatcher.execute(SocialCommand.React(thread, "\$e1", "fire"))
         assertTrue(result is SocialResult.Failure)
         val error = (result as SocialResult.Failure).error
@@ -33,7 +38,11 @@ class RustCommandDispatcherTest {
 
     @Test
     fun `all command types fail without session`() = runBlocking {
-        val dispatcher = RustCommandDispatcher({ null }, InMemoryRoomBindingStore())
+        val dispatcher = RustCommandDispatcher(
+            { null },
+            InMemoryRoomBindingStore(),
+            FakeMatrixRoomTransport(),
+        )
         val commands = listOf(
             SocialCommand.ReplyInAuthorThread(thread, "hi"),
             SocialCommand.React(thread, "\$e1", "fire"),

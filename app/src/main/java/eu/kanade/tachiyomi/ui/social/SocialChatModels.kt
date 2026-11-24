@@ -20,6 +20,8 @@ data class SocialChatFriend(
     val mxid: String,
     val name: String,
     val avatarBytes: ByteArray?,
+    /** True when this friend has a room for the current work. */
+    val hasRoom: Boolean = true,
 )
 
 /** Context carried by the work-level chat screen. */
@@ -29,6 +31,10 @@ data class SocialChatContext(
     val title: String,
     val posterUrl: String?,
     val episodes: List<SocialChatEpisode>,
+    /** Room to open directly when the screen is launched from a notification. */
+    val initialRoomId: String? = null,
+    /** Owner of [initialRoomId], used to resolve the friend/self thread. */
+    val initialAuthorMxid: String? = null,
 ) : java.io.Serializable
 
 

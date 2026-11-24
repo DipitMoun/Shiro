@@ -20,6 +20,9 @@ interface SocialFriendInviteAccepter {
     suspend fun acceptInvite(roomId: String): SocialResult<Unit> = SocialResult.Success(Unit)
 
     suspend fun declineInvite(roomId: String): SocialResult<Unit> = SocialResult.Success(Unit)
+
+    /** False once the room is joined or left (or unknown to a fake). */
+    suspend fun isStillInvited(roomId: String): Boolean = true
 }
 
 data class SocialRoomInvite(
@@ -101,8 +104,8 @@ class RustSocialFriendInviteAccepter(
         val client = clientProvider() ?: return notAuthenticated()
         return try {
             val room = client.getRoom(roomId)
-                ?: return SocialResult.Failure(SocialError.Unknown("Room $roomId not found"))
-            room.join()
+            // An invitation learnt from a push may not be in the local store yet.
+            if (room != null) room.join() else client.joinRoomById(roomId)
             SocialResult.Success(Unit)
         } catch (c: CancellationException) {
             throw c
@@ -123,6 +126,12 @@ class RustSocialFriendInviteAccepter(
         } catch (t: Throwable) {
             SocialResult.Failure(SocialError.Unknown("decline invite failed: ${t.message}", t))
         }
+    }
+
+    override suspend fun isStillInvited(roomId: String): Boolean {
+        val client = clientProvider() ?: return true
+        val room = runCatching { client.getRoom(roomId) }.getOrNull() ?: return true
+        return runCatching { room.membership() == Membership.INVITED }.getOrDefault(true)
     }
 
     private fun <T> notAuthenticated(): SocialResult<T> = SocialResult.Failure(

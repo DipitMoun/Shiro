@@ -21,6 +21,15 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.cache.MangaCoverCache
 import eu.kanade.tachiyomi.data.collection.CollectionBootstrap
 import eu.kanade.tachiyomi.data.collection.CollectionMetadataManager
+import eu.kanade.tachiyomi.data.social.friends.SocialFriendRemover
+import eu.kanade.tachiyomi.data.social.friends.SocialInviteMonitor
+import eu.kanade.tachiyomi.data.social.matrix.sync.SocialNotificationCursor
+import eu.kanade.tachiyomi.data.social.matrix.profile.SocialOwnProfile
+import eu.kanade.tachiyomi.data.social.matrix.sync.SocialMessageNotifier
+import eu.kanade.tachiyomi.data.social.matrix.sync.SocialLiveListener
+import eu.kanade.tachiyomi.data.social.activity.SocialActivityService
+import eu.kanade.tachiyomi.data.social.matrix.inbox.SocialInbox
+import eu.kanade.tachiyomi.data.social.matrix.push.SocialPushManager
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadProvider
@@ -39,12 +48,16 @@ import eu.kanade.tachiyomi.data.social.matrix.SocialThreadRepository
 import eu.kanade.tachiyomi.data.social.matrix.catalog.RustSocialThreadCatalog
 import eu.kanade.tachiyomi.data.social.matrix.catalog.SocialThreadCatalog
 import eu.kanade.tachiyomi.data.social.matrix.command.RustCommandDispatcher
+import eu.kanade.tachiyomi.data.social.matrix.directory.RustSocialUserDirectory
+import eu.kanade.tachiyomi.data.social.matrix.directory.SocialUserDirectory
 import eu.kanade.tachiyomi.data.social.friends.PersistentSocialFriendStore
 import eu.kanade.tachiyomi.data.social.friends.RustSocialFriendInviteAccepter
 import eu.kanade.tachiyomi.data.social.friends.SocialFriendInviteAccepter
 import eu.kanade.tachiyomi.data.social.friends.SocialFriendStore
 import eu.kanade.tachiyomi.data.social.matrix.media.RustSocialAvatarLoader
 import eu.kanade.tachiyomi.data.social.matrix.media.SocialAvatarLoader
+import eu.kanade.tachiyomi.data.social.matrix.profile.RustSocialProfileEditor
+import eu.kanade.tachiyomi.data.social.matrix.profile.SocialProfileEditor
 import eu.kanade.tachiyomi.data.social.matrix.push.PushRegistrar
 import eu.kanade.tachiyomi.data.social.matrix.push.RustPushRegistrar
 import eu.kanade.tachiyomi.data.social.matrix.room.InMemoryRoomBindingStore
@@ -55,6 +68,7 @@ import eu.kanade.tachiyomi.data.social.matrix.room.SocialRoomService
 import eu.kanade.tachiyomi.data.social.matrix.room.DefaultSocialRoomService
 import eu.kanade.tachiyomi.data.social.matrix.room.RoomBindingStore
 import eu.kanade.tachiyomi.data.social.matrix.session.InMemorySessionCredentialStore
+import eu.kanade.tachiyomi.data.social.matrix.session.LocalSocialAccountDataCleaner
 import eu.kanade.tachiyomi.data.social.matrix.session.PersistentSessionCredentialStore
 import eu.kanade.tachiyomi.data.social.matrix.MatrixStoreKeyProvider
 import eu.kanade.tachiyomi.data.social.matrix.session.RustMatrixSessionManager
@@ -309,11 +323,16 @@ class AppModule(val app: Application) : InjektModule {
         // P2-10b - Social Matrix layer
         addSingletonFactory { MatrixStoreKeyProvider(app) }
         addSingletonFactory { RustMatrixClientFactory(app, get()) }
-        addSingletonFactory { RustSessionDelegate(get()) }
+        val matrixCredentialStore = PersistentSessionCredentialStore(app)
+        addSingletonFactory { RustSessionDelegate(get(), matrixCredentialStore) }
         addSingletonFactory<MatrixSessionManager> {
             RustMatrixSessionManager(
                 delegate = get<RustSessionDelegate>(),
-                credentialStore = PersistentSessionCredentialStore(app),
+                credentialStore = matrixCredentialStore,
+                accountDataCleaner = LocalSocialAccountDataCleaner(
+                    friendStore = get<SocialFriendStore>(),
+                    roomBindingStore = get<RoomBindingStore>(),
+                ),
             )
         }
         addSingletonFactory<RoomBindingStore> { PersistentRoomBindingStore(app) }
@@ -338,6 +357,14 @@ class AppModule(val app: Application) : InjektModule {
             val delegate = get<RustSessionDelegate>()
             RustSocialAvatarLoader(clientProvider = { delegate.clientOrNull() })
         }
+        addSingletonFactory<SocialProfileEditor> {
+            val delegate = get<RustSessionDelegate>()
+            RustSocialProfileEditor(clientProvider = { delegate.clientOrNull() })
+        }
+        addSingletonFactory<SocialUserDirectory> {
+            val delegate = get<RustSessionDelegate>()
+            RustSocialUserDirectory(clientProvider = { delegate.clientOrNull() })
+        }
         addSingletonFactory<MatrixRoomTransport> {
             val delegate = get<RustSessionDelegate>()
             RustMatrixRoomTransport(clientProvider = { delegate.clientOrNull() })
@@ -346,6 +373,42 @@ class AppModule(val app: Application) : InjektModule {
             DefaultSocialRoomService(
                 transport = get<MatrixRoomTransport>(),
                 bindings = get<RoomBindingStore>(),
+            )
+        }
+        addSingletonFactory { SocialNotificationCursor(app) }
+        addSingletonFactory { SocialOwnProfile(get<MatrixSessionManager>(), get<SocialAvatarLoader>()) }
+        addSingletonFactory { SocialFriendRemover(get<MatrixSessionManager>(), get<SocialFriendStore>()) }
+        addSingletonFactory { SocialMessageNotifier(app, get<SocialNotificationCursor>(), get<SocialAvatarLoader>()) }
+        addSingletonFactory { SocialPushManager(app, get<MatrixSessionManager>(), get<PushRegistrar>()) }
+        addSingletonFactory {
+            SocialActivityService(
+                context = app,
+                session = get<MatrixSessionManager>(),
+                transport = get<MatrixRoomTransport>(),
+                friends = get<SocialFriendStore>(),
+                getLibraryAnime = get(),
+                getLibraryManga = get(),
+                cursor = get<SocialNotificationCursor>(),
+                avatarLoader = get<SocialAvatarLoader>(),
+            )
+        }
+        addSingletonFactory {
+            SocialLiveListener(
+                get<MatrixSessionManager>(),
+                get<SocialInviteMonitor>(),
+                get<SocialMessageNotifier>(),
+                get<SocialActivityService>(),
+            )
+        }
+        addSingletonFactory { SocialInbox(get<MatrixSessionManager>()) }
+        addSingletonFactory {
+            SocialInviteMonitor(
+                context = app,
+                accepter = get<SocialFriendInviteAccepter>(),
+                friends = get<SocialFriendStore>(),
+                roomService = get<SocialRoomService>(),
+                session = get<MatrixSessionManager>(),
+                avatarLoader = get<SocialAvatarLoader>(),
             )
         }
         addSingletonFactory<SocialThreadRepository> {
@@ -359,6 +422,7 @@ class AppModule(val app: Application) : InjektModule {
             RustCommandDispatcher(
                 clientProvider = { delegate.clientOrNull() },
                 bindings = get<RoomBindingStore>(),
+                roomTransport = get<MatrixRoomTransport>(),
             )
         }
         addSingletonFactory<PushRegistrar> {

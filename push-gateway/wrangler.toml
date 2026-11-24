@@ -1,0 +1,10 @@
+name = "shiro-push"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+ALLOWED_APP_IDS = "io.github.DipitMoun.shiro,io.github.DipitMoun.shiro.dev,io.github.DipitMoun.shiro.debug"
+
+# FCM_SERVICE_ACCOUNT is a secret, set with:
+#   npx wrangler secret put FCM_SERVICE_ACCOUNT < path/to/service-account.json

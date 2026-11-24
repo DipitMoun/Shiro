@@ -13,25 +13,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
-import eu.kanade.tachiyomi.data.social.friends.SocialFriendInviteAccepter
-import eu.kanade.tachiyomi.data.social.friends.SocialFriendRecord
-import eu.kanade.tachiyomi.data.social.friends.SocialFriendStore
+import eu.kanade.tachiyomi.data.social.friends.SocialInviteMonitor
 import eu.kanade.tachiyomi.data.social.friends.SocialRoomInvite
-import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
-import eu.kanade.tachiyomi.data.social.matrix.SocialResult
-import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
 import eu.kanade.tachiyomi.data.social.matrix.media.SocialAvatarLoader
-import eu.kanade.tachiyomi.data.social.matrix.room.SocialRoomService
 import kotlinx.coroutines.launch
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -39,57 +32,28 @@ import uy.kohesive.injekt.api.get
 /**
  * Global popup that shows one pending friend invitation at a time.
  *
- * Any Matrix room invite coming from a non-friend mxid is treated as an
- * implicit friendship request. Accepting joins the room, records the inviter
- * as a friend and invites them back into our own rooms (mutual friendship).
+ * Any Matrix room invite coming from a non-friend mxid is treated as an implicit friendship
+ * request. The list comes from [SocialInviteMonitor], fed live by the sync service, so a
+ * request appears while the app is open, without restarting it.
  */
 @Composable
 internal fun SocialFriendInvitePopup() {
-    val inviteAccepter = remember { Injekt.get<SocialFriendInviteAccepter>() }
-    val friendsStore = remember { Injekt.get<SocialFriendStore>() }
-    val roomService = remember { Injekt.get<SocialRoomService>() }
-    val sessionManager = remember { Injekt.get<MatrixSessionManager>() }
+    val monitor = remember { Injekt.get<SocialInviteMonitor>() }
     val avatarLoader = remember { Injekt.get<SocialAvatarLoader>() }
     val scope = rememberCoroutineScope()
 
-    var pendingInvites by remember { mutableStateOf<List<SocialRoomInvite>>(emptyList()) }
+    val pendingInvites by monitor.invites.collectAsState()
 
-    LaunchedEffect(Unit) {
-        pendingInvites = (inviteAccepter.pendingInvites() as? SocialResult.Success)?.value.orEmpty()
-    }
+    // The sync service may not run yet (first launch, login just done): read once too.
+    LaunchedEffect(Unit) { monitor.refresh() }
 
     val currentInvite = pendingInvites.firstOrNull() ?: return
 
     SocialFriendInviteDialog(
         invite = currentInvite,
         avatarLoader = avatarLoader,
-        onAccept = {
-            scope.launch {
-                val self = (sessionManager.state.value as? SocialSessionState.Authenticated)?.account?.userId
-                inviteAccepter.acceptInvite(currentInvite.roomId)
-                if (self != null) {
-                    currentInvite.inviterMxid?.let { inviter ->
-                        friendsStore.add(
-                            SocialFriendRecord(
-                                mxid = inviter,
-                                displayName = currentInvite.inviterDisplayName,
-                            ),
-                        )
-                        roomService.inviteFriendToOwnRooms(inviter, self)
-                    }
-                }
-                pendingInvites = pendingInvites.filterNot { it.roomId == currentInvite.roomId }
-            }
-        },
-        onDecline = {
-            scope.launch {
-                inviteAccepter.declineInvite(currentInvite.roomId)
-                currentInvite.inviterMxid?.let { inviter ->
-                    friendsStore.rejectFriendRequest(inviter)
-                }
-                pendingInvites = pendingInvites.filterNot { it.roomId == currentInvite.roomId }
-            }
-        },
+        onAccept = { scope.launch { monitor.accept(currentInvite.roomId) } },
+        onDecline = { scope.launch { monitor.decline(currentInvite.roomId) } },
     )
 }
 
@@ -110,7 +74,8 @@ private fun SocialFriendInviteDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDecline,
+        // Tapping outside must not decline a friend request by accident.
+        onDismissRequest = {},
         icon = if (bitmap != null) {
             {
                 Image(

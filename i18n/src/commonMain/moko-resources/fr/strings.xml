@@ -632,7 +632,8 @@
     <string name="pref_backup_summary">Sauvegardes manuelles et automatiques</string>
     <string name="pref_advanced_summary">Rapports de plantage, optimisations de la batterie</string>
     <string name="pref_category_social">Social</string>
-    <string name="pref_social_summary">Compte Matrix et amis</string>
+    <string name="pref_social_summary">Compte Matrix et notifications</string>
+    <string name="pref_bottom_nav_no_social">Déplacer Social dans Plus</string>
     <string name="social_matrix_account">Compte Matrix</string>
     <string name="social_matrix_connected">Connecté en tant que %s</string>
     <string name="social_matrix_disconnected">Non connecté</string>
@@ -646,7 +647,8 @@
     <string name="social_matrix_login_title">Connexion à Matrix</string>
     <string name="social_matrix_logout_title">Se déconnecter de Matrix ?</string>
     <string name="social_matrix_logout_message">La session locale sera supprimée. Ton compte Matrix et tes messages ne seront pas supprimés.</string>
-    <string name="social_matrix_info">Le compte sert uniquement à l’overlay social. Les messages restent chiffrés de bout en bout.</string>
+    <string name="social_matrix_info">Ton compte Matrix relie Shiro à tes amis. Les messages restent chiffrés de bout en bout.</string>
+    <string name="social_matrix_change_avatar">Changer la photo de profil</string>
     <string name="social_overlay_not_connected_title">Compte Matrix requis</string>
     <string name="social_overlay_not_connected_body">Connecte-toi depuis Paramètres → Social pour voir les fils de tes amis.</string>
     <string name="social_overlay_open_settings">Ouvrir les paramètres</string>
@@ -901,4 +903,24 @@
     <string name="telegram_download_required_episode">Téléchargement lancé — l\'épisode sera lisible une fois terminé.</string>
     <string name="telegram_download_required_chapter">Téléchargement lancé — le chapitre sera lisible une fois terminé.</string>
     <string name="telegram_source_needs_download">Téléchargez ce chapitre pour le lire.</string>
+    <string name="channel_social_messages">Messages sociaux</string>
+    <string name="channel_social_invites">Invitations d'amis</string>
+    <string name="channel_social_activity">Activité des amis</string>
+    <string name="channel_social_sync">Synchronisation Matrix</string>
+    <string name="social_notification_sync_title">Shiro synchronise Matrix</string>
+    <string name="social_notification_sync_text">Messages et invitations en direct</string>
+    <string name="social_notification_reply">Répondre</string>
+    <string name="social_notification_message_title">%1$s · %2$s</string>
+    <string name="social_notification_message_text">%1$s</string>
+    <string name="social_notification_invite_title">Demande d'ami</string>
+    <string name="social_notification_invite_text">%1$s veut t'ajouter comme ami</string>
+    <string name="social_notification_invite_details">%1$s (%2$s) veut t'ajouter comme ami et t'inviter dans ses salons.</string>
+    <string name="social_notification_invite_unknown">Quelqu'un</string>
+    <string name="social_notification_accept">Accepter</string>
+    <string name="social_notification_decline">Refuser</string>
+    <string name="social_notification_mark_read">Marquer comme lu</string>
+    <string name="social_notification_self">Moi</string>
+    <string name="social_battery_title">Notifications fiables</string>
+    <string name="social_battery_summary">Autorise Shiro à fonctionner en arrière-plan pour recevoir messages et demandes d'ami sans délai</string>
+    <string name="social_battery_granted">Shiro peut recevoir les messages en arrière-plan</string>
 </resources>

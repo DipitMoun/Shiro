@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.data.social.matrix.timeline
 
+import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
 import eu.kanade.tachiyomi.data.social.matrix.TransportEvent
@@ -22,6 +23,12 @@ interface ThreadTimelineSource {
         roomId: String,
         threadRootEventId: String,
     ): Flow<SocialResult<List<TransportEvent>>>
+
+    /** Reads a whole room's live timeline, without any thread filtering. */
+    fun observeRoom(roomId: String): Flow<SocialResult<List<TransportEvent>>> =
+        kotlinx.coroutines.flow.flowOf(
+            SocialResult.Failure(SocialError.Unknown("Room observation not supported")),
+        )
 
     suspend fun pageBack(
         thread: ThreadRef,

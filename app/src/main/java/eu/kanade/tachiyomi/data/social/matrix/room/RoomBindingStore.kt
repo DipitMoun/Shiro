@@ -22,6 +22,9 @@ interface RoomBindingStore {
     suspend fun resolveThreadRoot(key: SocialThreadKey): SocialResult<String?>
     suspend fun bindThreadRoot(key: SocialThreadKey, rootEventId: String): SocialResult<Unit>
 
+    /** Drops every room and thread binding for the current account. */
+    suspend fun clear() {}
+
     /**
      * Copies the thread bindings of [from] onto [to]. Used only when a legacy
      * row-id based work key is migrated to the stable source+URL key and the

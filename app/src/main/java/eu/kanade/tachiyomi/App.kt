@@ -130,6 +130,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         // SY <--
 
         setupNotificationChannels()
+        eu.kanade.tachiyomi.data.social.matrix.push.ShiroFirebase.init(this)
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
 

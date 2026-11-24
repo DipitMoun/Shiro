@@ -13,6 +13,11 @@ class InMemoryRoomBindingStore : RoomBindingStore {
     private val rooms = mutableMapOf<String, String>()
     private val threads = mutableMapOf<String, String>()
 
+    override suspend fun clear() {
+        rooms.clear()
+        threads.clear()
+    }
+
     override suspend fun resolveRoom(key: SocialRoomKey): SocialResult<String?> =
         SocialResult.Success(rooms[key.value])
 

@@ -1,6 +1,15 @@
 package eu.kanade.presentation.more.settings.screen
 
+import eu.kanade.tachiyomi.util.system.toast
+import eu.kanade.tachiyomi.util.system.powerManager
+import androidx.core.net.toUri
+import android.provider.Settings
+import android.content.Intent
+import android.content.ActivityNotFoundException
+import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -9,16 +18,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PeopleAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -47,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -58,12 +71,18 @@ import eu.kanade.presentation.more.settings.PreferenceScaffold
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.data.social.friends.SocialFriendRecord
 import eu.kanade.tachiyomi.data.social.friends.SocialFriendStore
+import eu.kanade.tachiyomi.data.social.activity.SocialActivityService
+import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
+import eu.kanade.tachiyomi.data.social.matrix.profile.SocialOwnProfile
+import eu.kanade.tachiyomi.data.social.matrix.session.MatrixSessionBootstrap
 import eu.kanade.tachiyomi.data.social.matrix.SocialAccount
 import eu.kanade.tachiyomi.data.social.matrix.SocialError
 import eu.kanade.tachiyomi.data.social.matrix.SocialResult
 import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
 import eu.kanade.tachiyomi.data.social.matrix.media.SocialAvatarLoader
+import eu.kanade.tachiyomi.data.social.matrix.profile.SocialAvatarImageProcessor
+import eu.kanade.tachiyomi.data.social.matrix.profile.SocialProfileEditor
 import eu.kanade.presentation.social.FriendLibraryScreen
 import eu.kanade.tachiyomi.ui.social.SocialFriendsScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -85,9 +104,7 @@ class SettingsSocialScreen : Screen() {
         val session = remember { Injekt.get<MatrixSessionManager>() }
         val navigator = LocalNavigator.currentOrThrow
         LaunchedEffect(Unit) {
-            if (session.state.value is SocialSessionState.Unauthenticated) {
-                session.restore()
-            }
+            MatrixSessionBootstrap.ensureRestored(session)
         }
 
         PreferenceScaffold(
@@ -107,7 +124,77 @@ class SettingsSocialScreen : Screen() {
         var loginError by remember { mutableStateOf<SocialError?>(null) }
         val friendsStore = remember { Injekt.get<SocialFriendStore>() }
         val avatarLoader = remember { Injekt.get<SocialAvatarLoader>() }
+        val profileEditor = remember { Injekt.get<SocialProfileEditor>() }
+        val context = LocalContext.current
         val friends by friendsStore.friends.collectAsState()
+        var avatarVersion by remember { mutableStateOf(0) }
+        var avatarBusy by remember { mutableStateOf(false) }
+        var avatarError by remember { mutableStateOf<String?>(null) }
+
+        val account = (sessionState as? SocialSessionState.Authenticated)?.account
+
+        // Doze and OEM battery savers delay or kill the sync service otherwise.
+        fun isIgnoringBatteryOptimizations() =
+            context.powerManager.isIgnoringBatteryOptimizations(context.packageName)
+        var batteryUnrestricted by remember { mutableStateOf(isIgnoringBatteryOptimizations()) }
+        val batteryLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) { batteryUnrestricted = isIgnoringBatteryOptimizations() }
+
+        val status = when (val state = sessionState) {
+            SocialSessionState.Unauthenticated -> stringResource(MR.strings.social_matrix_disconnected)
+            is SocialSessionState.Authenticating -> stringResource(MR.strings.social_matrix_connecting)
+            is SocialSessionState.Authenticated -> stringResource(
+                MR.strings.social_matrix_connected,
+                state.account.userId,
+            )
+            is SocialSessionState.Error -> stringResource(
+                MR.strings.social_matrix_error,
+                state.error.toString(),
+            )
+        }
+
+        val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri == null || account == null) return@rememberLauncherForActivityResult
+            avatarError = null
+            avatarBusy = true
+            scope.launch {
+                try {
+                    when (val prepared = SocialAvatarImageProcessor.prepare(context, uri)) {
+                        is SocialResult.Failure -> avatarError = prepared.error.toString()
+                        is SocialResult.Success -> {
+                            when (
+                                val uploaded = profileEditor.updateAvatar(
+                                    prepared.value.mimeType,
+                                    prepared.value.bytes,
+                                )
+                            ) {
+                                is SocialResult.Failure -> avatarError = uploaded.error.toString()
+                                is SocialResult.Success -> {
+                                    avatarVersion++
+                                    // Bottom bar and Social page show the new photo too.
+                                    Injekt.get<SocialOwnProfile>().refresh()
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    avatarBusy = false
+                }
+            }
+        }
+        val changeAvatar: (() -> Unit)? = if (account != null && !avatarBusy) {
+            {
+                avatarError = null
+                avatarPicker.launch("image/*")
+            }
+        } else {
+            null
+        }
+
+        LaunchedEffect(account?.userId) {
+            avatarError = null
+        }
 
         when (dialog) {
             SocialDialog.Login -> MatrixLoginDialog(
@@ -126,6 +213,26 @@ class SettingsSocialScreen : Screen() {
                         }
                     }
                 },
+                onBrowser = { homeserver, create ->
+                    loginError = null
+                    scope.launch {
+                        when (val result = session.startOAuth(homeserver, create)) {
+                            is SocialResult.Failure -> loginError = result.error
+                            is SocialResult.Success -> {
+                                dialog = null
+                                try {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, result.value.toUri())
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                } catch (_: ActivityNotFoundException) {
+                                    loginError = SocialError.Unknown("Aucun navigateur disponible")
+                                    dialog = SocialDialog.Login
+                                }
+                            }
+                        }
+                    }
+                },
             )
             SocialDialog.Logout -> MatrixLogoutDialog(
                 onDismiss = { dialog = null },
@@ -137,20 +244,6 @@ class SettingsSocialScreen : Screen() {
             null -> Unit
         }
 
-        val account = (sessionState as? SocialSessionState.Authenticated)?.account
-        val status = when (val state = sessionState) {
-            SocialSessionState.Unauthenticated -> stringResource(MR.strings.social_matrix_disconnected)
-            is SocialSessionState.Authenticating -> stringResource(MR.strings.social_matrix_connecting)
-            is SocialSessionState.Authenticated -> stringResource(
-                MR.strings.social_matrix_connected,
-                state.account.userId,
-            )
-            is SocialSessionState.Error -> stringResource(
-                MR.strings.social_matrix_error,
-                state.error.toString(),
-            )
-        }
-
         return buildList<Preference> {
             add(
                 Preference.PreferenceItem.CustomPreference(
@@ -160,6 +253,10 @@ class SettingsSocialScreen : Screen() {
                             account = account,
                             status = status,
                             sessionState = sessionState,
+                            avatarVersion = avatarVersion,
+                            avatarBusy = avatarBusy,
+                            avatarError = avatarError,
+                            onChangeAvatar = changeAvatar,
                             onClick = {
                                 if (account == null) {
                                     loginError = null
@@ -172,31 +269,54 @@ class SettingsSocialScreen : Screen() {
                     },
                 ),
             )
-            friends.forEach { friend ->
+            if (account != null) {
+                add(
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(MR.strings.social_battery_title),
+                        subtitle = stringResource(
+                            if (batteryUnrestricted) MR.strings.social_battery_granted else MR.strings.social_battery_summary,
+                        ),
+                        onClick = {
+                            if (batteryUnrestricted) {
+                                // Already exempted: OEM settings (auto-start, freezer) live here.
+                                context.startActivity(
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = "package:${context.packageName}".toUri()
+                                    },
+                                )
+                                return@TextPreference
+                            }
+                            try {
+                                @SuppressLint("BatteryLife")
+                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = "package:${context.packageName}".toUri()
+                                }
+                                batteryLauncher.launch(intent)
+                            } catch (e: ActivityNotFoundException) {
+                                context.toast(MR.strings.battery_optimization_setting_activity_not_found)
+                            }
+                        },
+                    ),
+                )
+            }
+            if (account != null) {
                 add(
                     Preference.PreferenceItem.CustomPreference(
-                        title = friend.displayName ?: friend.mxid,
+                        title = "Partager mon activité",
                         content = {
-                            FriendCard(
-                                friend = friend,
-                                avatarLoader = avatarLoader,
-                                onClick = { navigator.push(FriendLibraryScreen(authorMxid = friend.mxid, displayName = friend.displayName)) },
+                            val activityService = remember { Injekt.get<SocialActivityService>() }
+                            val shareEnabled by activityService.shareEnabled.collectAsState()
+                            SwitchPreferenceWidget(
+                                title = "Partager mon activité",
+                                subtitle = "Tes amis voient les œuvres que tu ajoutes à ta bibliothèque",
+                                checked = shareEnabled,
+                                onCheckedChanged = activityService::setShareEnabled,
                             )
                         },
                     ),
                 )
             }
-            add(
-                Preference.PreferenceItem.CustomPreference(
-                    title = "Amis",
-                    content = {
-                        SocialFriendsCard(
-                            enabled = account != null,
-                            onClick = { navigator.push(SocialFriendsScreen()) },
-                        )
-                    },
-                ),
-            )
+            // Friends now live on the Social tab; this screen only holds account settings.
             add(
                 Preference.PreferenceItem.InfoPreference(
                     title = stringResource(MR.strings.social_matrix_info),
@@ -217,6 +337,7 @@ private fun MatrixLoginDialog(
     error: SocialError?,
     onDismiss: () -> Unit,
     onLogin: (homeserverUrl: String, userId: String, password: String) -> Unit,
+    onBrowser: (homeserverUrl: String, create: Boolean) -> Unit,
 ) {
     var homeserver by remember { mutableStateOf("https://matrix.org") }
     var userId by remember { mutableStateOf("") }
@@ -232,6 +353,25 @@ private fun MatrixLoginDialog(
         title = { Text(stringResource(MR.strings.social_matrix_login_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isBusy && homeserver.isNotBlank(),
+                    onClick = { onBrowser(homeserver.trim(), true) },
+                ) {
+                    Text("Créer un compte")
+                }
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isBusy && homeserver.isNotBlank(),
+                    onClick = { onBrowser(homeserver.trim(), false) },
+                ) {
+                    Text("Se connecter avec le navigateur")
+                }
+                Text(
+                    text = "Tu reviens dans Shiro déjà connecté. Ou entre tes identifiants :",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
                     value = homeserver,
@@ -343,10 +483,18 @@ private fun MatrixAccountCard(
     account: SocialAccount?,
     status: String,
     sessionState: SocialSessionState,
+    avatarVersion: Int,
+    avatarBusy: Boolean,
+    avatarError: String?,
+    onChangeAvatar: (() -> Unit)?,
     onClick: () -> Unit,
 ) {
     val avatarLoader = remember { Injekt.get<SocialAvatarLoader>() }
-    val avatarBitmap by produceState<ImageBitmap?>(initialValue = null, account?.userId) {
+    val avatarBitmap by produceState<ImageBitmap?>(
+        initialValue = null,
+        account?.userId,
+        avatarVersion,
+    ) {
         value = if (account != null) {
             avatarLoader.loadOwnAvatar(112)?.let { bytes ->
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
@@ -354,6 +502,11 @@ private fun MatrixAccountCard(
         } else {
             null
         }
+    }
+    val avatarDescription = if (onChangeAvatar != null) {
+        stringResource(MR.strings.social_matrix_change_avatar)
+    } else {
+        null
     }
 
     Row(
@@ -363,36 +516,76 @@ private fun MatrixAccountCard(
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(
-                enabled = sessionState !is SocialSessionState.Authenticating,
+                enabled = sessionState !is SocialSessionState.Authenticating && !avatarBusy,
                 onClick = onClick,
             )
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val bitmap = avatarBitmap
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(12.dp)),
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.PeopleAlt,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(28.dp),
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .then(
+                    if (onChangeAvatar != null) {
+                        Modifier.clickable(onClick = onChangeAvatar)
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
+            val bitmap = avatarBitmap
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = avatarDescription,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.PeopleAlt,
+                        contentDescription = avatarDescription,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+            }
+            if (avatarBusy) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            } else if (onChangeAvatar != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.width(12.dp))
@@ -410,6 +603,15 @@ private fun MatrixAccountCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            avatarError?.let { error ->
+                Text(
+                    text = stringResource(MR.strings.social_matrix_error, error),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Icon(
             imageVector = Icons.Outlined.ChevronRight,

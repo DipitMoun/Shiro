@@ -14,11 +14,13 @@ class FakeSessionDelegate : SessionDelegate {
     var loginResult: SocialResult<PersistedSession> = SocialResult.Success(SAMPLE)
     var restoreResult: SocialResult<PersistedSession> = SocialResult.Success(SAMPLE)
     var closeResult: SocialResult<Unit> = SocialResult.Success(Unit)
+    var wipeResult: SocialResult<Unit> = SocialResult.Success(Unit)
     var transport: MatrixTransport? = null
 
     var loginCalls: Int = 0; private set
     var restoreCalls: Int = 0; private set
     var closeCalls: Int = 0; private set
+    var wipeCalls: Int = 0; private set
 
     override suspend fun login(
         homeserverUrl: String,
@@ -32,6 +34,8 @@ class FakeSessionDelegate : SessionDelegate {
     }
 
     override suspend fun close(): SocialResult<Unit> { closeCalls++; return closeResult }
+
+    override suspend fun wipeLocalData(): SocialResult<Unit> { wipeCalls++; return wipeResult }
 
     override fun transportOrNull(): MatrixTransport? = transport
 

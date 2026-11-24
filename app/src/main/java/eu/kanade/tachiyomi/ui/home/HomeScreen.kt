@@ -22,7 +22,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -47,6 +49,9 @@ import eu.kanade.tachiyomi.ui.library.anime.AnimeLibraryTab
 import eu.kanade.tachiyomi.ui.library.manga.MangaLibraryTab
 import eu.kanade.tachiyomi.ui.more.MoreTab
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
+import eu.kanade.tachiyomi.ui.social.home.SocialTab
+import eu.kanade.tachiyomi.ui.social.home.SocialTabIcon
+import eu.kanade.tachiyomi.data.social.friends.SocialInviteMonitor
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -288,6 +293,13 @@ object HomeScreen : Screen() {
                             }
                         }
                     }
+                    SocialTab::class.isInstance(tab) -> {
+                        val requests by remember { Injekt.get<SocialInviteMonitor>().invites }
+                            .collectAsState()
+                        if (requests.isNotEmpty()) {
+                            Badge { Text(text = requests.size.toString()) }
+                        }
+                    }
                     BrowseTab::class.isInstance(tab) -> {
                         val count by produceState(initialValue = 0) {
                             val pref = Injekt.get<SourcePreferences>()
@@ -314,12 +326,16 @@ object HomeScreen : Screen() {
                 }
             },
         ) {
-            Icon(
-                painter = tab.options.icon!!,
-                contentDescription = tab.options.title,
-                // TODO: https://issuetracker.google.com/u/0/issues/316327367
-                tint = LocalContentColor.current,
-            )
+            if (tab is SocialTab) {
+                SocialTabIcon(tab, selected = LocalTabNavigator.current.current == tab)
+            } else {
+                Icon(
+                    painter = tab.options.icon!!,
+                    contentDescription = tab.options.title,
+                    // TODO: https://issuetracker.google.com/u/0/issues/316327367
+                    tint = LocalContentColor.current,
+                )
+            }
         }
     }
 

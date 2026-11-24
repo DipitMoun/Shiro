@@ -171,6 +171,52 @@ class CollectionMetadataManager(private val context: Context) {
         }.getOrNull()
     }
 
+    /** Every stored metadata entry, used by backups. */
+    fun all(): List<CollectionMetadata> = cache.values.toList()
+
+    /**
+     * Restores a collection from a backup.
+     *
+     * [bannerBytes] is written as the collection's local banner; when absent, the current
+     * banner is kept unless the backup points to a remote one.
+     */
+    fun restore(
+        type: CollectionType,
+        categoryId: Long,
+        bannerUrl: String?,
+        bannerBytes: ByteArray?,
+        bannerExtension: String?,
+        description: String,
+        lastOpenedAt: Long,
+    ) {
+        if (categoryId <= 0L) return
+        val existing = getMetadata(type, categoryId)
+
+        val bannerPath = bannerBytes
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { bytes ->
+                runCatching {
+                    val dir = File(context.filesDir, "banners").apply { mkdirs() }
+                    val ext = bannerExtension?.takeIf { it.isNotBlank() } ?: "jpg"
+                    val target = File(dir, "${type.key}_$categoryId.$ext")
+                    dir.listFiles { file -> file.name.startsWith("${type.key}_$categoryId.") }
+                        ?.forEach { it.delete() }
+                    target.writeBytes(bytes)
+                    target.absolutePath
+                }.onFailure {
+                    logcat(LogPriority.WARN, it) { "Bannière de collection non restaurée" }
+                }.getOrNull()
+            }
+
+        cache[cacheKey(type, categoryId)] = existing.copy(
+            bannerUrl = if (bannerPath != null) null else bannerUrl ?: existing.bannerUrl,
+            bannerPath = bannerPath ?: existing.bannerPath.takeIf { bannerUrl == null },
+            description = description.ifBlank { existing.description },
+            lastOpenedAt = maxOf(existing.lastOpenedAt, lastOpenedAt),
+        )
+        save()
+    }
+
     fun markOpened(type: CollectionType, categoryId: Long) {
         if (categoryId <= 0L) return
         val existing = getMetadata(type, categoryId)

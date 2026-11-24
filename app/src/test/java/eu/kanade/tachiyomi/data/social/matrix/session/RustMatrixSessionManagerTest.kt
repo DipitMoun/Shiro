@@ -98,6 +98,25 @@ class RustMatrixSessionManagerTest {
         assertNull(manager.account.value)
         assertNull((store.load() as SocialResult.Success<PersistedSession?>).value)
         assertEquals(1, delegate.closeCalls)
+        assertEquals(1, delegate.wipeCalls)
+    }
+
+    @Test fun `logout clears account scoped social data`() = runBlocking {
+        var clearCalls = 0
+        manager = RustMatrixSessionManager(
+            delegate = delegate,
+            credentialStore = store,
+            accountDataCleaner = object : SocialAccountDataCleaner {
+                override suspend fun clear() {
+                    clearCalls++
+                }
+            },
+        )
+        store.save(FakeSessionDelegate.SAMPLE)
+        manager.restore()
+        manager.logout()
+        assertEquals(1, clearCalls)
+        assertEquals(1, delegate.wipeCalls)
     }
 
     @Test fun `logout on fresh state is idempotent`() = runBlocking {

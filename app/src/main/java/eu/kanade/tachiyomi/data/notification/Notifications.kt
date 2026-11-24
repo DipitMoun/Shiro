@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.NotificationManagerCompat.IMPORTANCE_DEFAULT
 import androidx.core.app.NotificationManagerCompat.IMPORTANCE_HIGH
+import androidx.core.app.NotificationManagerCompat.IMPORTANCE_MIN
 import androidx.core.app.NotificationManagerCompat.IMPORTANCE_LOW
 import eu.kanade.tachiyomi.util.system.buildNotificationChannel
 import eu.kanade.tachiyomi.util.system.buildNotificationChannelGroup
@@ -95,7 +96,17 @@ object Notifications {
     const val ID_APP_UPDATER = 1
     const val ID_APP_UPDATE_PROMPT = 2
     const val ID_APP_UPDATE_ERROR = 3
+
+    const val ID_SOCIAL_MESSAGES = 9001
+    const val ID_SOCIAL_INVITES = 9002
+    const val ID_SOCIAL_SYNC = 9003
+    const val ID_SOCIAL_ACTIVITY = 9004
     const val CHANNEL_EXTENSIONS_UPDATE = "ext_apk_update_channel"
+    // v2: importance raised to HIGH (heads-up); an existing channel importance cannot change.
+    const val CHANNEL_SOCIAL_MESSAGES = "social_matrix_messages_v2"
+    const val CHANNEL_SOCIAL_INVITES = "social_matrix_invites_channel"
+    const val CHANNEL_SOCIAL_SYNC = "social_matrix_sync_v2"
+    const val CHANNEL_SOCIAL_ACTIVITY = "social_activity_channel"
     const val ID_UPDATES_TO_EXTS = -401
     const val ID_EXTENSION_INSTALLER = -402
 
@@ -109,6 +120,8 @@ object Notifications {
         "downloader_cache_renewal",
         "crash_logs_channel",
         "library_skipped_channel",
+        "social_matrix_messages_channel",
+        "social_matrix_sync_channel",
     )
 
     /**
@@ -201,6 +214,22 @@ object Notifications {
                 buildNotificationChannel(CHANNEL_EXTENSIONS_UPDATE, IMPORTANCE_DEFAULT) {
                     setGroup(GROUP_APK_UPDATES)
                     setName(context.stringResource(MR.strings.channel_ext_updates))
+                },
+                buildNotificationChannel(CHANNEL_SOCIAL_MESSAGES, IMPORTANCE_HIGH) {
+                    setName(context.stringResource(MR.strings.channel_social_messages))
+                    setShowBadge(true)
+                },
+                buildNotificationChannel(CHANNEL_SOCIAL_INVITES, IMPORTANCE_HIGH) {
+                    setName(context.stringResource(MR.strings.channel_social_invites))
+                    setShowBadge(true)
+                },
+                buildNotificationChannel(CHANNEL_SOCIAL_ACTIVITY, IMPORTANCE_DEFAULT) {
+                    setName(context.stringResource(MR.strings.channel_social_activity))
+                    setShowBadge(true)
+                },
+                buildNotificationChannel(CHANNEL_SOCIAL_SYNC, IMPORTANCE_MIN) {
+                    setName(context.stringResource(MR.strings.channel_social_sync))
+                    setShowBadge(false)
                 },
             ),
         )
