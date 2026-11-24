@@ -25,8 +25,14 @@ data class MomentPayload(
     val client: MomentClient? = null,
 ) {
     companion object {
+        /** Video moments: a position in an episode. */
         const val VERSION = 1
+
+        /** Reading moments: a page of a chapter. Older apps cannot read it and show the text. */
+        const val PAGE_VERSION = 2
     }
+
+    val isPageMoment: Boolean get() = v == PAGE_VERSION
 }
 
 @Serializable
@@ -50,11 +56,13 @@ data class MomentEpisode(
 
 @Serializable
 data class MomentAnchor(
-    val positionMs: Long,
+    val positionMs: Long = 0L,
     val label: String? = null,
     val lang: String? = null,
     val beforeMs: Long? = null,
     val afterMs: Long? = null,
+    /** Reading moments: page number, starting at 1. Video moments leave it unset. */
+    val page: Int? = null,
 )
 
 @Serializable
@@ -80,10 +88,11 @@ sealed interface MomentDecodeResult {
 object MomentPayloadCodec {
     private val workId = Regex("^(anilist|mal|anidb|tvdb|tg|local):[A-Za-z0-9._:-]{1,128}$")
     private val episodeKey = Regex("^(E[0-9]{3,4}(\\.[0-9]{1,2})?|MAIN)$")
-    private val formats = setOf("TV", "MOVIE", "OVA", "ONA", "SPECIAL", "OTHER")
+    private val formats = setOf("TV", "MOVIE", "OVA", "ONA", "SPECIAL", "OTHER", "MANGA")
     private val kinds = setOf("regular", "special", "film", "ova", "recap", "unknown")
     private val numberings = setOf("season", "absolute", "unknown")
-    private val sourceKinds = setOf("stream", "download", "local", "telegram")
+    private val sourceKinds = setOf("stream", "download", "local", "telegram", "reader")
+    private val pageRange = 1..9999
 
     private val json = Json {
         encodeDefaults = true
@@ -112,7 +121,7 @@ object MomentPayloadCodec {
     }
 
     fun validate(payload: MomentPayload): List<String> = buildList {
-        if (payload.v != MomentPayload.VERSION) {
+        if (payload.v != MomentPayload.VERSION && payload.v != MomentPayload.PAGE_VERSION) {
             add("Unsupported payload version: ${payload.v}")
         }
         if (!workId.matches(payload.work.id)) {
@@ -154,6 +163,11 @@ object MomentPayloadCodec {
             add("Moments must contain between 1 and 5 anchors")
         }
         payload.moments.forEachIndexed { index, moment ->
+            if (payload.isPageMoment) {
+                if (moment.page == null || moment.page !in pageRange) add("Moment $index needs a page in 1..9999")
+            } else if (moment.page != null) {
+                add("Moment $index has a page but the payload is not a reading moment")
+            }
             if (moment.positionMs < 0L) add("Moment $index has a negative position")
             if (moment.label != null && moment.label.length > 280) add("Moment $index label is too long")
             if (moment.beforeMs != null && moment.beforeMs !in 0L..60000L) {
@@ -188,10 +202,14 @@ object MomentPayloadCodec {
     }
 
     fun fallbackBody(payload: MomentPayload): String {
-        val times = payload.moments.joinToString(", ") { formatTimecode(it.positionMs) }
+        val times = if (payload.isPageMoment) {
+            payload.moments.joinToString(", ") { "p. ${it.page}" }
+        } else {
+            payload.moments.joinToString(", ") { formatTimecode(it.positionMs) }
+        }
         val work = payload.work.title ?: payload.work.id
         return buildString {
-            append("▶ ")
+            append(if (payload.isPageMoment) "Lecture : " else "▶ ")
             append(times)
             payload.note?.takeIf { it.isNotBlank() }?.let { note ->
                 append(" — ")

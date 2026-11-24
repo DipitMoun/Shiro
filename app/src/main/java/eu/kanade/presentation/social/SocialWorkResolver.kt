@@ -12,6 +12,8 @@ import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
 import eu.kanade.tachiyomi.data.social.identity.WorkId
 import eu.kanade.tachiyomi.ui.social.SocialChatContext
 import eu.kanade.tachiyomi.ui.social.SocialChatEpisode
+import eu.kanade.tachiyomi.ui.social.SocialChatMedium
+import tachiyomi.domain.items.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.entries.anime.interactor.GetAnimeFavorites
 import tachiyomi.domain.items.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.entries.manga.interactor.GetMangaFavorites

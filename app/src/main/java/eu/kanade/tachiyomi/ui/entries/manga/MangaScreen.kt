@@ -45,6 +45,13 @@ import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.data.multisource.MangaMappingState
+import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
+import eu.kanade.tachiyomi.data.social.identity.WorkId
+import eu.kanade.tachiyomi.data.social.identity.WorkIdentity
+import eu.kanade.tachiyomi.ui.social.SocialChatContext
+import eu.kanade.tachiyomi.ui.social.SocialChatEpisode
+import eu.kanade.tachiyomi.ui.social.SocialChatMedium
+import eu.kanade.tachiyomi.ui.social.SocialChatScreen
 import eu.kanade.tachiyomi.data.multisource.MultiSourceMangaSource
 import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.manga.isLocalOrStub
@@ -151,6 +158,23 @@ class MangaScreen(
             }
         }
 
+        // The chat treats chapters like episodes: one thread per chapter number.
+        val socialChatChapters = remember(successState.manga.id, successState.processedChapters) {
+            successState.processedChapters
+                .map { it.chapter }
+                .map { chapter ->
+                    val number = chapter.chapterNumber.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+                    SocialChatEpisode(
+                        id = chapter.id,
+                        key = EpisodeKey.of(number),
+                        number = number,
+                        title = chapter.name,
+                        durationSeconds = 0L,
+                    )
+                }
+                .distinctBy { it.key.value }
+        }
+
         MangaScreen(
             state = successState,
             snackbarHostState = screenModel.snackbarHostState,
@@ -187,6 +211,28 @@ class MangaScreen(
                 }
             },
             onSourcesClicked = { showSources = true }.takeIf { isMultiSource },
+            onChatClicked = {
+                val manga = successState.manga
+                val workId = WorkId.localStable(manga.source, manga.url)
+                navigator.push(
+                    SocialChatScreen(
+                        SocialChatContext(
+                            animeId = manga.id,
+                            work = WorkIdentity(
+                                id = workId,
+                                ids = mapOf("local" to workId.remoteId),
+                                title = manga.title,
+                                legacyId = WorkId.parse("local:${manga.id}"),
+                                addedAt = manga.dateAdded,
+                            ),
+                            title = manga.title,
+                            posterUrl = manga.thumbnailUrl,
+                            episodes = socialChatChapters,
+                            medium = SocialChatMedium.MANGA,
+                        ),
+                    ),
+                )
+            }.takeIf { socialChatChapters.isNotEmpty() },
             sourceMapping = mappingState,
             onTagSearch = { scope.launch { performGenreSearch(navigator, it, screenModel.source!!) } },
             onFilterButtonClicked = screenModel::showSettingsDialog,

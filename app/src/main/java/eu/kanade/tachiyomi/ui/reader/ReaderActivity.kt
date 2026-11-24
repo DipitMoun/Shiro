@@ -173,6 +173,9 @@ class ReaderActivity : BaseActivity() {
                 Notifications.ID_NEW_CHAPTERS,
             )
 
+            // A shared page (chat moment) asks for a specific page.
+            intent.extras?.getInt("page", -1)?.takeIf { it >= 0 }?.let(viewModel::openAtPage)
+
             lifecycleScope.launchNonCancellable {
                 val initResult = viewModel.init(manga, chapter)
                 if (!initResult.getOrDefault(false)) {

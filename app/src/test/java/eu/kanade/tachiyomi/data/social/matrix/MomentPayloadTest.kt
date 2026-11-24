@@ -53,7 +53,7 @@ class MomentPayloadTest {
 
     @Test
     fun `unsupported version is rejected`() {
-        val decoded = codec.decode(codec.encode(payload.copy(v = 2)))
+        val decoded = codec.decode(codec.encode(payload.copy(v = 3)))
 
         assertInvalid(decoded, "Unsupported payload version")
     }
@@ -130,5 +130,56 @@ class MomentPayloadTest {
             (result as MomentDecodeResult.Invalid).reasons.any { it.contains(expectedReason, ignoreCase = true) },
             "Expected reason '$expectedReason' in ${result.reasons}",
         )
+    }
+
+    private val readingPayload = MomentPayload(
+        v = MomentPayload.PAGE_VERSION,
+        work = MomentWork(id = "local:abc123", title = "Omniscient Reader", format = "MANGA"),
+        episode = MomentEpisode(key = "E045", number = 45.0, title = "Chapitre 45"),
+        moments = listOf(MomentAnchor(page = 12), MomentAnchor(page = 30, label = "La case finale")),
+        note = "Regarde la page 12.",
+        source = MomentSource(key = "local:abc123", kind = "reader"),
+        capturedAt = "2026-11-24T21:00:00Z",
+        client = MomentClient(name = "Shiro", version = "0.19.0"),
+    )
+
+    @Test
+    fun `a reading moment round trips and keeps its pages`() {
+        val decoded = codec.decode(codec.encode(readingPayload))
+
+        assertTrue(decoded is MomentDecodeResult.Valid)
+        val valid = (decoded as MomentDecodeResult.Valid).payload
+        assertEquals(listOf(12, 30), valid.moments.map { it.page })
+        assertTrue(valid.isPageMoment)
+    }
+
+    @Test
+    fun `a reading moment needs a page on every anchor`() {
+        val noPage = readingPayload.copy(moments = listOf(MomentAnchor(positionMs = 5_000L)))
+
+        assertInvalid(codec.decode(codec.encode(noPage)), "needs a page")
+    }
+
+    @Test
+    fun `a page outside the allowed range is rejected`() {
+        val bad = readingPayload.copy(moments = listOf(MomentAnchor(page = 0)))
+
+        assertInvalid(codec.decode(codec.encode(bad)), "needs a page")
+    }
+
+    @Test
+    fun `a video moment cannot carry a page`() {
+        val mixed = payload.copy(moments = listOf(MomentAnchor(positionMs = 1_000L, page = 3)))
+
+        assertInvalid(codec.decode(codec.encode(mixed)), "not a reading moment")
+    }
+
+    @Test
+    fun `the text shown to older apps names the pages`() {
+        val body = codec.fallbackBody(readingPayload)
+
+        assertTrue(body.contains("p. 12, p. 30"), body)
+        assertTrue(body.contains("Regarde la page 12."), body)
+        assertTrue(body.contains("Omniscient Reader"), body)
     }
 }

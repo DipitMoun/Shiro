@@ -133,6 +133,7 @@ fun MangaScreen(
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
     onSourcesClicked: (() -> Unit)? = null,
+    onChatClicked: (() -> Unit)? = null,
     sourceMapping: eu.kanade.tachiyomi.data.multisource.MangaMappingState? = null,
 ) {
     val context = LocalContext.current
@@ -183,6 +184,7 @@ fun MangaScreen(
             onInvertSelection = onInvertSelection,
             onSettingsClicked = onSettingsClicked,
             onSourcesClicked = onSourcesClicked,
+            onChatClicked = onChatClicked,
             sourceMapping = sourceMapping,
         )
     } else {
@@ -221,6 +223,7 @@ fun MangaScreen(
             onInvertSelection = onInvertSelection,
             onSettingsClicked = onSettingsClicked,
             onSourcesClicked = onSourcesClicked,
+            onChatClicked = onChatClicked,
             sourceMapping = sourceMapping,
         )
     }
@@ -275,6 +278,7 @@ private fun MangaScreenSmallImpl(
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
     onSourcesClicked: (() -> Unit)? = null,
+    onChatClicked: (() -> Unit)? = null,
     sourceMapping: eu.kanade.tachiyomi.data.multisource.MangaMappingState? = null,
 ) {
     val chapterListState = rememberLazyListState()
@@ -429,6 +433,7 @@ private fun MangaScreenSmallImpl(
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
                             onSourcesClicked = onSourcesClicked,
+            onChatClicked = onChatClicked,
             sourceMapping = sourceMapping,
                         )
                     }
@@ -528,6 +533,7 @@ fun MangaScreenLargeImpl(
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
     onSourcesClicked: (() -> Unit)? = null,
+    onChatClicked: (() -> Unit)? = null,
     sourceMapping: eu.kanade.tachiyomi.data.multisource.MangaMappingState? = null,
 ) {
     val layoutDirection = LocalLayoutDirection.current
@@ -670,6 +676,7 @@ fun MangaScreenLargeImpl(
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
                             onSourcesClicked = onSourcesClicked,
+            onChatClicked = onChatClicked,
             sourceMapping = sourceMapping,
                         )
                         ExpandableMangaDescription(

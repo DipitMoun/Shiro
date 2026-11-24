@@ -189,6 +189,33 @@ class SocialChatScreenModel(
         note: String,
         positions: List<Long>,
     ): MomentPayload {
+        if (context.medium == SocialChatMedium.MANGA) {
+            return MomentPayload(
+                v = MomentPayload.PAGE_VERSION,
+                work = MomentWork(
+                    id = context.work.id.value,
+                    ids = context.work.ids,
+                    title = context.work.title,
+                    format = "MANGA",
+                ),
+                episode = MomentEpisode(
+                    key = episode.key.value,
+                    number = episode.number,
+                    kind = "regular",
+                    numbering = "unknown",
+                    title = episode.title,
+                ),
+                moments = positions
+                    .map { it.toInt().coerceIn(1, 9999) }
+                    .distinct()
+                    .take(5)
+                    .map { page -> MomentAnchor(page = page) },
+                note = note.takeIf { it.isNotBlank() },
+                source = MomentSource(key = context.work.id.value, kind = "reader"),
+                capturedAt = Instant.now().toString(),
+                client = MomentClient("Shiro", BuildConfig.VERSION_NAME),
+            )
+        }
         val durationMs = episode.durationSeconds.takeIf { it > 0L }?.times(1000L)
         return MomentPayload(
             v = MomentPayload.VERSION,

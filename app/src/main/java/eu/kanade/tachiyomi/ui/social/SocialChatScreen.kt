@@ -53,6 +53,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material3.Text
 import kotlinx.coroutines.launch
 import androidx.compose.material3.TextButton
@@ -295,8 +296,12 @@ class SocialChatScreen(
                         )
                     } else if (selectedEpisode == null) {
                         ChatStateBody(
-                            title = "Aucun épisode",
-                            subtitle = "Cette œuvre n'a pas encore d'épisode.",
+                            title = if (chatContext.medium == SocialChatMedium.MANGA) "Aucun chapitre" else "Aucun épisode",
+                            subtitle = if (chatContext.medium == SocialChatMedium.MANGA) {
+                                "Cette œuvre n'a pas encore de chapitre."
+                            } else {
+                                "Cette œuvre n'a pas encore d'épisode."
+                            },
                         )
                     } else {
                         val messageById = remember(items) { items.associateBy { it.eventId } }
@@ -324,6 +329,7 @@ class SocialChatScreen(
                                     currentEpisode = selectedEpisode,
                                     episodes = chatContext.episodes,
                                     posterUrl = chatContext.posterUrl,
+                                    medium = chatContext.medium,
                                     showHeader = showHeader,
                                     onPreview = { episode, positionMs, loop ->
                                         openPreview(context, chatContext, episode, positionMs, loop)
@@ -340,6 +346,7 @@ class SocialChatScreen(
                                         ?: SocialChatFriend(account.userId, "Moi", null),
                                     episode = selectedEpisode,
                                     posterUrl = chatContext.posterUrl,
+                                    medium = chatContext.medium,
                                     onPreview = { episode, positionMs, loop ->
                                         openPreview(context, chatContext, episode, positionMs, loop)
                                     },
@@ -378,7 +385,7 @@ class SocialChatScreen(
                                 onOpen = {
                                     openScope.launch {
                                         val screen = eu.kanade.presentation.social.SocialWorkOpener()
-                                            .open(chatContext.title, isManga = false)
+                                            .open(chatContext.title, isManga = chatContext.medium == SocialChatMedium.MANGA)
                                         if (screen != null) {
                                             navigator.push(screen)
                                         } else {
@@ -391,6 +398,7 @@ class SocialChatScreen(
                             )
                         } else ChatComposer(
                             chips = composerChips,
+                            medium = chatContext.medium,
                             onRemoveChip = { composerChips.remove(it) },
                             onCommands = { showCommands = true },
                             onTimecodeRequest = { showTimecodePicker = true },
@@ -422,17 +430,31 @@ class SocialChatScreen(
         }
 
         if (showTimecodePicker && selectedEpisode != null) {
-            TimecodePickerDialog(
-                animeTitle = chatContext.title,
-                episodes = chatContext.episodes,
-                episode = selectedEpisode,
-                onDismiss = { showTimecodePicker = false },
-                onPick = { momentEpisode, positionMs ->
-                    selectedKey = momentEpisode.key.value
-                    if (composerChips.size < 5) composerChips += positionMs
-                    showTimecodePicker = false
-                },
-            )
+            if (chatContext.medium == SocialChatMedium.MANGA) {
+                PagePickerDialog(
+                    mangaTitle = chatContext.title,
+                    chapters = chatContext.episodes,
+                    chapter = selectedEpisode,
+                    onDismiss = { showTimecodePicker = false },
+                    onPick = { momentChapter, page ->
+                        selectedKey = momentChapter.key.value
+                        if (composerChips.size < 5) composerChips += page.toLong()
+                        showTimecodePicker = false
+                    },
+                )
+            } else {
+                TimecodePickerDialog(
+                    animeTitle = chatContext.title,
+                    episodes = chatContext.episodes,
+                    episode = selectedEpisode,
+                    onDismiss = { showTimecodePicker = false },
+                    onPick = { momentEpisode, positionMs ->
+                        selectedKey = momentEpisode.key.value
+                        if (composerChips.size < 5) composerChips += positionMs
+                        showTimecodePicker = false
+                    },
+                )
+            }
         }
 
         if (showCommands && selectedEpisode != null) {
@@ -467,15 +489,24 @@ class SocialChatScreen(
                             .padding(horizontal = 10.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val isManga = chatContext.medium == SocialChatMedium.MANGA
                         Icon(
-                            imageVector = Icons.Outlined.AccessTime,
+                            imageVector = if (isManga) {
+                                Icons.AutoMirrored.Outlined.MenuBook
+                            } else {
+                                Icons.Outlined.AccessTime
+                            },
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                         )
                         Column(Modifier.padding(start = 12.dp)) {
-                            Text("Timecode", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             Text(
-                                "Insérer un extrait de l'épisode",
+                                if (isManga) "Page" else "Timecode",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                if (isManga) "Partager une page du chapitre" else "Insérer un extrait de l'épisode",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -811,6 +842,7 @@ private fun ChatMessage(
     currentEpisode: SocialChatEpisode,
     episodes: List<SocialChatEpisode>,
     posterUrl: String?,
+    medium: SocialChatMedium,
     showHeader: Boolean,
     onPreview: (SocialChatEpisode, Long, Boolean) -> Unit,
     onLongPress: (SocialTimelineItem) -> Unit,
@@ -824,7 +856,7 @@ private fun ChatMessage(
         is SocialTimelineItem.ReplyItem -> currentEpisode
     }
     val positions = when (item) {
-        is SocialTimelineItem.MomentItem -> item.payload.moments.map { it.positionMs }
+        is SocialTimelineItem.MomentItem -> item.payload.moments.map { it.page?.toLong() ?: it.positionMs }
         is SocialTimelineItem.ReplyItem -> emptyList()
     }
     val replyTarget = (item as? SocialTimelineItem.ReplyItem)
@@ -841,6 +873,7 @@ private fun ChatMessage(
         positions = positions,
         episode = momentEpisode,
         posterUrl = posterUrl,
+        medium = medium,
         isMine = item.sender == selfMxid,
         showHeader = showHeader,
         onPreview = onPreview,
@@ -856,6 +889,7 @@ private fun ChatPendingMessage(
     participant: SocialChatFriend,
     episode: SocialChatEpisode,
     posterUrl: String?,
+    medium: SocialChatMedium,
     onPreview: (SocialChatEpisode, Long, Boolean) -> Unit,
 ) {
     DiscordMessageRow(
@@ -868,6 +902,7 @@ private fun ChatPendingMessage(
         positions = positions,
         episode = episode,
         posterUrl = posterUrl,
+        medium = medium,
         isMine = true,
         pending = true,
         onPreview = onPreview,
@@ -886,6 +921,7 @@ private fun DiscordMessageRow(
     positions: List<Long>,
     episode: SocialChatEpisode,
     posterUrl: String?,
+    medium: SocialChatMedium,
     isMine: Boolean,
     pending: Boolean = false,
     showHeader: Boolean = true,
@@ -981,12 +1017,20 @@ private fun DiscordMessageRow(
             }
 
             positions.forEach { position ->
-                ChatPreviewCard(
-                    positionMs = position,
-                    episode = episode,
-                    posterUrl = posterUrl,
-                    onPreview = onPreview,
-                )
+                if (medium == SocialChatMedium.MANGA) {
+                    ChatPageMomentCard(
+                        page = position.toInt(),
+                        episode = episode,
+                        onOpen = { onPreview(episode, position, false) },
+                    )
+                } else {
+                    ChatPreviewCard(
+                        positionMs = position,
+                        episode = episode,
+                        posterUrl = posterUrl,
+                        onPreview = onPreview,
+                    )
+                }
             }
 
             if (pending) {
@@ -1258,6 +1302,7 @@ private fun ReplyComposerBanner(
 @Composable
 private fun ChatComposer(
     chips: List<Long>,
+    medium: SocialChatMedium,
     onRemoveChip: (Long) -> Unit,
     onCommands: () -> Unit,
     onTimecodeRequest: () -> Unit,
@@ -1286,7 +1331,7 @@ private fun ChatComposer(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = formatTimecode(position),
+                                text = if (medium == SocialChatMedium.MANGA) "p. $position" else formatTimecode(position),
                                 fontSize = 10.sp,
                                 modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
                             )
@@ -1329,8 +1374,9 @@ private fun ChatComposer(
                     BasicTextField(
                         value = draft,
                         onValueChange = { value ->
-                            if (value.contains("/timecode", ignoreCase = true)) {
-                                draft = value.replace("/timecode", "", ignoreCase = true)
+                            val command = if (medium == SocialChatMedium.MANGA) "/page" else "/timecode"
+                            if (value.contains(command, ignoreCase = true)) {
+                                draft = value.replace(command, "", ignoreCase = true)
                                 onTimecodeRequest()
                             } else {
                                 draft = value
@@ -1527,6 +1573,21 @@ private fun openPreview(
     positionMs: Long,
     loop: Boolean,
 ) {
+    if (chatContext.medium == SocialChatMedium.MANGA) {
+        // For a manga, "position" is the page number (from 1).
+        if (chatContext.animeId <= 0L || episode.id <= 0L) {
+            android.widget.Toast
+                .makeText(context, "Ajoute cette œuvre à ta bibliothèque pour lire cette page", android.widget.Toast.LENGTH_LONG)
+                .show()
+            return
+        }
+        context.startActivity(
+            eu.kanade.tachiyomi.ui.reader.ReaderActivity
+                .newIntent(context, chatContext.animeId, episode.id)
+                .putExtra("page", (positionMs - 1).toInt().coerceAtLeast(0)),
+        )
+        return
+    }
     context.startActivity(
         PlayerActivity.newIntent(
             context = context,
@@ -1543,6 +1604,105 @@ private data class SocialChatPending(
     val text: String,
     val positions: List<Long>,
 )
+
+/** A page of a chapter shared in the chat; opens the reader on that page. */
+@Composable
+private fun ChatPageMomentCard(
+    page: Int,
+    episode: SocialChatEpisode,
+    onOpen: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .widthIn(max = 320.dp)
+            .padding(top = 7.dp)
+            .clickable(onClick = onOpen),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.padding(start = 12.dp)) {
+                Text(
+                    text = "Page $page",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = episode.title?.takeIf { it.isNotBlank() }
+                        ?: "Chapitre ${chapterNumberLabel(episode.number)}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = "Lire",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+private fun chapterNumberLabel(number: Double): String =
+    if (number % 1.0 == 0.0) number.toInt().toString() else number.toString()
+
+/** Picks the page to share: the chapter (any of the work's) and a page number. */
+@Composable
+private fun PagePickerDialog(
+    mangaTitle: String,
+    chapters: List<SocialChatEpisode>,
+    chapter: SocialChatEpisode,
+    onDismiss: () -> Unit,
+    onPick: (SocialChatEpisode, Int) -> Unit,
+) {
+    var selectedKey by remember(chapter.key.value) { mutableStateOf(chapter.key.value) }
+    val chosen = chapters.firstOrNull { it.key.value == selectedKey } ?: chapter
+    var pageText by remember { mutableStateOf("") }
+    val page = pageText.toIntOrNull()
+    val valid = page != null && page in 1..9999
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Partager une page") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "$mangaTitle · chapitre ${chapterNumberLabel(chosen.number)}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = pageText,
+                    onValueChange = { value -> pageText = value.filter(Char::isDigit).take(4) },
+                    label = { Text("Numéro de page") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    ),
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                enabled = valid,
+                onClick = { onPick(chosen, page ?: 1) },
+            ) { Text("Ajouter") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Annuler") }
+        },
+    )
+}
 
 /** Shown instead of the composer when the work is not in the user's library. */
 @Composable

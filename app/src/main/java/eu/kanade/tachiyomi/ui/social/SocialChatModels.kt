@@ -24,7 +24,13 @@ data class SocialChatFriend(
     val hasRoom: Boolean = true,
 )
 
-/** Context carried by the work-level chat screen. */
+/** What the chat is about: it decides what a moment is (a timecode or a page). */
+enum class SocialChatMedium { ANIME, MANGA }
+
+/**
+ * Context carried by the work-level chat screen. For a manga, [animeId] is the manga id and the
+ * "episodes" are its chapters.
+ */
 data class SocialChatContext(
     val animeId: Long,
     val work: WorkIdentity,
@@ -35,6 +41,7 @@ data class SocialChatContext(
     val initialRoomId: String? = null,
     /** Owner of [initialRoomId], used to resolve the friend/self thread. */
     val initialAuthorMxid: String? = null,
+    val medium: SocialChatMedium = SocialChatMedium.ANIME,
 ) : java.io.Serializable
 
 

@@ -135,6 +135,11 @@ class ReaderViewModel @JvmOverloads constructor(
             field = value
         }
 
+    /** Opens the first chapter on [pageIndex] (from 0) instead of the last page read. */
+    fun openAtPage(pageIndex: Int) {
+        if (chapterPageIndex < 0) chapterPageIndex = pageIndex
+    }
+
     /**
      * The chapter loader for the loaded manga. It'll be null until [manga] is set.
      */
