@@ -317,6 +317,7 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { MultiSourceWorkStore(app) }
         addSingletonFactory { MultiSourceMappingStore(app) }
+        addSingletonFactory { eu.kanade.tachiyomi.data.multisource.MultiSourceDownloadChoiceStore(app) }
         addSingletonFactory { MultiSourceWorkOpener(get(), get()) }
         addSingletonFactory { MultiSourceMangaWorkOpener(get(), get()) }
 

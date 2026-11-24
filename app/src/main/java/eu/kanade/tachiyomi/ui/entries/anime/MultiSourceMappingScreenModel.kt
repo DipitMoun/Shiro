@@ -49,10 +49,17 @@ class MultiSourceMappingScreenModel(
             } else {
                 reportSelection == currentSelection
             }
+            // A partial mapping is only trusted for a short while: after that it is rebuilt, so a
+            // slow source or a new episode does not stay missing until the user retries by hand.
+            val reportFresh = report != null && (
+                report.complete ||
+                    System.currentTimeMillis() - report.createdAt < INCOMPLETE_REPORT_TTL_MS
+                )
             if (
                 report != null &&
                 report.version >= MultiSourceMappingReport.CURRENT_VERSION &&
-                selectionMatches
+                selectionMatches &&
+                reportFresh
             ) {
                 mappingStore.activeWorkUrl = workUrl
                 val extensions = extensionManager.installedExtensionsFlow.value
@@ -93,15 +100,10 @@ class MultiSourceMappingScreenModel(
                 return@launch
             }
 
-            val total = work.episodes ?: 0
-            if (total <= 0) {
-                _state.value = MultiSourceMappingState(
-                    loading = false,
-                    totalEpisodes = 0,
-                    error = "Nombre d'épisodes inconnu.",
-                )
-                return@launch
-            }
+            // The catalog count is a hint, not a limit: when it is missing (airing shows) or
+            // behind the sources, the real total is taken from what the sources list.
+            val catalogTotal = work.episodes ?: 0
+            val provisionalTotal = if (catalogTotal > 0) catalogTotal else MAX_UNKNOWN_TOTAL
 
             val selectedSourceIds = mappingStore.getSelectedSourceIds()
             val extensions = extensionManager.installedExtensionsFlow.value
@@ -119,10 +121,10 @@ class MultiSourceMappingScreenModel(
                 isAllowedSourceId(ref.sourceId)
 
             val previousAssignments = mappingStore.get(workUrl)
-                .filterKeys { it in 1..total }
+                .filterKeys { it in 1..MAX_UNKNOWN_TOTAL }
                 .filterValues { isAllowedSource(it) }
             val previousAlternatives = mappingStore.getAlternatives(workUrl)
-                .filterKeys { it in 1..total }
+                .filterKeys { it in 1..MAX_UNKNOWN_TOTAL }
                 .mapValues { (_, refs) -> refs.filter { isAllowedSource(it) } }
                 .filterValues { it.isNotEmpty() }
             val previousReport = mappingStore.getReport(workUrl)
@@ -147,9 +149,29 @@ class MultiSourceMappingScreenModel(
                 .getOrDefault(emptyList())
                 .sortedWith(
                     compareByDescending<SourceCoverage> { coverage ->
-                        coverage.episodes.keys.count { it in 1..total }
+                        coverage.episodes.keys.count { it in 1..provisionalTotal }
                     }.thenBy { it.sourceName.lowercase() },
                 )
+
+            val bestSourceMax = coverages.firstOrNull()?.episodes?.keys?.maxOrNull() ?: 0
+            val total = when {
+                catalogTotal <= 0 -> bestSourceMax
+                // A source may be ahead of the catalog, within reason (a wrong match listing
+                // hundreds of episodes must not inflate the work).
+                else -> maxOf(catalogTotal, minOf(bestSourceMax, maxOf(catalogTotal * 2, catalogTotal + 50)))
+            }
+            if (total <= 0) {
+                _state.value = MultiSourceMappingState(
+                    loading = false,
+                    totalEpisodes = 0,
+                    error = if (catalogTotal <= 0) {
+                        "Nombre d'épisodes inconnu et aucune source compatible trouvée."
+                    } else {
+                        "Aucune source compatible trouvée pour cette œuvre."
+                    },
+                )
+                return@launch
+            }
 
             val newAssignments = linkedMapOf<Int, MultiSourceEpisodeRef>()
             val newRefsByEpisode = mutableMapOf<Int, MutableList<MultiSourceEpisodeRef>>()
@@ -271,6 +293,7 @@ class MultiSourceMappingScreenModel(
                     },
                     version = MultiSourceMappingReport.CURRENT_VERSION,
                     selectedSourceIds = selectedSourceIds?.sorted(),
+                    createdAt = System.currentTimeMillis(),
                 ),
             )
 
@@ -297,5 +320,7 @@ class MultiSourceMappingScreenModel(
 
     private companion object {
         const val MAX_ALTERNATIVES = 3
+        const val MAX_UNKNOWN_TOTAL = 2_000
+        const val INCOMPLETE_REPORT_TTL_MS = 15 * 60_000L
     }
 }

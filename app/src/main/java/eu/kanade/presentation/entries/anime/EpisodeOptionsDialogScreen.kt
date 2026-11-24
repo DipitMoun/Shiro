@@ -53,10 +53,16 @@ import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.multisource.MultiSourceAnimeSource
+import eu.kanade.tachiyomi.data.multisource.MultiSourceDownloadChoice
+import eu.kanade.tachiyomi.data.multisource.MultiSourceDownloadChoiceStore
+import eu.kanade.tachiyomi.data.multisource.MultiSourceHosterNames
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.HosterState
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.QualitySheetHosterContent
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.QualitySheetVideoContent
+import eu.kanade.tachiyomi.ui.player.controls.components.sheets.videoDisplayLabel
+import eu.kanade.tachiyomi.data.media.VideoSizeEstimator
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.getChangedAt
 import eu.kanade.tachiyomi.ui.player.loader.EpisodeLoader
 import eu.kanade.tachiyomi.ui.player.loader.HosterLoader
@@ -112,6 +118,7 @@ class EpisodeOptionsDialogScreen(
         val selectedHosterVideoIndex by sm.selectedHosterVideoIndex.collectAsState()
         val currentVideo by sm.currentVideo.collectAsState()
         val showAllQualities by sm.showAllQualities.collectAsState()
+        val videoSizes by sm.videoSizes.collectAsState()
 
         EpisodeOptionsDialog(
             useExternalDownloader = useExternalDownloader,
@@ -127,6 +134,7 @@ class EpisodeOptionsDialogScreen(
             onClickHoster = sm::onClickHoster,
             onClickVideo = sm::onClickVideo,
             getHosterList = sm::getHosterList,
+            videoSizes = videoSizes,
         )
     }
 
@@ -134,6 +142,8 @@ class EpisodeOptionsDialogScreen(
         var onDismissDialog: () -> Unit = {}
     }
 }
+
+private const val MAX_SIZE_LOOKUPS = 12
 
 class EpisodeOptionsDialogScreenModel(
     episodeId: Long,
@@ -164,6 +174,11 @@ class EpisodeOptionsDialogScreenModel(
 
     private val _showAllQualities = MutableStateFlow(false)
     val showAllQualities = _showAllQualities.asStateFlow()
+
+    private val _videoSizes = MutableStateFlow<Map<String, Long>>(emptyMap())
+
+    /** Estimated size in bytes of the videos listed so far, by video URL. */
+    val videoSizes = _videoSizes.asStateFlow()
 
     init {
         val hasFoundPreferredVideo = AtomicBoolean(false)
@@ -219,6 +234,7 @@ class EpisodeOptionsDialogScreenModel(
                         _hosterState.updateAt(hosterIdx, hosterState)
 
                         if (hosterState is HosterState.Ready) {
+                            estimateSizes(hosterState.videoList)
                             val prefIndex = hosterState.videoList.indexOfFirst { it.preferred }
                             if (prefIndex != -1) {
                                 if (hasFoundPreferredVideo.compareAndSet(false, true)) {
@@ -315,6 +331,16 @@ class EpisodeOptionsDialogScreenModel(
         return true
     }
 
+    /** Sizes are looked up in the background; each one shows up as soon as it is known. */
+    private fun estimateSizes(videos: List<Video>) {
+        videos.take(MAX_SIZE_LOOKUPS).forEach { video ->
+            screenModelScope.launchIO {
+                val size = VideoSizeEstimator.estimate(video) ?: return@launchIO
+                _videoSizes.update { it + (video.videoUrl to size) }
+            }
+        }
+    }
+
     private fun <T> MutableStateFlow<Result<List<T>>?>.updateAt(index: Int, newValue: T) {
         this.update { values ->
             values?.getOrNull()?.let {
@@ -352,6 +378,7 @@ class EpisodeOptionsDialogScreenModel(
                         _hosterList.value[hosterIndex],
                     )
                     _hosterState.updateAt(hosterIndex, newHosterState)
+                    (newHosterState as? HosterState.Ready)?.let { estimateSizes(it.videoList) }
                 }
             }
             is HosterState.Loading -> {}
@@ -405,6 +432,7 @@ fun EpisodeOptionsDialog(
     onClickHoster: (Int) -> Unit,
     onClickVideo: (Int, Int) -> Unit,
     getHosterList: () -> List<Hoster>?,
+    videoSizes: Map<String, Long> = emptyMap(),
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -442,7 +470,8 @@ fun EpisodeOptionsDialog(
             onError()
         }
 
-        if (resultList == null || episode == null || anime == null || currentVideo == null) {
+        // The list is shown as soon as the hosters are known; the videos fill in as they resolve.
+        if (resultList == null || episode == null || anime == null) {
             LoadingScreen()
         } else {
             val hosterStateList = resultList.getOrNull()
@@ -451,15 +480,16 @@ fun EpisodeOptionsDialog(
                     useExternalDownloader = useExternalDownloader,
                     episode = episode,
                     anime = anime,
-                    showAllQualities = showAllQualities,
+                    showAllQualities = showAllQualities || currentVideo == null,
                     hosterStateList = hosterStateList,
                     expandedList = expandedList,
-                    currentVideo = currentVideo,
+                    currentVideo = currentVideo ?: Video(videoUrl = ""),
                     selectedHosterVideoIndex = selectedHosterVideoIndex,
                     onShowAllQualities = onShowAllQualities,
                     onClickHoster = onClickHoster,
                     onClickVideo = onClickVideo,
                     getHosterList = getHosterList,
+                    videoSizes = videoSizes,
                 )
             } else {
                 onError()
@@ -482,12 +512,14 @@ private fun VideoList(
     onClickHoster: (Int) -> Unit,
     onClickVideo: (Int, Int) -> Unit,
     getHosterList: () -> List<Hoster>?,
+    videoSizes: Map<String, Long>,
 ) {
     val downloadManager = Injekt.get<AnimeDownloadManager>()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val copiedString = stringResource(AYMR.strings.copied_video_link_to_clipboard)
+    val videoExtra: (Video) -> String? = { video -> videoInfoLabel(video, videoSizes[video.videoUrl]) }
 
     AnimatedVisibility(
         visible = !showAllQualities,
@@ -496,14 +528,40 @@ private fun VideoList(
     ) {
         Column {
             if (currentVideo.videoUrl.isNotEmpty() && !showAllQualities) {
+                val selectedHoster = hosterStateList.getOrNull(selectedHosterVideoIndex.first)?.name
+                    ?.takeIf { it != Hoster.NO_HOSTER_LIST }
                 ClickableRow(
-                    text = currentVideo.videoTitle,
+                    text = listOfNotNull(
+                        selectedHoster,
+                        videoDisplayLabel(currentVideo, videoExtra(currentVideo)),
+                    ).joinToString(" · "),
                     icon = null,
                     onClick = { onShowAllQualities(true) },
                     showDropdownArrow = true,
                 )
 
+                val rememberedMessage = "Ce choix sera utilisé pour les téléchargements groupés de cette série"
                 val downloadEpisode: (Boolean) -> Unit = {
+                    // Multi-source works: the picked source and quality become the series' choice,
+                    // reused by the "next 1, 5, 10, 20, 25 episodes" downloads.
+                    if (anime.source == MultiSourceAnimeSource.ID) {
+                        val hosterName = hosterStateList.getOrNull(selectedHosterVideoIndex.first)?.name
+                        val (sourceName, baseName) = hosterName
+                            ?.let(MultiSourceHosterNames::split)
+                            ?: (null to "")
+                        if (sourceName != null) {
+                            Injekt.get<MultiSourceDownloadChoiceStore>().save(
+                                anime.url,
+                                MultiSourceDownloadChoice(
+                                    sourceName = sourceName,
+                                    hosterName = baseName,
+                                    resolution = currentVideo.resolution,
+                                    videoTitle = currentVideo.videoTitle,
+                                ),
+                            )
+                            context.toast(rememberedMessage)
+                        }
+                    }
                     downloadManager.downloadEpisodes(
                         anime,
                         listOf(episode),
@@ -579,6 +637,7 @@ private fun VideoList(
                         videoState = (hosterStateList.first() as HosterState.Ready).videoState,
                         selectedVideoIndex = selectedHosterVideoIndex.second,
                         onClickVideo = onClickVideo,
+                        videoExtra = videoExtra,
                     )
                 } else {
                     QualitySheetHosterContent(
@@ -588,6 +647,7 @@ private fun VideoList(
                         onClickHoster = onClickHoster,
                         onClickVideo = onClickVideo,
                         displayHosters = Pair(false, false),
+                        videoExtra = videoExtra,
                     )
                 }
             }

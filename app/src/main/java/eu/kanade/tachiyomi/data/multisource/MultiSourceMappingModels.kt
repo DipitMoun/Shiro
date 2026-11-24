@@ -46,6 +46,8 @@ data class MultiSourceMappingReport(
     val version: Int = 1,
     /** Sélection utilisée pour ce rapport ; null = toutes les sources. */
     val selectedSourceIds: List<Long>? = null,
+    /** When the report was built; 0 for reports saved before this field existed. */
+    val createdAt: Long = 0L,
 ) {
     companion object {
         const val CURRENT_VERSION = 2

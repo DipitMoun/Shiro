@@ -16,9 +16,16 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.data.media.EpisodeMediaValidator
 import eu.kanade.tachiyomi.data.media.MediaDurationProbe
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import eu.kanade.tachiyomi.data.multisource.resolver.WebViewMediaResolver
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogWork
 import eu.kanade.tachiyomi.ui.browse.catalog.preferredTitle
@@ -135,24 +142,39 @@ object MultiSourceAnimeSource : AnimeSource {
             .distinctBy { it.sourceId to it.episodeUrl }
             .take(MAX_RESOLUTION_SOURCES)
 
+        val cacheKey = "${primary.animeUrl}|${primary.sourceId}|$episodeNumber"
+        cachedHosters(cacheKey)?.let { return it }
+
         MultiSourceDebugLog.log(
             "adapter",
             "episode=${episode.url} sources=${refs.joinToString(",") { it.sourceName }}",
         )
 
-        for (ref in refs) {
-            var hosters = resolveHosters(ref).filterPlayableHosters()
-            if (hosters.isEmpty()) {
-                hosters = resolveWithWebView(ref).filterPlayableHosters()
+        // Every source is queried at the same time. The user gets the choice between all the
+        // sources that answered, instead of waiting for them one after the other.
+        var merged = resolveAcrossSources(refs)
+            .flatMap { (ref, hosters) ->
+                hosters.map { it.copy(hosterName = MultiSourceHosterNames.compose(ref.sourceName, it.hosterName)) }
             }
-            if (hosters.isNotEmpty()) {
-                if (ref != primary) {
-                    logcat(LogPriority.INFO) {
-                        "Multi-source: fallback réussi sur ${ref.sourceName} pour l'épisode $episodeNumber"
+
+        if (merged.isEmpty()) {
+            // Last resort, slow: only the two best sources, with a time budget each.
+            for (ref in refs.take(WEBVIEW_FALLBACK_SOURCES)) {
+                val hosters = withTimeoutOrNull(WEBVIEW_TIMEOUT_MS) {
+                    resolveWithWebView(ref).filterPlayableHosters()
+                }.orEmpty()
+                if (hosters.isNotEmpty()) {
+                    merged = hosters.map {
+                        it.copy(hosterName = MultiSourceHosterNames.compose(ref.sourceName, it.hosterName))
                     }
+                    break
                 }
-                return hosters
             }
+        }
+
+        if (merged.isNotEmpty()) {
+            storeHosters(cacheKey, merged)
+            return merged
         }
 
         val tried = refs.joinToString { it.sourceName }.ifBlank { "aucune source" }
@@ -163,6 +185,56 @@ object MultiSourceAnimeSource : AnimeSource {
             "Multi-source : aucune vidéo pour l'épisode $episodeNumber. " +
                 "Sources essayées : $tried.",
         )
+    }
+
+    private class CachedHosters(val at: Long, val hosters: List<Hoster>)
+
+    private val hosterCache = object : LinkedHashMap<String, CachedHosters>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedHosters>?) =
+            size > HOSTER_CACHE_SIZE
+    }
+
+    private fun cachedHosters(key: String): List<Hoster>? = synchronized(hosterCache) {
+        hosterCache[key]?.takeIf { System.currentTimeMillis() - it.at < HOSTER_CACHE_TTL_MS }?.hosters
+    }
+
+    private fun storeHosters(key: String, hosters: List<Hoster>) = synchronized(hosterCache) {
+        hosterCache[key] = CachedHosters(System.currentTimeMillis(), hosters)
+    }
+
+    /**
+     * Queries all [refs] in parallel. Returns as soon as one source answered and the others had
+     * a short grace period, or when everything finished or the total budget is spent. Slow
+     * sources are abandoned rather than awaited.
+     */
+    private suspend fun resolveAcrossSources(
+        refs: List<MultiSourceEpisodeRef>,
+    ): List<Pair<MultiSourceEpisodeRef, List<Hoster>>> {
+        val results = java.util.Collections.synchronizedList(
+            mutableListOf<Pair<MultiSourceEpisodeRef, List<Hoster>>>(),
+        )
+        // Own scope: a source stuck in blocking code must not hold the caller back.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val jobs = refs.map { ref ->
+            scope.launch {
+                val hosters = withTimeoutOrNull(SOURCE_RESOLVE_TIMEOUT_MS) {
+                    runCatching { resolveHosters(ref).filterPlayableHosters() }.getOrDefault(emptyList())
+                }.orEmpty()
+                if (hosters.isNotEmpty()) results.add(ref to hosters)
+            }
+        }
+
+        val startedAt = System.currentTimeMillis()
+        var firstSuccessAt = 0L
+        while (jobs.any { it.isActive }) {
+            delay(POLL_INTERVAL_MS)
+            val now = System.currentTimeMillis()
+            if (results.isNotEmpty() && firstSuccessAt == 0L) firstSuccessAt = now
+            if (firstSuccessAt != 0L && now - firstSuccessAt >= OTHER_SOURCES_GRACE_MS) break
+            if (now - startedAt >= TOTAL_RESOLVE_TIMEOUT_MS) break
+        }
+        scope.cancel()
+        return results.toList().sortedBy { (ref, _) -> refs.indexOf(ref) }
     }
 
     /**
@@ -304,7 +376,9 @@ object MultiSourceAnimeSource : AnimeSource {
         // getVideoList(episode) et laissent getHosterList non supporté.
         // Dans ce cas, on va directement à la liste de vidéos.
         if (supportsHosters(source)) {
-            val hosters = runCatching { source.getHosterList(sourceEpisode) }
+            val hosters = runCatching {
+                withTimeoutOrNull(HOSTER_LIST_TIMEOUT_MS) { source.getHosterList(sourceEpisode) }
+            }
                 .onFailure {
                     logcat(LogPriority.WARN, it) {
                         "Multi-source: hosters indisponibles via ${source.name} pour ${sourceEpisode.url}"
@@ -321,15 +395,19 @@ object MultiSourceAnimeSource : AnimeSource {
                 hosters
                     .map { hoster ->
                         async {
-                            val videos = hoster.videoList ?: runCatching { source.getVideoList(hoster) }
-                                .onFailure {
-                                    logcat(LogPriority.WARN, it) {
-                                        "Multi-source: vidéos indisponibles pour ${hoster.hosterName} via ${source.name}"
+                            // One slow hoster must not hold back the whole list.
+                            val resolvedVideos = withTimeoutOrNull(HOSTER_VIDEOS_TIMEOUT_MS) {
+                                val videos = hoster.videoList ?: runCatching { source.getVideoList(hoster) }
+                                    .onFailure {
+                                        logcat(LogPriority.WARN, it) {
+                                            "Multi-source: vidéos indisponibles pour ${hoster.hosterName} via ${source.name}"
+                                        }
                                     }
-                                }
-                                .getOrNull()
-                                .orEmpty()
-                            val resolvedVideos = resolveVideos(source, videos)
+                                    .getOrNull()
+                                    .orEmpty()
+                                resolveVideos(source, videos)
+                            }.orEmpty()
+                            val videos = hoster.videoList.orEmpty()
                             logcat(LogPriority.DEBUG) {
                                 "Multi-source: ${source.name}/${hoster.hosterName} vidéos=" +
                                     "${videos.size} résolues=${resolvedVideos.size}"
@@ -460,7 +538,19 @@ object MultiSourceAnimeSource : AnimeSource {
     override fun toString(): String = name
 
     private val HOSTER_METHODS = setOf("getHosterList", "hosterListRequest", "hosterListParse")
-    private const val MAX_RESOLUTION_SOURCES = 2
+
+    // Alternatives kept by the mapping are at most 3 plus the primary source.
+    private const val MAX_RESOLUTION_SOURCES = 4
+    private const val SOURCE_RESOLVE_TIMEOUT_MS = 20_000L
+    private const val TOTAL_RESOLVE_TIMEOUT_MS = 25_000L
+    private const val OTHER_SOURCES_GRACE_MS = 2_500L
+    private const val POLL_INTERVAL_MS = 50L
+    private const val HOSTER_LIST_TIMEOUT_MS = 12_000L
+    private const val HOSTER_VIDEOS_TIMEOUT_MS = 10_000L
+    private const val WEBVIEW_FALLBACK_SOURCES = 2
+    private const val WEBVIEW_TIMEOUT_MS = 20_000L
+    private const val HOSTER_CACHE_SIZE = 40
+    private const val HOSTER_CACHE_TTL_MS = 5 * 60_000L
 }
 
 fun CatalogWork.toSAnime(url: String): SAnime {

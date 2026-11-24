@@ -167,6 +167,7 @@ fun QualitySheetVideoContent(
     videoState: List<Video.State>,
     selectedVideoIndex: Int,
     onClickVideo: (Int, Int) -> Unit,
+    videoExtra: (Video) -> String? = { null },
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier.fillMaxWidth()) {
@@ -177,6 +178,7 @@ fun QualitySheetVideoContent(
                 selected = selectedVideoIndex == videoIdx,
                 onClick = { onClickVideo(0, videoIdx) },
                 noHoster = true,
+                extra = videoExtra(video),
             )
         }
     }
@@ -190,6 +192,7 @@ fun QualitySheetHosterContent(
     onClickHoster: (Int) -> Unit,
     onClickVideo: (Int, Int) -> Unit,
     displayHosters: Pair<Boolean, Boolean>,
+    videoExtra: (Video) -> String? = { null },
     modifier: Modifier = Modifier,
 ) {
     val validHosters = hosterState.withIndex().filter { (_, state) ->
@@ -211,6 +214,7 @@ fun QualitySheetHosterContent(
             selectedVideoIndex = selectedVideoIndex,
             onClickHoster = onClickHoster,
             onClickVideo = onClickVideo,
+            videoExtra = videoExtra,
         )
 
         if (displayHosters.first) {
@@ -220,6 +224,7 @@ fun QualitySheetHosterContent(
                 selectedVideoIndex = selectedVideoIndex,
                 onClickHoster = onClickHoster,
                 onClickVideo = onClickVideo,
+                videoExtra = videoExtra,
             )
         }
 
@@ -230,6 +235,7 @@ fun QualitySheetHosterContent(
                 selectedVideoIndex = selectedVideoIndex,
                 onClickHoster = onClickHoster,
                 onClickVideo = onClickVideo,
+                videoExtra = videoExtra,
             )
         }
     }
@@ -241,6 +247,7 @@ internal fun LazyListScope.hosterContent(
     selectedVideoIndex: Pair<Int, Int>,
     onClickHoster: (Int) -> Unit,
     onClickVideo: (Int, Int) -> Unit,
+    videoExtra: (Video) -> String? = { null },
 ) {
     hosters.forEach { (hosterIdx, hoster) ->
         val isExpanded = expandedState.getOrNull(hosterIdx) ?: false
@@ -269,6 +276,7 @@ internal fun LazyListScope.hosterContent(
                                 selected = selectedVideoIndex == Pair(hosterIdx, videoIdx),
                                 onClick = { onClickVideo(hosterIdx, videoIdx) },
                                 noHoster = false,
+                                extra = videoExtra(video),
                             )
                         }
                     }
@@ -351,6 +359,7 @@ fun VideoTrack(
     selected: Boolean,
     onClick: () -> Unit,
     noHoster: Boolean,
+    extra: String? = null,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -364,6 +373,7 @@ fun VideoTrack(
             VideoText(
                 video = video,
                 selected = selected,
+                extra = extra,
                 noHoster = true,
                 modifier = Modifier.weight(1f),
             )
@@ -379,6 +389,7 @@ fun VideoTrack(
             VideoText(
                 video = video,
                 selected = selected,
+                extra = extra,
                 noHoster = false,
                 modifier = Modifier.weight(1f),
             )
@@ -415,7 +426,7 @@ private fun VideoIcon(
     }
 }
 
-private fun videoDisplayLabel(video: Video): String {
+internal fun videoDisplayLabel(video: Video, extra: String? = null): String {
     val title = video.videoTitle.ifBlank { "Video" }
     val hasResInTitle = Regex("\\d+p\\b").containsMatchIn(title)
     val hasBitrateInTitle = Regex("\\d+\\s*(Mbps|kbps)", RegexOption.IGNORE_CASE).containsMatchIn(title)
@@ -441,6 +452,7 @@ private fun videoDisplayLabel(video: Video): String {
             }
         }
     }
+    extra?.takeIf { it.isNotBlank() }?.let { parts += it }
     return parts.joinToString(" · ")
 }
 
@@ -449,10 +461,11 @@ private fun VideoText(
     video: Video,
     selected: Boolean,
     noHoster: Boolean,
+    extra: String? = null,
     modifier: Modifier = Modifier,
 ) {
     Text(
-        text = videoDisplayLabel(video),
+        text = videoDisplayLabel(video, extra),
         fontStyle = if (selected) FontStyle.Italic else FontStyle.Normal,
         fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
         style = MaterialTheme.typography.bodyMedium,

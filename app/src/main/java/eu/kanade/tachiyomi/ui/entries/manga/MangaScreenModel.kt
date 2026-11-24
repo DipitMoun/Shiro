@@ -747,6 +747,7 @@ class MangaScreenModel(
             DownloadAction.NEXT_1_ITEM -> getUnreadChaptersSorted().take(1)
             DownloadAction.NEXT_5_ITEMS -> getUnreadChaptersSorted().take(5)
             DownloadAction.NEXT_10_ITEMS -> getUnreadChaptersSorted().take(10)
+            DownloadAction.NEXT_20_ITEMS -> getUnreadChaptersSorted().take(20)
             DownloadAction.NEXT_25_ITEMS -> getUnreadChaptersSorted().take(25)
 
             DownloadAction.UNVIEWED_ITEMS -> getUnreadChapters()

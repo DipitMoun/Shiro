@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.ui.browse.catalog
 
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.animesource.AnimeSource
+import eu.kanade.tachiyomi.animesource.model.SAnime
+import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.data.multisource.MultiSourceAnimeSource
 import eu.kanade.tachiyomi.data.multisource.MultiSourceDebugLog
 import eu.kanade.tachiyomi.data.telegram.saved.TelegramSavedKind
@@ -131,9 +133,28 @@ class CatalogSourceResolver(
                 }
             }
 
-            val deadline = System.currentTimeMillis() + COVERAGE_TOTAL_TIMEOUT_MS
+            // No need to wait for the slowest sources once one already covers the work: the
+            // others get a short grace period, then the mapping is built with what arrived.
+            val expected = work.episodes ?: 0
+            val startedAt = System.currentTimeMillis()
+            val deadline = startedAt + COVERAGE_TOTAL_TIMEOUT_MS
+            var settledAt = 0L
             while (System.currentTimeMillis() < deadline && jobs.any { it.isActive }) {
-                delay(250)
+                delay(100)
+                val now = System.currentTimeMillis()
+                if (settledAt == 0L) {
+                    val covered = synchronized(coverages) { coverages.toList() }
+                    val full = if (expected > 0) {
+                        covered.any { c -> c.episodes.keys.count { it in 1..expected } >= expected * FULL_COVERAGE_RATIO }
+                    } else {
+                        covered.isNotEmpty()
+                    }
+                    if (full) settledAt = now
+                }
+                if (settledAt != 0L) {
+                    val grace = if (expected > 0) FULL_COVERAGE_GRACE_MS else UNKNOWN_COUNT_GRACE_MS
+                    if (now - settledAt >= grace) break
+                }
             }
             val unfinished = jobs.count { it.isActive }
             jobs.forEach { it.cancel() }
@@ -171,31 +192,30 @@ class CatalogSourceResolver(
             .distinct()
             .take(MAX_SEARCH_QUERIES)
 
+        val expected = work.episodes ?: 0
         for (query in queries) {
             val page = runCatching {
                 source.getSearchAnime(1, query, source.getFilterList())
             }.getOrNull() ?: continue
 
-            val anime = page.animes
+            val candidates = page.animes
                 .filter { seasonCompatible(it.title, work) }
-                .maxByOrNull { titleScore(it.title, work) }
-                ?: continue
-            if (titleScore(anime.title, work) < MIN_TITLE_SCORE) continue
+                .map { it to titleScore(it.title, work) }
+                .filter { (_, score) -> score >= MIN_TITLE_SCORE }
+                .sortedByDescending { (_, score) -> score }
+            if (candidates.isEmpty()) continue
+            val bestScore = candidates.first().second
 
-            val episodes = runCatching {
-                source.getAnimeEpisodeUpdate(
-                    anime = anime,
-                    episodes = emptyList(),
-                    fetchDetails = false,
-                    fetchEpisodes = true,
-                ).episodes
-            }.getOrNull() ?: continue
-
-            val byNumber = episodes.mapNotNull { episode ->
-                val number = episode.episode_number
-                if (number > 0f) number.roundToInt() to episode else null
-            }.toMap()
-            if (byNumber.isEmpty()) continue
+            // The best title is not always the right entry (another season, a recap, a
+            // short): when it covers too little, the next close candidate gets a chance.
+            var chosen: Pair<SAnime, Map<Int, SEpisode>>? = null
+            for ((anime, score) in candidates.take(MAX_CANDIDATES_PER_QUERY)) {
+                if (score < bestScore - CANDIDATE_SCORE_MARGIN) break
+                val byNumber = fetchEpisodeMap(source, anime) ?: continue
+                if (chosen == null || byNumber.size > chosen.second.size) chosen = anime to byNumber
+                if (expected <= 0 || byNumber.size >= expected * ENOUGH_COVERAGE_RATIO) break
+            }
+            val (anime, byNumber) = chosen ?: continue
 
             return SourceCoverage(
                 sourceId = source.id,
@@ -205,6 +225,29 @@ class CatalogSourceResolver(
             )
         }
         return null
+    }
+
+    /**
+     * Episodes of [anime] keyed by their number. Fractional numbers (12.5) round onto their
+     * neighbour: the whole-number episode wins the slot instead of the last one listed.
+     */
+    private suspend fun fetchEpisodeMap(source: AnimeSource, anime: SAnime): Map<Int, SEpisode>? {
+        val episodes = runCatching {
+            source.getAnimeEpisodeUpdate(
+                anime = anime,
+                episodes = emptyList(),
+                fetchDetails = false,
+                fetchEpisodes = true,
+            ).episodes
+        }.getOrNull() ?: return null
+
+        return episodes
+            .filter { it.episode_number > 0f }
+            .groupBy { it.episode_number.roundToInt() }
+            .mapValues { (number, group) ->
+                group.firstOrNull { it.episode_number == number.toFloat() } ?: group.first()
+            }
+            .takeIf { it.isNotEmpty() }
     }
 
     private suspend fun resolveSource(
@@ -391,8 +434,14 @@ class CatalogSourceResolver(
     private companion object {
         const val SOURCE_TIMEOUT_MS = 15_000L
         const val TOTAL_TIMEOUT_MS = 30_000L
-        const val COVERAGE_SOURCE_TIMEOUT_MS = 30_000L
-        const val COVERAGE_TOTAL_TIMEOUT_MS = 60_000L
+        const val COVERAGE_SOURCE_TIMEOUT_MS = 15_000L
+        const val COVERAGE_TOTAL_TIMEOUT_MS = 30_000L
+        const val FULL_COVERAGE_RATIO = 0.95
+        const val FULL_COVERAGE_GRACE_MS = 4_000L
+        const val UNKNOWN_COUNT_GRACE_MS = 8_000L
+        const val MAX_CANDIDATES_PER_QUERY = 3
+        const val CANDIDATE_SCORE_MARGIN = 0.15
+        const val ENOUGH_COVERAGE_RATIO = 0.6
         const val MIN_TITLE_SCORE = 0.45
         const val MAX_SEARCH_QUERIES = 4
         val COMBINING_MARKS = Regex("\\p{M}+")

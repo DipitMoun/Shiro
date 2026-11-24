@@ -524,6 +524,7 @@ class AnimeLibraryScreenModel(
             DownloadAction.NEXT_1_ITEM -> downloadUnseenEpisodes(animes, 1)
             DownloadAction.NEXT_5_ITEMS -> downloadUnseenEpisodes(animes, 5)
             DownloadAction.NEXT_10_ITEMS -> downloadUnseenEpisodes(animes, 10)
+            DownloadAction.NEXT_20_ITEMS -> downloadUnseenEpisodes(animes, 20)
             DownloadAction.NEXT_25_ITEMS -> downloadUnseenEpisodes(animes, 25)
             DownloadAction.UNVIEWED_ITEMS -> downloadUnseenEpisodes(animes, null)
         }

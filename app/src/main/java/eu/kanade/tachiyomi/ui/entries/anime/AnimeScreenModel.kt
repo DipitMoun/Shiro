@@ -855,6 +855,7 @@ class AnimeScreenModel(
             DownloadAction.NEXT_1_ITEM -> getUnseenEpisodesSorted().take(1)
             DownloadAction.NEXT_5_ITEMS -> getUnseenEpisodesSorted().take(5)
             DownloadAction.NEXT_10_ITEMS -> getUnseenEpisodesSorted().take(10)
+            DownloadAction.NEXT_20_ITEMS -> getUnseenEpisodesSorted().take(20)
             DownloadAction.NEXT_25_ITEMS -> getUnseenEpisodesSorted().take(25)
 
             DownloadAction.UNVIEWED_ITEMS -> getUnseenEpisodes()
