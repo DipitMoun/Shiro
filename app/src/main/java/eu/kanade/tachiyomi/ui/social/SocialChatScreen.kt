@@ -54,6 +54,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import kotlinx.coroutines.launch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -348,7 +349,11 @@ class SocialChatScreen(
 
                         state.lastError?.let { error ->
                             Text(
-                                text = "Matrix : $error",
+                                text = if (error is eu.kanade.tachiyomi.data.social.matrix.SocialError.Network) {
+                                    "Connexion perdue : le message n'a pas été envoyé. Réessaie."
+                                } else {
+                                    "Matrix : $error"
+                                },
                                 color = MaterialTheme.colorScheme.error,
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -363,7 +368,28 @@ class SocialChatScreen(
                             )
                         }
 
-                        ChatComposer(
+                        // Opened from a room (Messages, notification) for a work the user does not have:
+                        // replying needs the work, so the user is invited to add it instead.
+                        val notInLibrary = chatContext.initialRoomId != null && chatContext.animeId == 0L
+                        val openScope = androidx.compose.runtime.rememberCoroutineScope()
+                        if (notInLibrary) {
+                            AddToLibraryPrompt(
+                                title = chatContext.title,
+                                onOpen = {
+                                    openScope.launch {
+                                        val screen = eu.kanade.presentation.social.SocialWorkOpener()
+                                            .open(chatContext.title, isManga = false)
+                                        if (screen != null) {
+                                            navigator.push(screen)
+                                        } else {
+                                            android.widget.Toast
+                                                .makeText(context, "Œuvre introuvable", android.widget.Toast.LENGTH_SHORT)
+                                                .show()
+                                        }
+                                    }
+                                },
+                            )
+                        } else ChatComposer(
                             chips = composerChips,
                             onRemoveChip = { composerChips.remove(it) },
                             onCommands = { showCommands = true },
@@ -1517,3 +1543,23 @@ private data class SocialChatPending(
     val text: String,
     val positions: List<Long>,
 )
+
+/** Shown instead of the composer when the work is not in the user's library. */
+@Composable
+private fun AddToLibraryPrompt(title: String, onOpen: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Cette œuvre n'est pas dans ta bibliothèque. Ajoute « $title » pour répondre à la conversation.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(onClick = onOpen) { Text("Voir l'œuvre") }
+        }
+    }
+}

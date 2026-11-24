@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.data.social.matrix.ThreadRef
 import eu.kanade.tachiyomi.data.social.matrix.room.MatrixRoomTransport
 import eu.kanade.tachiyomi.data.social.matrix.room.RoomBindingStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -50,6 +51,22 @@ class RustCommandDispatcher(
     private val roomTransport: MatrixRoomTransport,
 ) : SocialCommandDispatcher {
 
+    /**
+     * Sends again when the network dropped. After the app wakes up from a notification the HTTP
+     * connection kept by the SDK is often already dead: the first request is reset, the next one
+     * goes through.
+     */
+    private suspend fun retryingOnNetworkError(send: suspend () -> SocialResult<String>): SocialResult<String> {
+        var attempt = 0
+        while (true) {
+            val result = send()
+            val error = (result as? SocialResult.Failure)?.error
+            val retryable = error is SocialError.Network && error.transient
+            if (!retryable || ++attempt >= SEND_ATTEMPTS) return result
+            delay(SEND_RETRY_DELAY_MS * attempt)
+        }
+    }
+
     override suspend fun execute(command: SocialCommand): SocialResult<String> {
         val client = clientProvider() ?: return notAuthenticated()
 
@@ -65,10 +82,12 @@ class RustCommandDispatcher(
             }
 
             is SocialCommand.SendToRoom ->
-                roomTransport.sendMessage(
-                    roomId = command.roomId,
-                    contentJson = textContent(command.body, command.inReplyToEventId),
-                )
+                retryingOnNetworkError {
+                    roomTransport.sendMessage(
+                        roomId = command.roomId,
+                        contentJson = textContent(command.body, command.inReplyToEventId),
+                    )
+                }
 
             is SocialCommand.PublishToMyThread -> {
                 val payload = command.payload
@@ -106,7 +125,7 @@ class RustCommandDispatcher(
                     put("body", MomentPayloadCodec.fallbackBody(payload))
                     put("org.shiro.moment", json.parseToJsonElement(MomentPayloadCodec.encode(payload)))
                 }
-                roomTransport.sendMessage(command.roomId, content.toString())
+                retryingOnNetworkError { roomTransport.sendMessage(command.roomId, content.toString()) }
             }
 
             is SocialCommand.React -> {
@@ -320,3 +339,7 @@ class RustCommandDispatcher(
     private fun ThreadRef.describe(): String =
         "${authorMxid}/${workId.value}/${episodeKey.value}"
 }
+
+// A message is tried up to three times when the connection drops.
+private const val SEND_ATTEMPTS = 3
+private const val SEND_RETRY_DELAY_MS = 800L

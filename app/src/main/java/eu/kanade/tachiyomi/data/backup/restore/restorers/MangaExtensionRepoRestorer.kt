@@ -22,7 +22,9 @@ class MangaExtensionRepoRestorer(
         if (urlExists != null && urlExists.signingKeyFingerprint != backupRepo.signingKeyFingerprint) {
             error("Already Exists with different signing key fingerprint")
         } else if (shaExists != null) {
-            error("${shaExists.name} has the same signing key fingerprint")
+            // The same signer is already installed (this repo or a mirror of it): nothing to
+            // restore, and nothing to report.
+            return
         } else {
             mangaHandler.await {
                 extension_reposQueries.insert(
