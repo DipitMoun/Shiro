@@ -8,7 +8,6 @@ import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupTracking
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.handlers.manga.MangaDatabaseHandler
-import tachiyomi.domain.category.manga.interactor.GetMangaCategories
 import tachiyomi.domain.entries.manga.interactor.GetMangaByUrlAndSourceId
 import tachiyomi.domain.entries.manga.interactor.MangaFetchInterval
 import tachiyomi.domain.entries.manga.model.Manga
@@ -25,7 +24,6 @@ import kotlin.math.max
 
 class MangaRestorer(
     private val handler: MangaDatabaseHandler = Injekt.get(),
-    private val getCategories: GetMangaCategories = Injekt.get(),
     private val getMangaByUrlAndSourceId: GetMangaByUrlAndSourceId = Injekt.get(),
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
@@ -56,6 +54,7 @@ class MangaRestorer(
     suspend fun restore(
         backupManga: BackupManga,
         backupCategories: List<BackupCategory>,
+        restoredCategories: Map<BackupCategory, Long>,
     ) {
         handler.await(inTransaction = true) {
             val dbManga = findExistingManga(backupManga)
@@ -69,8 +68,12 @@ class MangaRestorer(
             restoreMangaDetails(
                 manga = restoredManga,
                 chapters = backupManga.chapters,
-                categories = backupManga.categories,
-                backupCategories = backupCategories,
+                categoryIds = resolveEntryCategories(
+                    categoryIds = backupManga.categoryIds,
+                    categoryOrders = backupManga.categories,
+                    backupCategories = backupCategories,
+                    restoredCategories = restoredCategories,
+                ),
                 history = backupManga.history,
                 tracks = backupManga.tracking,
                 excludedScanlators = backupManga.excludedScanlators,
@@ -269,16 +272,15 @@ class MangaRestorer(
     private suspend fun restoreMangaDetails(
         manga: Manga,
         chapters: List<BackupChapter>,
-        categories: List<Long>,
-        backupCategories: List<BackupCategory>,
+        categoryIds: List<Long>,
         history: List<BackupHistory>,
         tracks: List<BackupTracking>,
         excludedScanlators: List<String>,
     ): Manga {
-        restoreCategories(manga, categories, backupCategories)
+        restoreCategories(manga, categoryIds)
         restoreChapters(manga, chapters)
         restoreTracking(manga, tracks)
-        restoreHistory(history)
+        restoreHistory(manga, history)
         restoreExcludedScanlators(manga, excludedScanlators)
         updateManga.awaitUpdateFetchInterval(manga, now, currentFetchWindow)
         return manga
@@ -288,43 +290,34 @@ class MangaRestorer(
      * Restores the categories a manga is in.
      *
      * @param manga the manga whose categories have to be restored.
-     * @param categories the categories to restore.
+     * @param categoryIds database ids of the categories to restore.
      */
-    private suspend fun restoreCategories(
-        manga: Manga,
-        categories: List<Long>,
-        backupCategories: List<BackupCategory>,
-    ) {
-        val dbCategories = getCategories.await()
-        val dbCategoriesByName = dbCategories.associateBy { it.name }
+    private suspend fun restoreCategories(manga: Manga, categoryIds: List<Long>) {
+        if (categoryIds.isEmpty()) return
 
-        val backupCategoriesByOrder = backupCategories.associateBy { it.order }
-
-        val mangaCategoriesToUpdate = categories.mapNotNull { backupCategoryOrder ->
-            backupCategoriesByOrder[backupCategoryOrder]?.let { backupCategory ->
-                dbCategoriesByName[backupCategory.name]?.let { dbCategory ->
-                    Pair(manga.id, dbCategory.id)
-                }
-            }
-        }
-
-        if (mangaCategoriesToUpdate.isNotEmpty()) {
-            handler.await(true) {
-                mangas_categoriesQueries.deleteMangaCategoryByMangaId(manga.id)
-                mangaCategoriesToUpdate.forEach { (mangaId, categoryId) ->
-                    mangas_categoriesQueries.insert(mangaId, categoryId)
-                }
+        handler.await(true) {
+            mangas_categoriesQueries.deleteMangaCategoryByMangaId(manga.id)
+            categoryIds.forEach { categoryId ->
+                mangas_categoriesQueries.insert(manga.id, categoryId)
             }
         }
     }
 
-    private suspend fun restoreHistory(backupHistory: List<BackupHistory>) {
+    /**
+     * Item urls are not unique across entries in Shiro (Telegram aggregated and per-channel
+     * works, multi-source), so history lookups are scoped to the restored entry.
+     */
+    private suspend fun restoreHistory(manga: Manga, backupHistory: List<BackupHistory>) {
         val toUpdate = backupHistory.mapNotNull { history ->
-            val dbHistory = handler.awaitOneOrNull { historyQueries.getHistoryByChapterUrl(history.url) }
+            val dbHistory = handler.awaitOneOrNull {
+                historyQueries.getHistoryByChapterUrlAndMangaId(history.url, manga.id)
+            }
             val item = history.getHistoryImpl()
 
             if (dbHistory == null) {
-                val chapter = handler.awaitOneOrNull { chaptersQueries.getChapterByUrl(history.url) }
+                val chapter = handler.awaitOneOrNull {
+                    chaptersQueries.getChapterByUrlAndMangaId(history.url, manga.id)
+                }
                 return@mapNotNull if (chapter == null) {
                     // Chapter doesn't exist; skip
                     null

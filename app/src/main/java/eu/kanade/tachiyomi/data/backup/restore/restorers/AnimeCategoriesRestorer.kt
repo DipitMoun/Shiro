@@ -13,48 +13,24 @@ class AnimeCategoriesRestorer(
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
 ) {
 
-    suspend operator fun invoke(backupCategories: List<BackupCategory>) {
-        if (backupCategories.isNotEmpty()) {
-            val dbCategories = getAnimeCategories.await()
-            val dbCategoriesByName = dbCategories.associateBy { it.name }
-            var nextOrder = dbCategories.maxOfOrNull { it.order }?.plus(1) ?: 0
+    /** @return the database id of each restored backup category. */
+    suspend operator fun invoke(backupCategories: List<BackupCategory>): Map<BackupCategory, Long> {
+        if (backupCategories.isEmpty()) return emptyMap()
 
-            // Correctif Shiro : map pour faire correspondre l'ancien ID du backup au nouvel ID
-            val idMap = mutableMapOf<Long, Long>()
-
-            val categories = backupCategories
-                .sortedBy { it.order }
-                .map {
-                    val dbCategory = dbCategoriesByName[it.name]
-                    if (dbCategory != null) {
-                        idMap[it.id] = dbCategory.id
-                        return@map dbCategory
-                    }
-                    val order = nextOrder++
-                    val newId = animeHandler.awaitOneExecutable {
-                        categoriesQueries.insert(it.name, order, it.flags, null)
-                        categoriesQueries.selectLastInsertedRowId()
-                    }
-                    idMap[it.id] = newId
-                    it.toCategory(newId).copy(order = order)
-                }
-
-            // Correctif Shiro : 2eme passe pour restaurer l'arbre des parents
-            backupCategories.forEach { backupCategory ->
-                val newId = idMap[backupCategory.id] ?: return@forEach
-                val newParentId = backupCategory.parentId?.let { idMap[it] }
-                if (newParentId != null) {
-                    animeHandler.await {
-                        categoriesQueries.updateParent(newParentId, newId)
-                    }
-                }
+        val dbCategories = getAnimeCategories.await()
+        val restored = restoreCategoryTree(backupCategories, dbCategories) { name, order, flags, parentId ->
+            animeHandler.awaitOneExecutable {
+                categoriesQueries.insert(name, order, flags, parentId)
+                categoriesQueries.selectLastInsertedRowId()
             }
-
-            libraryPreferences.categorizedDisplaySettings().set(
-                (dbCategories + categories)
-                    .distinctBy { it.flags }
-                    .size > 1,
-            )
         }
+
+        libraryPreferences.categorizedDisplaySettings().set(
+            (dbCategories.map { it.flags } + backupCategories.map { it.flags })
+                .distinct()
+                .size > 1,
+        )
+
+        return restored
     }
 }

@@ -52,6 +52,7 @@ class MangaBackupCreator(
             val categoriesForManga = getCategories.await(manga.id)
             if (categoriesForManga.isNotEmpty()) {
                 mangaObject.categories = categoriesForManga.map { it.order }
+                mangaObject.categoryIds = categoriesForManga.map { it.id }
             }
         }
 

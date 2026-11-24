@@ -47,6 +47,7 @@ class AnimeBackupCreator(
             val categoriesForAnime = getCategories.await(anime.id)
             if (categoriesForAnime.isNotEmpty()) {
                 animeObject.categories = categoriesForAnime.map { it.order }
+                animeObject.categoryIds = categoriesForAnime.map { it.id }
             }
         }
 

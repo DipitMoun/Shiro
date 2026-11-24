@@ -59,4 +59,7 @@ data class Backup(
     @ProtoNumber(504) var backupExtensions: List<BackupExtension> = emptyList(),
     @ProtoNumber(505) var backupAnimeExtensionStores: List<BackupExtensionStore> = emptyList(),
     @ProtoNumber(506) var backupCustomButton: List<BackupCustomButtons> = emptyList(),
+
+    // Shiro specific values
+    @ProtoNumber(900) var shiroData: BackupShiroData? = null,
 )

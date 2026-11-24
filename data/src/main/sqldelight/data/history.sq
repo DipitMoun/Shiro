@@ -33,6 +33,17 @@ JOIN chapters C
 ON H.chapter_id = C._id
 WHERE C.url = :chapterUrl AND C._id = H.chapter_id;
 
+getHistoryByChapterUrlAndMangaId:
+SELECT
+H._id,
+H.chapter_id,
+H.last_read,
+H.time_read
+FROM history H
+JOIN chapters C
+ON H.chapter_id = C._id
+WHERE C.url = :chapterUrl AND C.manga_id = :mangaId;
+
 resetHistoryById:
 UPDATE history
 SET last_read = 0

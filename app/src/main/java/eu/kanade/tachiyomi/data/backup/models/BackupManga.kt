@@ -40,6 +40,11 @@ data class BackupManga(
     @ProtoNumber(107) var favoriteModifiedAt: Long? = null,
     @ProtoNumber(108) var excludedScanlators: List<String> = emptyList(),
     @ProtoNumber(109) var version: Long = 0,
+
+    // Shiro specific values
+    // Category ids (BackupCategory.id). [categories] stores sort orders, which are only
+    // unique per level with nested categories, so they cannot identify a subcategory.
+    @ProtoNumber(900) var categoryIds: List<Long> = emptyList(),
 ) {
     fun getMangaImpl(): Manga {
         return Manga.create().copy(

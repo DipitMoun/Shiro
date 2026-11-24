@@ -52,6 +52,11 @@ class BackupAnime(
     @ProtoNumber(505) var seasonNumber: Double = -1.0,
     @ProtoNumber(506) var seasonSourceOrder: Long = 0,
     @ProtoNumber(507) var fetchType: FetchType = FetchType.Episodes,
+
+    // Shiro specific values
+    // Category ids (BackupCategory.id). [categories] stores sort orders, which are only
+    // unique per level with nested categories, so they cannot identify a subcategory.
+    @ProtoNumber(900) var categoryIds: List<Long> = emptyList(),
 ) {
     fun getAnimeImpl(): Anime {
         return Anime.create().copy(

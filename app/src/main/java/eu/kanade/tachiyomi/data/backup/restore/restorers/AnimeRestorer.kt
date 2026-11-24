@@ -10,7 +10,6 @@ import tachiyomi.data.AnimeUpdateStrategyColumnAdapter
 import tachiyomi.data.FetchTypeColumnAdapter
 import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
-import tachiyomi.domain.category.anime.interactor.GetAnimeCategories
 import tachiyomi.domain.entries.anime.interactor.AnimeFetchInterval
 import tachiyomi.domain.entries.anime.interactor.GetAnimeByUrlAndSourceId
 import tachiyomi.domain.entries.anime.model.Anime
@@ -27,7 +26,6 @@ import kotlin.math.max
 
 class AnimeRestorer(
     private val handler: AnimeDatabaseHandler = Injekt.get(),
-    private val getCategories: GetAnimeCategories = Injekt.get(),
     private val getAnimeByUrlAndSourceId: GetAnimeByUrlAndSourceId = Injekt.get(),
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId = Injekt.get(),
     private val updateAnime: UpdateAnime = Injekt.get(),
@@ -58,6 +56,7 @@ class AnimeRestorer(
     suspend fun restore(
         backupAnime: BackupAnime,
         backupCategories: List<BackupCategory>,
+        restoredCategories: Map<BackupCategory, Long>,
         backupSeasons: List<BackupAnime>,
     ) {
         handler.await(inTransaction = true) {
@@ -84,8 +83,12 @@ class AnimeRestorer(
             restoreAnimeDetails(
                 anime = restoredAnime,
                 episodes = backupAnime.episodes,
-                categories = backupAnime.categories,
-                backupCategories = backupCategories,
+                categoryIds = resolveEntryCategories(
+                    categoryIds = backupAnime.categoryIds,
+                    categoryOrders = backupAnime.categories,
+                    backupCategories = backupCategories,
+                    restoredCategories = restoredCategories,
+                ),
                 history = backupAnime.history,
                 tracks = backupAnime.tracking,
             )
@@ -312,15 +315,14 @@ class AnimeRestorer(
     private suspend fun restoreAnimeDetails(
         anime: Anime,
         episodes: List<BackupEpisode>,
-        categories: List<Long>,
-        backupCategories: List<BackupCategory>,
+        categoryIds: List<Long>,
         history: List<BackupAnimeHistory>,
         tracks: List<BackupAnimeTracking>,
     ): Anime {
-        restoreCategories(anime, categories, backupCategories)
+        restoreCategories(anime, categoryIds)
         restoreEpisodes(anime, episodes)
         restoreTracking(anime, tracks)
-        restoreHistory(history)
+        restoreHistory(anime, history)
         updateAnime.awaitUpdateFetchInterval(anime, now, currentFetchWindow)
         return anime
     }
@@ -329,43 +331,34 @@ class AnimeRestorer(
      * Restores the categories a anime is in.
      *
      * @param anime the anime whose categories have to be restored.
-     * @param categories the categories to restore.
+     * @param categoryIds database ids of the categories to restore.
      */
-    private suspend fun restoreCategories(
-        anime: Anime,
-        categories: List<Long>,
-        backupCategories: List<BackupCategory>,
-    ) {
-        val dbCategories = getCategories.await()
-        val dbCategoriesByName = dbCategories.associateBy { it.name }
+    private suspend fun restoreCategories(anime: Anime, categoryIds: List<Long>) {
+        if (categoryIds.isEmpty()) return
 
-        val backupCategoriesByOrder = backupCategories.associateBy { it.order }
-
-        val animeCategoriesToUpdate = categories.mapNotNull { backupCategoryOrder ->
-            backupCategoriesByOrder[backupCategoryOrder]?.let { backupCategory ->
-                dbCategoriesByName[backupCategory.name]?.let { dbCategory ->
-                    Pair(anime.id, dbCategory.id)
-                }
-            }
-        }
-
-        if (animeCategoriesToUpdate.isNotEmpty()) {
-            handler.await(true) {
-                animes_categoriesQueries.deleteAnimeCategoryByAnimeId(anime.id)
-                animeCategoriesToUpdate.forEach { (animeId, categoryId) ->
-                    animes_categoriesQueries.insert(animeId, categoryId)
-                }
+        handler.await(true) {
+            animes_categoriesQueries.deleteAnimeCategoryByAnimeId(anime.id)
+            categoryIds.forEach { categoryId ->
+                animes_categoriesQueries.insert(anime.id, categoryId)
             }
         }
     }
 
-    private suspend fun restoreHistory(backupHistory: List<BackupAnimeHistory>) {
+    /**
+     * Item urls are not unique across entries in Shiro (Telegram aggregated and per-channel
+     * works, multi-source), so history lookups are scoped to the restored entry.
+     */
+    private suspend fun restoreHistory(anime: Anime, backupHistory: List<BackupAnimeHistory>) {
         val toUpdate = backupHistory.mapNotNull { history ->
-            val dbHistory = handler.awaitOneOrNull { animehistoryQueries.getHistoryByEpisodeUrl(history.url) }
+            val dbHistory = handler.awaitOneOrNull {
+                animehistoryQueries.getHistoryByEpisodeUrlAndAnimeId(history.url, anime.id)
+            }
             val item = history.getHistoryImpl()
 
             if (dbHistory == null) {
-                val episode = handler.awaitOneOrNull { episodesQueries.getEpisodeByUrl(history.url) }
+                val episode = handler.awaitOneOrNull {
+                    episodesQueries.getEpisodeByUrlAndAnimeId(history.url, anime.id)
+                }
                 return@mapNotNull if (episode == null) {
                     // Episode doesn't exist; skip
                     null
