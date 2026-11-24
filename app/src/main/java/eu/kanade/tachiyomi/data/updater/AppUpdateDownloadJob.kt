@@ -98,18 +98,27 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
         }
 
         try {
-            // Download the new update.
-            val response = network.client.newCachelessCallWithProgress(GET(url), progressListener)
-                .await()
-
             // File where the apk will be saved.
             val apkFile = File(context.externalCacheDir, "update.apk")
+            val plan = ShiroUpdatePlanStore(context).forUrl(url)
 
-            if (response.isSuccessful) {
-                response.body.source().saveTo(apkFile)
-            } else {
-                response.close()
-                throw Exception("Unsuccessful response")
+            // Preferred: only what changed, applied to the installed apk. Any problem falls back
+            // to the full download below, so a bad patch never blocks an update.
+            val rebuilt = plan?.patchUrl != null && rebuildFromPatch(plan, apkFile, progressListener)
+            if (!rebuilt) {
+                val response = network.client.newCachelessCallWithProgress(GET(url), progressListener)
+                    .await()
+                if (response.isSuccessful) {
+                    response.body.source().saveTo(apkFile)
+                } else {
+                    response.close()
+                    throw Exception("Unsuccessful response")
+                }
+                // The file must be the one published, whatever the network did to it.
+                if (plan != null && !ApkPatch.sha256Hex(apkFile).equals(plan.apkSha256, ignoreCase = true)) {
+                    apkFile.delete()
+                    throw Exception("Downloaded apk does not match its checksum")
+                }
             }
             notifier.cancel()
             notifier.promptInstall(apkFile.getUriCompat(context))
@@ -121,6 +130,40 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
             } else {
                 notifier.onDownloadError(url)
             }
+        }
+    }
+
+    /**
+     * Downloads the patch and applies it to the installed apk. Returns false (and leaves no file)
+     * when anything goes wrong, so the caller can download the whole apk instead.
+     */
+    private suspend fun rebuildFromPatch(
+        plan: ShiroUpdatePlan,
+        target: File,
+        progressListener: ProgressListener,
+    ): Boolean {
+        val patchFile = File(context.externalCacheDir, "update.patch")
+        return try {
+            val response = network.client.newCachelessCallWithProgress(GET(plan.patchUrl!!), progressListener).await()
+            if (!response.isSuccessful) {
+                response.close()
+                return false
+            }
+            response.body.source().saveTo(patchFile)
+
+            val installed = File(context.applicationInfo.sourceDir)
+            patchFile.inputStream().use { ApkPatch.apply(installed, it, target) }
+
+            val matches = ApkPatch.sha256Hex(target).equals(plan.apkSha256, ignoreCase = true)
+            if (!matches) target.delete()
+            matches
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            logcat(LogPriority.WARN, e) { "Update patch failed, downloading the full apk" }
+            target.delete()
+            false
+        } finally {
+            patchFile.delete()
         }
     }
 

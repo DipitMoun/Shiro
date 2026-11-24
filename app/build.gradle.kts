@@ -25,6 +25,9 @@ if (localPropertiesFile.exists()) {
 // for a machine-specific location.
 fun signingValue(name: String): String? =
     System.getenv(name) ?: localProperties.getProperty(name)
+// Where the app looks for new versions (the latest.json published with each release).
+val updateManifestUrl = signingValue("SHIRO_UPDATE_MANIFEST_URL")
+    ?: "https://github.com/DipitMoun/Shiro/releases/latest/download/latest.json"
 val telegramApiId = localProperties.getProperty("TELEGRAM_API_ID")?.toIntOrNull() ?: 0
 val telegramApiHash = localProperties.getProperty("TELEGRAM_API_HASH").orEmpty()
 
@@ -87,6 +90,7 @@ android {
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
         buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
+        buildConfigField("String", "SHIRO_UPDATE_MANIFEST_URL", "\"$updateManifestUrl\"")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${firebaseConfig.projectId}\"")
         buildConfigField("String", "FIREBASE_SENDER_ID", "\"${firebaseConfig.senderId}\"")
         buildConfigField("String", "FIREBASE_API_KEY", "\"${firebaseConfig.apiKey}\"")
@@ -131,6 +135,8 @@ android {
             proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = true)}\"")
+            // Release builds look for updates; debug builds are another app (.dev) and never do.
+            buildConfigField("boolean", "UPDATER_ENABLED", "true")
         }
 
         val commonMatchingFallbacks = listOf(release.name)

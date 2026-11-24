@@ -115,3 +115,7 @@ service-account*.json
 push-gateway/.wrangler/
 push-gateway/node_modules/
 push-gateway/.dev.vars
+
+# Release tooling: APKs kept to build patches, and what is ready to publish
+release-archive/
+dist/

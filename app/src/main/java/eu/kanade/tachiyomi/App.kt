@@ -193,6 +193,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         // Guard against processes where WorkManager is not initialized yet
         // (e.g. :error_handler). Without this, the crash handler itself crashes.
         runCatching { TelegramSyncJob.setupTask(this) }
+        runCatching { eu.kanade.tachiyomi.data.updater.AppUpdateJob.setupTask(this) }
 
         // Met à niveau les index Telegram produits par un ancien parseur.
         scope.launch(Dispatchers.IO) {
