@@ -53,8 +53,11 @@ internal object MangaExtensionLoader {
     private const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
     private const val METADATA_SOURCE_FACTORY = "tachiyomi.extension.factory"
     private const val METADATA_NSFW = "tachiyomi.extension.nsfw"
+    private const val METADATA_CONTENT_WARNING = "tachiyomix.contentWarning"
+    private const val METADATA_NAME = "tachiyomix.name"
+    private const val CONTENT_WARNING_NSFW = 2
     const val LIB_VERSION_MIN = 1.4
-    const val LIB_VERSION_MAX = 1.5
+    const val LIB_VERSION_MAX = 1.6
 
     @Suppress("DEPRECATION")
     private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or
@@ -249,9 +252,8 @@ internal object MangaExtensionLoader {
         val appInfo = pkgInfo.applicationInfo!!
         val pkgName = pkgInfo.packageName
 
-        val extName = pkgManager.getApplicationLabel(appInfo).toString().substringAfter(
-            "Tachiyomi: ",
-        )
+        val extName = appInfo.metaData?.getString(METADATA_NAME)?.takeIf { it.isNotBlank() }
+            ?: pkgManager.getApplicationLabel(appInfo).toString().substringAfter("Tachiyomi: ")
         val versionName = pkgInfo.versionName
         val versionCode = PackageInfoCompat.getLongVersionCode(pkgInfo)
 
@@ -287,7 +289,13 @@ internal object MangaExtensionLoader {
             return MangaLoadResult.Untrusted(extension)
         }
 
-        val isNsfw = appInfo.metaData.getInt(METADATA_NSFW) == 1
+        // extensions-lib 1.6 declares a content warning (0 safe, 1 mixed, 2 nsfw); older ones the nsfw flag.
+        val contentWarning = appInfo.metaData.getInt(METADATA_CONTENT_WARNING, -1)
+        val isNsfw = if (contentWarning >= 0) {
+            contentWarning == CONTENT_WARNING_NSFW
+        } else {
+            appInfo.metaData.getInt(METADATA_NSFW) == 1
+        }
         if (!loadNsfwSource && isNsfw) {
             logcat(LogPriority.WARN) { "NSFW extension $pkgName not allowed" }
             return MangaLoadResult.Error

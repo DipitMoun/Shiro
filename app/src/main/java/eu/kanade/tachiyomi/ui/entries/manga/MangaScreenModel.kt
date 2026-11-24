@@ -245,11 +245,7 @@ class MangaScreenModel(
 
             // Fetch info-chapters when needed
             if (screenModelScope.isActive) {
-                val fetchFromSourceTasks = listOf(
-                    async { if (needRefreshInfo) fetchMangaFromSource() },
-                    async { if (needRefreshChapter) fetchChaptersFromSource() },
-                )
-                fetchFromSourceTasks.awaitAll()
+                fetchFromSource(fetchDetails = needRefreshInfo, fetchChapters = needRefreshChapter)
             }
 
             // Initial loading finished
@@ -260,11 +256,7 @@ class MangaScreenModel(
     fun fetchAllFromSource(manualFetch: Boolean = true) {
         screenModelScope.launch {
             updateSuccessState { it.copy(isRefreshingData = true) }
-            val fetchFromSourceTasks = listOf(
-                async { fetchMangaFromSource(manualFetch) },
-                async { fetchChaptersFromSource(manualFetch) },
-            )
-            fetchFromSourceTasks.awaitAll()
+            fetchFromSource(fetchDetails = true, fetchChapters = true, manualFetch = manualFetch)
             updateSuccessState { it.copy(isRefreshingData = false) }
         }
     }
@@ -272,22 +264,60 @@ class MangaScreenModel(
     // Manga info - start
 
     /**
-     * Fetch manga information from source.
+     * Fetches the manga details and/or its chapters from the source with a single call.
+     *
+     * The details and the chapters often come from the same page, and extensions written for
+     * extensions-lib 1.6 refuse two simultaneous calls for the same manga, so they are never split.
      */
-    private suspend fun fetchMangaFromSource(manualFetch: Boolean = false) {
+    private suspend fun fetchFromSource(
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+        manualFetch: Boolean = false,
+    ) {
+        if (!fetchDetails && !fetchChapters) return
         val state = successState ?: return
         try {
             withIOContext {
-                val networkManga = state.source.getMangaDetails(state.manga.toSManga())
-                updateManga.awaitUpdateFromSource(state.manga, networkManga, manualFetch)
+                val update = state.source.getMangaUpdate(
+                    manga = state.manga.toSManga(),
+                    chapters = emptyList(),
+                    fetchDetails = fetchDetails,
+                    fetchChapters = fetchChapters,
+                )
+
+                if (fetchDetails) {
+                    updateManga.awaitUpdateFromSource(state.manga, update.manga, manualFetch)
+                }
+                if (fetchChapters) {
+                    val newChapters = syncChaptersWithSource.await(
+                        update.chapters,
+                        state.manga,
+                        state.source,
+                        manualFetch,
+                    )
+
+                    if (manualFetch) {
+                        downloadNewChapters(newChapters)
+                    }
+                }
             }
         } catch (e: Throwable) {
             // Ignore early hints "errors" that aren't handled by OkHttp
             if (e is HttpException && e.code == 103) return
 
-            logcat(LogPriority.ERROR, e)
+            val message = if (e is NoChaptersException) {
+                context.stringResource(MR.strings.no_chapters_error)
+            } else {
+                logcat(LogPriority.ERROR, e)
+                with(context) { e.formattedMessage }
+            }
+
             screenModelScope.launch {
-                snackbarHostState.showSnackbar(message = with(context) { e.formattedMessage })
+                snackbarHostState.showSnackbar(message = message)
+            }
+            if (fetchChapters) {
+                val newManga = mangaRepository.getMangaById(mangaId)
+                updateSuccessState { it.copy(manga = newManga, isRefreshingData = false) }
             }
         }
     }
@@ -400,23 +430,32 @@ class MangaScreenModel(
     fun showMultiSourcePicker() {
         val manga = successState?.manga ?: return
         if (manga.source != MultiSourceMangaSource.ID) return
+        val selectedSourceId = MultiSourceMangaSource.preferredSourceId(manga.url)
+        // The dialog opens at once: searching every source takes a while, and a button that
+        // seems to do nothing for that long looks broken.
+        updateSuccessState {
+            it.copy(dialog = Dialog.MultiSourcePicker(emptyList(), selectedSourceId, isLoading = true))
+        }
         screenModelScope.launch {
             val options = MultiSourceMangaSource.availableSources(manga.url)
-            updateSuccessState {
-                it.copy(
-                    dialog = Dialog.MultiSourcePicker(
-                        options = options,
-                        selectedSourceId = MultiSourceMangaSource.preferredSourceId(manga.url),
-                    ),
-                )
+            updateSuccessState { state ->
+                // The user may have closed the dialog meanwhile.
+                if (state.dialog !is Dialog.MultiSourcePicker) {
+                    state
+                } else {
+                    state.copy(dialog = Dialog.MultiSourcePicker(options, selectedSourceId, isLoading = false))
+                }
             }
         }
     }
 
     fun selectMultiSource(manga: Manga, sourceId: Long?) {
         MultiSourceMangaSource.setPreferredSource(manga.url, sourceId)
-        updateSuccessState { it.copy(dialog = null) }
-        screenModelScope.launch { fetchChaptersFromSource(manualFetch = true) }
+        updateSuccessState { it.copy(dialog = null, isRefreshingData = true) }
+        screenModelScope.launch {
+            fetchFromSource(fetchDetails = false, fetchChapters = true, manualFetch = true)
+            updateSuccessState { it.copy(isRefreshingData = false) }
+        }
     }
 
     fun showSetMangaFetchIntervalDialog() {
@@ -584,42 +623,6 @@ class MangaScreenModel(
                 downloadProgress = activeDownload?.progress ?: 0,
                 selected = chapter.id in selectedChapterIds,
             )
-        }
-    }
-
-    /**
-     * Requests an updated list of chapters from the source.
-     */
-    private suspend fun fetchChaptersFromSource(manualFetch: Boolean = false) {
-        val state = successState ?: return
-        try {
-            withIOContext {
-                val chapters = state.source.getChapterList(state.manga.toSManga())
-
-                val newChapters = syncChaptersWithSource.await(
-                    chapters,
-                    state.manga,
-                    state.source,
-                    manualFetch,
-                )
-
-                if (manualFetch) {
-                    downloadNewChapters(newChapters)
-                }
-            }
-        } catch (e: Throwable) {
-            val message = if (e is NoChaptersException) {
-                context.stringResource(MR.strings.no_chapters_error)
-            } else {
-                logcat(LogPriority.ERROR, e)
-                with(context) { e.formattedMessage }
-            }
-
-            screenModelScope.launch {
-                snackbarHostState.showSnackbar(message = message)
-            }
-            val newManga = mangaRepository.getMangaById(mangaId)
-            updateSuccessState { it.copy(manga = newManga, isRefreshingData = false) }
         }
     }
 
@@ -1159,6 +1162,8 @@ class MangaScreenModel(
         data class MultiSourcePicker(
             val options: List<eu.kanade.tachiyomi.data.multisource.MangaSourceCoverage>,
             val selectedSourceId: Long?,
+            /** The sources are still being searched: the dialog shows a spinner meanwhile. */
+            val isLoading: Boolean = false,
         ) : Dialog
         data object SettingsSheet : Dialog
         data object TrackSheet : Dialog

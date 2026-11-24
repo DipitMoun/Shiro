@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import eu.kanade.tachiyomi.util.awaitSingle
 import rx.Observable
 
@@ -23,6 +24,31 @@ interface MangaSource {
 
     val lang: String
         get() = ""
+
+    /**
+     * Fetches updated information for a manga: its details, its chapters, or both.
+     *
+     * A source written for extensions-lib 1.6 overrides this. Older ones keep implementing
+     * [getMangaDetails] and [getChapterList], which this default calls. The app only goes through
+     * this method, so both kinds of source work.
+     *
+     * @since extensions-lib 1.6
+     * @param manga the manga to fetch updates for.
+     * @param chapters the chapters the app already has.
+     * @param fetchDetails whether to fetch the manga details.
+     * @param fetchChapters whether to fetch the chapter list.
+     */
+    suspend fun getMangaUpdate(
+        manga: SManga,
+        chapters: List<SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ): SMangaUpdate {
+        return SMangaUpdate(
+            manga = if (fetchDetails) getMangaDetails(manga) else manga,
+            chapters = if (fetchChapters) getChapterList(manga) else chapters,
+        )
+    }
 
     /**
      * Get the updated details for a manga.

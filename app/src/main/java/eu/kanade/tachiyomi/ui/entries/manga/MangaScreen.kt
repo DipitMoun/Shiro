@@ -290,6 +290,7 @@ class MangaScreen(
                 MultiSourcePickerDialog(
                     options = dialog.options,
                     selectedSourceId = dialog.selectedSourceId,
+                    isLoading = dialog.isLoading,
                     onSelect = { sourceId -> screenModel.selectMultiSource(successState.manga, sourceId) },
                     onDismissRequest = onDismissRequest,
                 )

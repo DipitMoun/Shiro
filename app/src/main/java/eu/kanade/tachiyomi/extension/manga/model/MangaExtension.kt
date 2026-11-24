@@ -45,6 +45,8 @@ sealed class MangaExtension {
         val iconUrl: String,
         val repoUrl: String,
         val signingKey: String = "",
+        /** Direct download URL when the index gives one (extensions-lib 1.6 indexes). */
+        val apkUrl: String? = null,
     ) : MangaExtension() {
 
         data class MangaSource(

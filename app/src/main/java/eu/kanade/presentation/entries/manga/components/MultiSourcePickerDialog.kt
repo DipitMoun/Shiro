@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -26,6 +28,7 @@ fun MultiSourcePickerDialog(
     selectedSourceId: Long?,
     onSelect: (Long?) -> Unit,
     onDismissRequest: () -> Unit,
+    isLoading: Boolean = false,
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -37,7 +40,18 @@ fun MultiSourcePickerDialog(
                     .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                if (options.isEmpty()) {
+                if (isLoading) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        Text(
+                            text = "Recherche des sources…",
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                } else if (options.isEmpty()) {
                     Text(text = "Aucune source ne propose cette œuvre.")
                 }
                 options.forEach { option ->

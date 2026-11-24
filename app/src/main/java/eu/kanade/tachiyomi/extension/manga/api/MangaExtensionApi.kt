@@ -14,6 +14,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import logcat.LogPriority
 import mihon.domain.extensionrepo.manga.interactor.GetMangaExtensionRepo
 import mihon.domain.extensionrepo.manga.interactor.UpdateMangaExtensionRepo
@@ -56,14 +57,36 @@ internal class MangaExtensionApi {
                 .newCall(GET("$repoBaseUrl/index.min.json"))
                 .awaitSuccess()
 
-            with(json) {
+            val legacy = with(json) {
                 response
                     .parseAs<List<ExtensionJsonObject>>()
                     .toExtensions(repoBaseUrl, extRepo.signingKeyFingerprint)
             }
+
+            // Some repos (Keiyoushi) now serve a two-entry stub here that only tells old apps to
+            // update, and publish the real catalogue in the extensions-lib 1.6 index.
+            if (legacy.size > LEGACY_STUB_MAX_ENTRIES) {
+                legacy
+            } else {
+                fetchNewIndex(repoBaseUrl, extRepo.signingKeyFingerprint)?.takeIf { it.isNotEmpty() } ?: legacy
+            }
         } catch (e: Throwable) {
             logcat(LogPriority.ERROR, e) { "Failed to get extensions from $repoBaseUrl" }
             emptyList()
+        }
+    }
+
+    /** The extensions-lib 1.6 index, or null when the repo does not publish one. */
+    private suspend fun fetchNewIndex(repoBaseUrl: String, fallbackSigningKey: String): List<MangaExtension.Available>? {
+        return try {
+            val body = networkService.client
+                .newCall(GET("$repoBaseUrl/index.json"))
+                .awaitSuccess()
+                .use { it.body.string() }
+            parseNewIndex(json, body, repoBaseUrl, fallbackSigningKey)
+        } catch (e: Throwable) {
+            logcat(LogPriority.WARN, e) { "No usable 1.6 index at $repoBaseUrl" }
+            null
         }
     }
 
@@ -150,7 +173,7 @@ internal class MangaExtensionApi {
     }
 
     fun getApkUrl(extension: MangaExtension.Available): String {
-        return "${extension.repoUrl}/apk/${extension.apkName}"
+        return extension.apkUrl ?: "${extension.repoUrl}/apk/${extension.apkName}"
     }
 
     private fun ExtensionJsonObject.extractLibVersion(): Double {
@@ -185,4 +208,94 @@ private val extensionSourceMapper: (ExtensionSourceJsonObject) -> MangaExtension
         name = it.name,
         baseUrl = it.baseUrl,
     )
+}
+
+// extensions-lib 1.6 index (https://.../index.json). Numbers may come as strings or numbers.
+private const val LEGACY_STUB_MAX_ENTRIES = 3
+
+@Serializable
+private data class NewIndexJsonObject(
+    val signingKey: String = "",
+    val extensionList: NewExtensionListJsonObject? = null,
+)
+
+@Serializable
+private data class NewExtensionListJsonObject(
+    val extensions: List<NewExtensionJsonObject> = emptyList(),
+)
+
+@Serializable
+private data class NewExtensionJsonObject(
+    val name: String,
+    val packageName: String,
+    val resources: NewResourcesJsonObject,
+    val extensionLib: String? = null,
+    val versionCode: JsonPrimitive,
+    val versionName: String,
+    val contentWarning: String? = null,
+    val sources: List<NewSourceJsonObject> = emptyList(),
+)
+
+@Serializable
+private data class NewResourcesJsonObject(
+    val apkUrl: String,
+    val iconUrl: String? = null,
+)
+
+@Serializable
+private data class NewSourceJsonObject(
+    val id: JsonPrimitive,
+    val name: String,
+    val language: String,
+    val homeUrl: String = "",
+)
+
+private fun NewExtensionJsonObject.toAvailable(
+    repoUrl: String,
+    signingKey: String,
+): MangaExtension.Available? {
+    val code = versionCode.content.toLongOrNull() ?: return null
+    val lib = (extensionLib ?: versionName.substringBeforeLast('.')).toDoubleOrNull() ?: return null
+    val mappedSources = sources.mapNotNull { source ->
+        val id = source.id.content.toLongOrNull() ?: return@mapNotNull null
+        MangaExtension.Available.MangaSource(id = id, lang = source.language, name = source.name, baseUrl = source.homeUrl)
+    }
+    // One language for the whole extension when its sources agree, "all" otherwise.
+    val languages = mappedSources.map { it.lang }.distinct()
+    return MangaExtension.Available(
+        name = name.substringAfter("Tachiyomi: "),
+        pkgName = packageName,
+        versionName = versionName,
+        versionCode = code,
+        libVersion = lib,
+        lang = languages.singleOrNull() ?: "all",
+        isNsfw = contentWarning == "CONTENT_WARNING_NSFW",
+        sources = mappedSources,
+        apkName = resources.apkUrl.substringAfterLast('/'),
+        iconUrl = resources.iconUrl ?: "$repoUrl/icon/$packageName.png",
+        repoUrl = repoUrl,
+        signingKey = signingKey,
+        apkUrl = resources.apkUrl,
+    )
+}
+
+/**
+ * Reads an extensions-lib 1.6 index. Null when [body] is not in that format; extensions built for
+ * a library version the app does not support are left out.
+ */
+internal fun parseNewIndex(
+    json: Json,
+    body: String,
+    repoUrl: String,
+    fallbackSigningKey: String,
+): List<MangaExtension.Available>? {
+    val index = runCatching { json.decodeFromString<NewIndexJsonObject>(body) }.getOrNull() ?: return null
+    val extensions = index.extensionList?.extensions ?: return null
+    val signingKey = fallbackSigningKey.ifBlank { index.signingKey }
+    return extensions
+        .mapNotNull { it.toAvailable(repoUrl, signingKey) }
+        .filter {
+            it.libVersion >= MangaExtensionLoader.LIB_VERSION_MIN &&
+                it.libVersion <= MangaExtensionLoader.LIB_VERSION_MAX
+        }
 }

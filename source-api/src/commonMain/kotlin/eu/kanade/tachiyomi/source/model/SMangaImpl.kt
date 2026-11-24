@@ -2,6 +2,9 @@
 
 package eu.kanade.tachiyomi.source.model
 
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
+
 class SMangaImpl : SManga {
 
     override lateinit var url: String
@@ -23,4 +26,14 @@ class SMangaImpl : SManga {
     override var update_strategy: UpdateStrategy = UpdateStrategy.ALWAYS_UPDATE
 
     override var initialized: Boolean = false
+
+    // Not part of Java serialization: JsonObject is not Serializable, so it is rebuilt empty.
+    @Transient
+    private var memoValue: JsonObject? = null
+
+    override var memo: JsonObject
+        get() = memoValue ?: JsonObject.EMPTY
+        set(value) {
+            memoValue = value
+        }
 }

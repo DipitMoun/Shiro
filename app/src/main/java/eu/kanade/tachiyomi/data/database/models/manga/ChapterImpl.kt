@@ -2,6 +2,9 @@
 
 package eu.kanade.tachiyomi.data.database.models.manga
 
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
+
 class ChapterImpl : Chapter {
 
     override var id: Long? = null
@@ -13,6 +16,15 @@ class ChapterImpl : Chapter {
     override lateinit var name: String
 
     override var scanlator: String? = null
+
+    @Transient
+    private var memoValue: JsonObject? = null
+
+    override var memo: JsonObject
+        get() = memoValue ?: JsonObject.EMPTY
+        set(value) {
+            memoValue = value
+        }
 
     override var read: Boolean = false
 
