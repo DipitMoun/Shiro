@@ -15,6 +15,38 @@ Dernière release publiée : build du 18/11/2026 (commit `40d0fb031`).
 
 ### Quoi de neuf
 
+**Manga**
+- Les extensions manga du catalogue actuel de Keiyoushi se chargent de nouveau, y compris les
+  françaises : MANGA Plus, Webtoons et bien d'autres. Le nouveau format d'extensions est pris
+  en charge, sans casser les anciennes.
+- Les œuvres multi-source manga fonctionnent comme celles de l'anime : le bouton Sources
+  tourne pendant la recherche puis indique la couverture, un panneau liste les sources avec ce
+  que chacune propose, et tu peux choisir la source principale. Chaque chapitre a des sources
+  de secours si la première échoue.
+- Plus d'alerte d'erreur quand on ouvre une œuvre : la fiche charge les détails et les
+  chapitres en une seule demande.
+
+**Anime**
+- La fenêtre avant un téléchargement s'affiche tout de suite, avec la source de chaque vidéo,
+  les langues et le poids estimé. Ton choix de source et de qualité est retenu pour les
+  téléchargements groupés, et « 20 prochains épisodes » rejoint la liste.
+- Les téléchargements vont plus vite : plusieurs connexions en même temps, avec le poids
+  téléchargé affiché à côté du pourcentage.
+- La recherche des sources est bien plus rapide.
+
+**Social**
+- Le chat existe aussi pour les mangas, avec un fil par chapitre. Tu peux partager une page :
+  elle s'ouvre directement dans le lecteur chez ton ami.
+- Envoyer un message depuis une notification est plus fiable, et si tu n'as pas l'œuvre en
+  bibliothèque, Shiro te propose de l'ajouter pour répondre.
+- Restaurer une sauvegarde ne signale plus comme erreur les dépôts déjà installés.
+
+---
+
+## 0.19.0
+
+### Quoi de neuf
+
 **Social**
 - Social prend la place de « Mises à jour » dans la barre du bas, avec ta photo de profil
   comme icône. Les mises à jour restent accessibles depuis l'onglet Plus.
