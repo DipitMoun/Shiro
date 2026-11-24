@@ -76,8 +76,28 @@ object MultiSourceAnimeSource : AnimeSource {
         val work = store.get(anime.url)
         return SAnimeEpisodeUpdate(
             anime = if (fetchDetails && work != null) work.toSAnime(anime.url) else anime,
-            episodes = if (fetchEpisodes && work != null) work.toEpisodes(anime.url) else episodes,
+            episodes = if (fetchEpisodes && work != null) {
+                work.toEpisodes(anime.url, minimumCount = knownEpisodeCount(anime.url, episodes))
+            } else {
+                episodes
+            },
         )
+    }
+
+    /**
+     * Highest episode number already known for a work: in the library or mapped to a source.
+     *
+     * Catalog providers disagree on the episode count of airing shows and the stored count is
+     * rewritten every time the work is opened, so the generated list must never shrink below
+     * what the user already has, otherwise the sync deletes those episodes and their history.
+     */
+    private fun knownEpisodeCount(workUrl: String, episodes: List<SEpisode>): Int {
+        val inLibrary = episodes
+            .filter { it.url.startsWith(workUrl + MultiSourceMappingStore.EPISODE_MARKER) }
+            .maxOfOrNull { it.episode_number.toInt() }
+            ?: 0
+        val mapped = mappingStore.get(workUrl).keys.maxOrNull() ?: 0
+        return maxOf(inLibrary, mapped)
     }
 
     override suspend fun getAnimeSeasonUpdate(
@@ -456,8 +476,8 @@ fun CatalogWork.toSAnime(url: String): SAnime {
     }
 }
 
-fun CatalogWork.toEpisodes(workUrl: String): List<SEpisode> {
-    val count = episodes ?: return emptyList()
+fun CatalogWork.toEpisodes(workUrl: String, minimumCount: Int = 0): List<SEpisode> {
+    val count = maxOf(episodes ?: 0, minimumCount)
     if (count <= 0) return emptyList()
 
     val now = System.currentTimeMillis()

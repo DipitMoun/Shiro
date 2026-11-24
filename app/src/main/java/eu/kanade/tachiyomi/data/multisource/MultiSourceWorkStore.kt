@@ -23,7 +23,15 @@ class MultiSourceWorkStore(context: Context) {
 
     fun put(work: CatalogWork): String {
         val url = urlFor(work)
-        prefs.edit().putString(url, json.encodeToString(work)).apply()
+        // Providers disagree on airing shows (and a provider may not answer): never lower a
+        // known episode count, the generated episode list would shrink with it.
+        val previousCount = get(url)?.episodes
+        val stored = if (previousCount != null && previousCount > (work.episodes ?: 0)) {
+            work.copy(episodes = previousCount)
+        } else {
+            work
+        }
+        prefs.edit().putString(url, json.encodeToString(stored)).apply()
         return url
     }
 

@@ -11,6 +11,8 @@ import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadProvider
 import tachiyomi.data.items.episode.EpisodeSanitizer
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.history.anime.model.AnimeHistoryUpdate
+import tachiyomi.domain.history.anime.repository.AnimeHistoryRepository
 import tachiyomi.domain.items.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.items.episode.interactor.ShouldUpdateDbEpisode
 import tachiyomi.domain.items.episode.interactor.UpdateEpisode
@@ -23,6 +25,7 @@ import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.source.local.entries.anime.isLocal
 import java.lang.Long.max
 import java.time.ZonedDateTime
+import java.util.Date
 import java.util.TreeSet
 
 class SyncEpisodesWithSource(
@@ -34,6 +37,7 @@ class SyncEpisodesWithSource(
     private val updateEpisode: UpdateEpisode,
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId,
     private val libraryPreferences: LibraryPreferences,
+    private val animeHistoryRepository: AnimeHistoryRepository,
 ) {
 
     /**
@@ -187,6 +191,29 @@ class SyncEpisodesWithSource(
         val deletedEpisodeNumberDateFetchMap = removedEpisodes.sortedByDescending { it.dateFetch }
             .associate { it.episodeNumber to it.dateFetch }
 
+        // Shiro: history rows are deleted with their episode (FK cascade). Generated episode
+        // lists (multi-source, Telegram) may drop and re-create an episode, so keep its
+        // history and playback progress to move them onto the re-created episode.
+        val deletedProgressByNumber = removedEpisodes
+            .filter { it.isRecognizedNumber && it.lastSecondSeen > 0L }
+            .groupBy { it.episodeNumber }
+            .mapValues { (_, episodes) -> episodes.maxBy { it.lastSecondSeen } }
+        val deletedHistoryByNumber = if (removedEpisodes.isEmpty()) {
+            emptyMap()
+        } else {
+            val removedNumberById = removedEpisodes
+                .filter { it.isRecognizedNumber }
+                .associate { it.id to it.episodeNumber }
+            animeHistoryRepository.getHistoryByAnimeId(anime.id)
+                .mapNotNull { history ->
+                    val number = removedNumberById[history.episodeId] ?: return@mapNotNull null
+                    val seenAt = history.seenAt?.takeIf { it.time > 0L } ?: return@mapNotNull null
+                    number to seenAt
+                }
+                .groupBy({ it.first }, { it.second })
+                .mapValues { (_, dates) -> dates.maxBy { it.time } }
+        }
+
         val markDuplicateAsRead = libraryPreferences.markDuplicateSeenEpisodeAsSeen().get()
             .contains(LibraryPreferences.MARK_DUPLICATE_EPISODE_SEEN_NEW)
 
@@ -208,6 +235,15 @@ class SyncEpisodesWithSource(
                 bookmark = episode.episodeNumber in deletedBookmarkedEpisodeNumbers,
             )
 
+            deletedProgressByNumber[episode.episodeNumber]?.let { previous ->
+                if (episode.lastSecondSeen == 0L) {
+                    episode = episode.copy(
+                        lastSecondSeen = previous.lastSecondSeen,
+                        totalSeconds = episode.totalSeconds.takeIf { it > 0L } ?: previous.totalSeconds,
+                    )
+                }
+            }
+
             // Try to to use the fetch date of the original entry to not pollute 'Updates' tab
             deletedEpisodeNumberDateFetchMap[episode.episodeNumber]?.let {
                 episode = episode.copy(dateFetch = it)
@@ -225,6 +261,15 @@ class SyncEpisodesWithSource(
 
         if (updatedToAdd.isNotEmpty()) {
             updatedToAdd = episodeRepository.addAllEpisodes(updatedToAdd)
+        }
+
+        if (deletedHistoryByNumber.isNotEmpty()) {
+            updatedToAdd
+                .filter { it.isRecognizedNumber }
+                .forEach { episode ->
+                    val seenAt: Date = deletedHistoryByNumber[episode.episodeNumber] ?: return@forEach
+                    animeHistoryRepository.upsertAnimeHistory(AnimeHistoryUpdate(episode.id, seenAt))
+                }
         }
 
         if (updatedEpisodes.isNotEmpty()) {
