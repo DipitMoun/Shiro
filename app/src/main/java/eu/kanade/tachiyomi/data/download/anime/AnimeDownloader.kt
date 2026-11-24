@@ -25,7 +25,11 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.download.anime.model.AnimeDownload
 import eu.kanade.tachiyomi.data.library.anime.AnimeLibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.media.EpisodeMediaValidator
+import eu.kanade.tachiyomi.data.multisource.MultiSourceAnimeSource
 import eu.kanade.tachiyomi.data.multisource.MultiSourceDebugLog
+import eu.kanade.tachiyomi.network.NetworkHelper
+import okhttp3.Headers
+import eu.kanade.tachiyomi.data.multisource.MultiSourceDownloadChoiceStore
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
 import eu.kanade.tachiyomi.data.telegram.TelegramUrls
 import eu.kanade.tachiyomi.data.telegram.tdlib.TelegramAuthManager
@@ -76,6 +80,7 @@ import tachiyomi.i18n.aniyomi.AYMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.io.File
 import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -97,6 +102,7 @@ class AnimeDownloader(
     private val torrentServerApi: TorrentServerApi = Injekt.get(),
     private val torrentServerUtils: TorrentServerUtils = Injekt.get(),
     private val torrentPreferences: TorrentPreferences = Injekt.get(),
+    private val networkHelper: NetworkHelper = Injekt.get(),
 ) {
     /**
      * Store for persisting downloads across restarts.
@@ -381,7 +387,18 @@ class AnimeDownloader(
                 if (hosters.isEmpty()) {
                     throw Exception(context.stringResource(AYMR.strings.video_list_empty_error))
                 }
-                val bestVideo = HosterLoader.getBestVideo(download.source, hosters)
+                // Grouped downloads of a multi-source work follow the source and quality the
+                // user picked once for the series, then fall back to the automatic choice.
+                val chosenVideo = if (download.source is MultiSourceAnimeSource) {
+                    runCatching {
+                        Injekt.get<MultiSourceDownloadChoiceStore>()
+                            .pickVideo(download.anime.url, download.source, hosters)
+                    }.getOrNull()
+                } else {
+                    null
+                }
+                val bestVideo = chosenVideo
+                    ?: HosterLoader.getBestVideo(download.source, hosters)
                     ?: throw Exception(context.stringResource(AYMR.strings.video_list_empty_error))
                 download.video = bestVideo
             }
@@ -546,7 +563,7 @@ class AnimeDownloader(
                 if (torrentPreferences.torrServerEnable().get() && isTorrent(download.video)) {
                     torrentDownload(download, tmpDir, videoFile, filename)
                 } else {
-                    ffmpegDownload(download, tmpDir, videoFile, filename)
+                    downloadStream(download, tmpDir, videoFile, filename)
                 }
             } catch (e: Exception) {
                 videoFile.delete()
@@ -638,6 +655,95 @@ class AnimeDownloader(
         }
     }
 
+    /**
+     * Downloads over several connections when the stream allows it, then lets ffmpeg remux the
+     * local result. Any problem on that path falls back to the plain ffmpeg download, so the
+     * parallel download can only make things faster, never worse.
+     */
+    private suspend fun downloadStream(
+        download: AnimeDownload,
+        tmpDir: UniFile,
+        videoFile: UniFile,
+        filename: String,
+    ) {
+        val video = download.video!!
+        val kind = parallelKind(video)
+        if (kind == null) {
+            ffmpegDownload(download, tmpDir, videoFile, filename)
+            return
+        }
+
+        val root = File(context.cacheDir, PARALLEL_DIR)
+        // A previous attempt for another URL of the same episode would only waste space.
+        root.listFiles()
+            ?.filter { it.name.startsWith("${download.episode.id}-") }
+            ?.forEach { it.deleteRecursively() }
+        val workDir = File(root, "${download.episode.id}-${video.videoUrl.hashCode()}")
+
+        try {
+            root.mkdirs()
+            if (root.usableSpace < PARALLEL_MIN_FREE_BYTES) {
+                throw IOException("not enough internal space for a parallel download")
+            }
+            val headers = video.headers ?: (download.source as? AnimeHttpSource)?.headers ?: Headers.headersOf()
+            val parallel = ParallelDownloader(networkHelper.client)
+            val onProgress = { p: ParallelDownloader.Progress ->
+                download.downloadedBytes = p.bytes
+                download.totalBytes = p.estimatedTotalBytes
+                download.progress = (p.fraction * PARALLEL_PHASE_PERCENT).toInt()
+            }
+            val local = when (kind) {
+                ParallelKind.HLS -> parallel.downloadHls(video.videoUrl, headers, video.resolution, workDir, onProgress)
+                ParallelKind.FILE -> parallel.downloadFile(video.videoUrl, headers, workDir, onProgress)
+            }
+
+            MultiSourceDebugLog.log("parallel", "ok ${kind.name} bytes=${download.downloadedBytes} url=${video.videoUrl}")
+            download.video = video.copy(videoUrl = local.absolutePath)
+            try {
+                ffmpegDownload(
+                    download,
+                    tmpDir,
+                    videoFile,
+                    filename,
+                    progressStart = PARALLEL_PHASE_PERCENT,
+                    progressSpan = 100 - PARALLEL_PHASE_PERCENT,
+                )
+            } finally {
+                download.video = video
+            }
+            workDir.deleteRecursively()
+            return
+        } catch (e: CancellationException) {
+            // Paused or cancelled: the downloaded pieces stay, a resume picks them up.
+            throw e
+        } catch (e: Exception) {
+            MultiSourceDebugLog.log("parallel", "repli sur ffmpeg (${e.javaClass.simpleName}: ${e.message}) url=${video.videoUrl}", e)
+            workDir.deleteRecursively()
+            download.video = video
+            download.downloadedBytes = 0
+            download.totalBytes = 0
+            download.progress = 0
+        }
+
+        ffmpegDownload(download, tmpDir, videoFile, filename)
+    }
+
+    private enum class ParallelKind { HLS, FILE }
+
+    /** Which parallel strategy fits [video], or null when it should go straight to ffmpeg. */
+    private fun parallelKind(video: Video): ParallelKind? {
+        val url = video.videoUrl
+        if (!url.startsWith("http")) return null
+        // Local servers (torrent, extension proxies) and custom ffmpeg arguments stay untouched.
+        if (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1")) return null
+        if (video.ffmpegStreamArgs.isNotEmpty() || video.ffmpegVideoArgs.isNotEmpty()) return null
+        return if (url.substringBefore('?').endsWith(".m3u8", ignoreCase = true)) {
+            ParallelKind.HLS
+        } else {
+            ParallelKind.FILE
+        }
+    }
+
     private fun isTorrent(video: Video?): Boolean {
         val url = video?.videoUrl ?: return false
         return url.startsWith("magnet") || url.endsWith(".torrent") || url.startsWith(torrentServerApi.hostUrl)
@@ -678,6 +784,9 @@ class AnimeDownloader(
         tmpDir: UniFile,
         videoFile: UniFile,
         filename: String,
+        // Part of the progress bar this step covers (the parallel fetch takes the first part).
+        progressStart: Int = 0,
+        progressSpan: Int = 100,
     ) {
         val video = download.video!!
 
@@ -718,11 +827,11 @@ class AnimeDownloader(
             val outTime = (s.time / 1000.0).toLong()
 
             if (duration != 0L && outTime > 0) {
-                download.progress = (100 * outTime / duration).toInt()
+                download.progress = progressStart + (progressSpan * outTime / duration).toInt()
             }
         }
 
-        duration = runCatching { getDuration(ffprobeCommand(video.videoUrl, headerOptions)) }
+        duration = runCatching { getDuration(ffprobeCommand(video.videoUrl, headerOptions.takeIf { video.videoUrl.startsWith("http") })) }
             .onFailure {
                 MultiSourceDebugLog.log("ffmpeg", "ffprobe échoué url=${video.videoUrl}", it)
             }
@@ -804,7 +913,9 @@ class AnimeDownloader(
             if (isHls) {
                 add("-protocol_whitelist file,http,https,tcp,tls,crypto")
                 add("-allowed_extensions ALL")
-                add("-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5")
+                if (video.videoUrl.startsWith("http")) {
+                    add("-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5")
+                }
             }
             add(sourceStreamOptions)
             add("-i")
@@ -1089,3 +1200,10 @@ class AnimeDownloader(
 
 // Arbitrary minimum required space to start a download: 200 MB
 private const val MIN_DISK_SPACE = 200L * 1024 * 1024
+
+// Parallel downloads keep their pieces in the app cache before the remux.
+private const val PARALLEL_DIR = "parallel-dl"
+private const val PARALLEL_MIN_FREE_BYTES = 1024L * 1024 * 1024
+
+// Share of the progress bar given to the parallel fetch; the remux takes the rest.
+private const val PARALLEL_PHASE_PERCENT = 90

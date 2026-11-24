@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.download.anime
 
+import android.text.format.Formatter
 import android.view.View
 import androidx.recyclerview.widget.ItemTouchHelper
 import eu.davidea.viewholders.FlexibleViewHolder
@@ -75,10 +76,20 @@ class AnimeDownloadHolder(private val view: View, val adapter: AnimeDownloadAdap
      * Updates the text field of the number of downloaded pages.
      */
     fun notifyDownloadedPages() {
-        binding.downloadProgressText.text = if (download.progress == 0) {
+        val percentText = if (download.progress == 0) {
             view.context.stringResource(MR.strings.update_check_notification_download_in_progress)
         } else {
             view.context.stringResource(AYMR.strings.episode_download_progress, download.progress)
+        }
+        // Parallel downloads know how many bytes they moved: show it next to the percentage.
+        val downloaded = download.downloadedBytes
+        val total = download.totalBytes
+        binding.downloadProgressText.text = if (total > 0L && downloaded > 0L) {
+            val context = view.context
+            "$percentText · ${Formatter.formatShortFileSize(context, downloaded)} / " +
+                Formatter.formatShortFileSize(context, total)
+        } else {
+            percentText
         }
     }
 

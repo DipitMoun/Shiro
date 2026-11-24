@@ -45,6 +45,13 @@ data class AnimeDownload(
             progressStateFlow.value = value
         }
 
+    /** Bytes written so far and the estimated total, when the download knows them (0 otherwise). */
+    @Volatile
+    var downloadedBytes: Long = 0L
+
+    @Volatile
+    var totalBytes: Long = 0L
+
     /**
      * Updates the status of the download
      *
