@@ -98,3 +98,8 @@
 # rustls-platform-verifier JNI entrypoints (referenced only from Rust).
 -keep class org.rustls.platformverifier.** { *; }
 -keepclassmembers class org.rustls.platformverifier.CertificateVerifier { *; }
+
+# zstd-kmp (okhttp-zstd): the native library looks its Java classes up by name through JNI.
+# Without this R8 removes them and the app aborts on the first zstd-compressed response.
+-keep class com.squareup.zstd.** { *; }
+-keepclassmembers class com.squareup.zstd.** { *; }
