@@ -259,7 +259,7 @@ fun MangaLibraryContent(
                                 title = cat.name,
                                 subtitle = collectionWorkCountLabel(catWorks.size),
                                 previewImages = worksWithCover
-                                    .mapNotNull { it.libraryManga.manga.thumbnailUrl }
+                                    .map { it.libraryManga.manga.asMangaCover() }
                                     .take(3),
                                 bannerModel = collectionBannerModel(
                                     metadataManager.getMetadata(CollectionType.MANGA, cat.id).bannerPath,
@@ -306,7 +306,7 @@ fun MangaLibraryContent(
                                 title = sub.name,
                                 subtitle = collectionWorkCountLabel(subWorks.size),
                                 previewImages = worksWithCover
-                                    .mapNotNull { it.libraryManga.manga.thumbnailUrl }
+                                    .map { it.libraryManga.manga.asMangaCover() }
                                     .take(3),
                                 bannerModel = collectionBannerModel(
                                     metadataManager.getMetadata(CollectionType.MANGA, sub.id).bannerPath,

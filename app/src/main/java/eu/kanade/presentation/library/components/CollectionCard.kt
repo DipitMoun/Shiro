@@ -44,13 +44,14 @@ import eu.kanade.presentation.entries.components.ItemCover
 fun CollectionCard(
     title: String,
     subtitle: String,
-    previewImages: List<String>,
+    /** Cover models (cover loader data or plain URLs), most recent first. */
+    previewImages: List<Any>,
     bannerModel: Any?,
     onClick: () -> Unit,
     onImageClick: (index: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val covers = previewImages.filter { it.isNotBlank() }
+    val covers = previewImages.filter { it !is String || it.isNotBlank() }
     val showMosaic = covers.size >= 3
 
     Column(
@@ -138,7 +139,7 @@ fun collectionWorkCountLabel(count: Int): String = if (count > 1) "$count titres
 
 @Composable
 private fun MosaicCell(
-    imageUrl: String,
+    imageModel: Any,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
@@ -149,9 +150,9 @@ private fun MosaicCell(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick),
     ) {
-        if (imageUrl.isNotBlank()) {
+        if (imageModel !is String || imageModel.isNotBlank()) {
             AsyncImage(
-                model = imageUrl,
+                model = imageModel,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

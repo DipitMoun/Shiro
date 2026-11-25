@@ -16,6 +16,8 @@ Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 ### Quoi de neuf
 
 **Correctif**
+- Les couvertures qui restaient grises dans la case d'une catégorie (mosaïque des collections, Animé et
+  Manga) s'affichent de nouveau.
 - « Voir l'œuvre » dans une conversation ouvre l'œuvre exacte : l'app cherche dans les animes et les
   mangas, garde le titre le plus proche (synonymes compris), et une œuvre dont le titre n'est qu'un
   morceau du bon (« Le Retour » pour « Le retour du clan Hwasan ») n'est plus prise pour elle.

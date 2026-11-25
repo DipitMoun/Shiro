@@ -304,7 +304,7 @@ fun AnimeLibraryContent(
                                 title = cat.name,
                                 subtitle = collectionWorkCountLabel(catWorks.size),
                                 previewImages = worksWithCover
-                                    .mapNotNull { it.libraryAnime.anime.thumbnailUrl }
+                                    .map { it.libraryAnime.anime.asAnimeCover() }
                                     .take(3),
                                 bannerModel = collectionBannerModel(
                                     catMetadata.bannerPath,
@@ -355,7 +355,7 @@ fun AnimeLibraryContent(
                                 title = sub.name,
                                 subtitle = collectionWorkCountLabel(subWorks.size),
                                 previewImages = worksWithCover
-                                    .mapNotNull { it.libraryAnime.anime.thumbnailUrl }
+                                    .map { it.libraryAnime.anime.asAnimeCover() }
                                     .take(3),
                                 bannerModel = collectionBannerModel(
                                     subMetadata.bannerPath,
