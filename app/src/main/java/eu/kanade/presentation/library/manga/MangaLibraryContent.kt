@@ -73,6 +73,8 @@ fun MangaLibraryContent(
     onCategoryClick: (Category) -> Unit,
     onMangaClicked: (Long) -> Unit,
     onContinueReadingClicked: ((LibraryManga) -> Unit)?,
+    /** The "resume" button on the grid items follows the library setting; the carousel's does not. */
+    showGridContinueButton: Boolean = true,
     onToggleSelection: (LibraryManga) -> Unit,
     onToggleRangeSelection: (LibraryManga) -> Unit,
     onRefresh: (Category?) -> Boolean,
@@ -287,7 +289,7 @@ fun MangaLibraryContent(
                                 isSelected = selection.any { it.id == libraryItem.libraryManga.id },
                                 onClick = { onMangaClicked(libraryItem.libraryManga.manga.id) },
                                 onLongClick = { onToggleRangeSelection(libraryItem.libraryManga) },
-                                onClickContinueReading = onContinueReadingClicked,
+                                onClickContinueReading = onContinueReadingClicked.takeIf { showGridContinueButton },
                             )
                         }
                     }
@@ -334,7 +336,7 @@ fun MangaLibraryContent(
                                 isSelected = selection.any { it.id == libraryItem.libraryManga.id },
                                 onClick = { onMangaClicked(libraryItem.libraryManga.manga.id) },
                                 onLongClick = { onToggleRangeSelection(libraryItem.libraryManga) },
-                                onClickContinueReading = onContinueReadingClicked,
+                                onClickContinueReading = onContinueReadingClicked.takeIf { showGridContinueButton },
                             )
                         }
                     }

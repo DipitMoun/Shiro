@@ -77,6 +77,8 @@ fun AnimeLibraryContent(
     onCategoryClick: (Category) -> Unit,
     onAnimeClicked: (Long) -> Unit,
     onContinueWatchingClicked: ((LibraryAnime) -> Unit)?,
+    /** The "resume" button on the grid items follows the library setting; the carousel's does not. */
+    showGridContinueButton: Boolean = true,
     onToggleSelection: (LibraryAnime) -> Unit,
     onToggleRangeSelection: (LibraryAnime) -> Unit,
     onRefresh: (Category?) -> Boolean,
@@ -332,7 +334,7 @@ fun AnimeLibraryContent(
                                 isSelected = selection.any { it.id == libraryItem.libraryAnime.id },
                                 onClick = { onAnimeClicked(libraryItem.libraryAnime.anime.id) },
                                 onLongClick = { onToggleRangeSelection(libraryItem.libraryAnime) },
-                                onClickContinueWatching = onContinueWatchingClicked,
+                                onClickContinueWatching = onContinueWatchingClicked.takeIf { showGridContinueButton },
                                 getEpisodes = getEpisodes,
                             )
                         }
@@ -383,7 +385,7 @@ fun AnimeLibraryContent(
                                 isSelected = selection.any { it.id == libraryItem.libraryAnime.id },
                                 onClick = { onAnimeClicked(libraryItem.libraryAnime.anime.id) },
                                 onLongClick = { onToggleRangeSelection(libraryItem.libraryAnime) },
-                                onClickContinueWatching = onContinueWatchingClicked,
+                                onClickContinueWatching = onContinueWatchingClicked.takeIf { showGridContinueButton },
                                 getEpisodes = getEpisodes,
                             )
                         }

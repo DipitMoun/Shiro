@@ -274,7 +274,8 @@ data object AnimeLibraryTab : Tab {
                                 if (episode != null) openEpisode(episode)
                             }
                             Unit
-                        }.takeIf { state.showAnimeContinueButton },
+                        },
+                        showGridContinueButton = state.showAnimeContinueButton,
                         onToggleSelection = screenModel::toggleSelection,
                         onToggleRangeSelection = {
                             screenModel.toggleRangeSelection(it)

@@ -293,7 +293,8 @@ data object MangaLibraryTab : Tab {
                                 }
                             }
                             Unit
-                        }.takeIf { state.showMangaContinueButton },
+                        },
+                        showGridContinueButton = state.showMangaContinueButton,
                         onToggleSelection = screenModel::toggleSelection,
                         onToggleRangeSelection = {
                             screenModel.toggleRangeSelection(it)
