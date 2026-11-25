@@ -5,6 +5,9 @@ import eu.kanade.tachiyomi.data.multisource.MultiSourceMangaWorkOpener
 import eu.kanade.tachiyomi.data.multisource.MultiSourceWorkOpener
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogRepository
+import eu.kanade.tachiyomi.ui.browse.catalog.CatalogWork
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import eu.kanade.tachiyomi.ui.browse.catalog.CatalogType
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen
 import eu.kanade.tachiyomi.ui.entries.manga.MangaScreen
@@ -45,7 +48,11 @@ internal object SocialWorkMatching {
      * contains it, which beats shared words. Takes every name a candidate has (original title,
      * synonyms). Null when nothing is reasonably close.
      */
-    fun <T> bestMatch(title: String, items: List<T>, namesOf: (T) -> List<String>): T? {
+    fun <T> bestMatch(title: String, items: List<T>, namesOf: (T) -> List<String>): T? =
+        bestMatchScored(title, items, namesOf)?.first
+
+    /** Like [bestMatch], with the score (1000 is an exact title) so two lists can be compared. */
+    fun <T> bestMatchScored(title: String, items: List<T>, namesOf: (T) -> List<String>): Pair<T, Int>? {
         val wanted = normalize(title)
         if (wanted.isEmpty()) return null
         val wantedWords = words(title).toSet()
@@ -71,7 +78,6 @@ internal object SocialWorkMatching {
             .map { item -> item to (namesOf(item).maxOfOrNull(::score) ?: 0) }
             .filter { it.second >= MIN_SCORE }
             .maxByOrNull { it.second }
-            ?.first
     }
 
     fun cleanTitleForSearch(raw: String): String {
@@ -155,34 +161,70 @@ internal class SocialWorkOpener(
     private val network: NetworkHelper = Injekt.get(),
 ) {
 
-    /** @return the screen to push, or null when the work cannot be found. */
-    suspend fun open(title: String, isManga: Boolean): Screen? {
-        return if (isManga) openManga(title) else openAnime(title)
+    /**
+     * @param isManga true or false when the kind of work is known; null when it is not (a
+     * conversation about a work the user does not have): both libraries and both catalogs are
+     * looked at and the closest title wins.
+     * @return the screen to push, or null when the work cannot be found.
+     */
+    suspend fun open(title: String, isManga: Boolean?): Screen? {
+        return when (isManga) {
+            true -> openManga(title)
+            false -> openAnime(title)
+            null -> openEither(title)
+        }
     }
 
     private suspend fun openAnime(title: String): Screen? {
         SocialWorkMatching.matchTitle(title, getAnimeFavorites.await()) { it.title }
             ?.let { return AnimeScreen(animeId = it.id, fromSource = false) }
-        val work = search(title, CatalogType.ANIME) ?: return null
+        val work = search(title, CatalogType.ANIME)?.first ?: return null
         return AnimeScreen(animeId = MultiSourceWorkOpener().open(work), fromSource = true)
     }
 
     private suspend fun openManga(title: String): Screen? {
         SocialWorkMatching.matchTitle(title, getMangaFavorites.await()) { it.title }
             ?.let { return MangaScreen(it.id, false) }
-        val work = search(title, CatalogType.MANGA) ?: return null
+        val work = search(title, CatalogType.MANGA)?.first ?: return null
         return MangaScreen(MultiSourceMangaWorkOpener().open(work), true)
     }
 
-    private suspend fun search(title: String, type: CatalogType) = runCatching {
+    private suspend fun openEither(title: String): Screen? = coroutineScope {
+        val animeLibrary = SocialWorkMatching.bestMatchScored(title, getAnimeFavorites.await()) { listOf(it.title) }
+        val mangaLibrary = SocialWorkMatching.bestMatchScored(title, getMangaFavorites.await()) { listOf(it.title) }
+        if (animeLibrary != null || mangaLibrary != null) {
+            // Something of the library is close: the closer one, anime on a tie.
+            return@coroutineScope if ((animeLibrary?.second ?: 0) >= (mangaLibrary?.second ?: 0)) {
+                AnimeScreen(animeId = animeLibrary!!.first.id, fromSource = false)
+            } else {
+                MangaScreen(mangaLibrary!!.first.id, false)
+            }
+        }
+
+        val anime = async { search(title, CatalogType.ANIME) }
+        val manga = async { search(title, CatalogType.MANGA) }
+        val bestAnime = anime.await()
+        val bestManga = manga.await()
+        when {
+            bestAnime == null && bestManga == null -> null
+            bestManga == null || (bestAnime != null && bestAnime.second >= bestManga.second) ->
+                AnimeScreen(animeId = MultiSourceWorkOpener().open(bestAnime!!.first), fromSource = true)
+            else -> MangaScreen(MultiSourceMangaWorkOpener().open(bestManga.first), true)
+        }
+    }
+
+    /**
+     * The catalogue entry closest to [title] with its score, or null when nothing is close. A
+     * search that only finds unrelated works answers null: opening the first result would open
+     * the wrong work ("Le retour" for "Le retour du clan Hwasan").
+     */
+    private suspend fun search(title: String, type: CatalogType): Pair<CatalogWork, Int>? = runCatching {
         val repository = CatalogRepository(network, type)
         val cleaned = SocialWorkMatching.cleanTitleForSearch(title)
-        // The first hit of a search is not always the work asked for ("Le retour" before
-        // "Le retour du clan Hwasan"): look at every result of both spellings, keep the closest.
         val results = (repository.search(cleaned) + if (cleaned != title) repository.search(title) else emptyList())
             .distinctBy { it.id }
-        SocialWorkMatching.bestMatch(title, results) { work ->
+        SocialWorkMatching.bestMatchScored(title, results) { work ->
             listOfNotNull(work.title, work.originalTitle) + work.synonyms
-        } ?: results.firstOrNull()
+        }
     }.getOrNull()
 }

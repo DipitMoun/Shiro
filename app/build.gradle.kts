@@ -83,8 +83,8 @@ android {
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
-        versionCode = 138
-        versionName = "0.19.5"
+        versionCode = 139
+        versionName = "0.19.6"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")

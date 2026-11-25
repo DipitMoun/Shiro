@@ -688,7 +688,7 @@ class SocialChatScreen(
                                         openScope.launch {
                                             try {
                                                 val screen = eu.kanade.presentation.social.SocialWorkOpener()
-                                                    .open(chatContext.title, isManga = chatContext.medium == SocialChatMedium.MANGA)
+                                                    .open(chatContext.title, isManga = if (chatContext.medium == SocialChatMedium.MANGA) true else null)
                                                 if (screen != null) {
                                                     navigator.push(screen)
                                                 } else {
