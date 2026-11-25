@@ -51,6 +51,20 @@ internal class MangaExtensionApi {
     }
 
     private suspend fun getExtensions(extRepo: ExtensionRepo): List<MangaExtension.Available> {
+        val probe = probe(extRepo)
+        probe.error?.let { logcat(LogPriority.ERROR, it) { "Failed to get extensions from ${extRepo.baseUrl}" } }
+        return probe.extensions
+    }
+
+    /** What a repo really serves, for the catalogue and for the repo health screen. */
+    internal data class RepoProbe(
+        val extensions: List<MangaExtension.Available>,
+        /** The old address only serves the "update your app" placeholder. */
+        val stubWithoutNewIndex: Boolean,
+        val error: Throwable? = null,
+    )
+
+    internal suspend fun probe(extRepo: ExtensionRepo): RepoProbe {
         val repoBaseUrl = extRepo.baseUrl
         return try {
             val response = networkService.client
@@ -66,13 +80,13 @@ internal class MangaExtensionApi {
             // Some repos (Keiyoushi) now serve a two-entry stub here that only tells old apps to
             // update, and publish the real catalogue in the extensions-lib 1.6 index.
             if (legacy.size > LEGACY_STUB_MAX_ENTRIES) {
-                legacy
+                RepoProbe(legacy, stubWithoutNewIndex = false)
             } else {
-                fetchNewIndex(repoBaseUrl, extRepo.signingKeyFingerprint)?.takeIf { it.isNotEmpty() } ?: legacy
+                val fresh = fetchNewIndex(repoBaseUrl, extRepo.signingKeyFingerprint)?.takeIf { it.isNotEmpty() }
+                RepoProbe(fresh ?: legacy, stubWithoutNewIndex = fresh == null && legacy.isNotEmpty())
             }
         } catch (e: Throwable) {
-            logcat(LogPriority.ERROR, e) { "Failed to get extensions from $repoBaseUrl" }
-            emptyList()
+            RepoProbe(emptyList(), stubWithoutNewIndex = false, error = e)
         }
     }
 

@@ -7,7 +7,7 @@ est interne et ne s'affiche pas.
 À chaque release : renommer « Prochaine version » avec le numéro et la date, puis ouvrir une
 nouvelle section vide au-dessus.
 
-Dernière release publiée : build du 18/11/2026 (commit `40d0fb031`).
+Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 
 ---
 
@@ -137,9 +137,32 @@ Dernière release publiée : build du 18/11/2026 (commit `40d0fb031`).
 - [ ] Tester sur téléphone : notifications après redémarrage du téléphone sans ouvrir Shiro.
 - [x] Message reçu écran éteint et app fermée, app ouverte, demande d'ami app fermée (validé le 24/11).
 - [ ] Tester sur téléphone : historique et progression conservés sur une œuvre multi-source.
-- [ ] Commiter le travail social et sauvegarde.
-- [ ] Changer le mot de passe du keystore release (exposé dans l'historique git, commit
-      `e1c69bafc`).
+- [x] Commiter le travail social et sauvegarde.
+- [x] Changer le mot de passe du keystore release (fait le 24/11, ancienne sauvegarde supprimée le 25/11).
+
+### Pas encore fait (état du 25/11/2026)
+
+Chat
+- [ ] Images et GIF dans le chat : envoi de médias Matrix et affichage (non fait, gros chantier).
+- [ ] Vérifier les accusés de lecture et « écrit… » avec un ami qui a aussi la 0.19.2 ou plus.
+- [ ] Couvertures des conversations manga dans l'onglet Messages (seul l'anime les a).
+- [ ] Le fil « activité » à 0 : cause jamais confirmée (compte `@shiro_moun` sur l'ancienne release ?).
+
+Sources et dépôts
+- [ ] Anime-Sama anime : pas installé sur le téléphone (le dépôt `yuzono/anime-repo` le propose en
+      lib 16, compatible). Vérifier que ce dépôt est bien ajouté, puis l'installer.
+- [ ] Tester l'écran « Santé des dépôts » (Réglages → Navigation) sur le téléphone.
+- [ ] `SChapter.memo` n'est pas gardé en base : une extension qui s'en sert entre la liste des
+      chapitres et les pages peut échouer.
+- [ ] Lire les extensions JS (Weebox/Seanime) : abandonné pour l'instant, à rouvrir hors de l'app.
+
+Téléchargements et mises à jour
+- [ ] Vérifier sur téléphone que les téléchargements continuent écran éteint (0.19.3).
+- [ ] Les patches de mise à jour ne couvrent que les 2 à 3 dernières versions : prévoir de garder
+      `release-archive/` (hors git) et de ne jamais supprimer l'APK de base.
+- [ ] Les testeurs qui ont l'APK reçu sur Telegram (0.19.0 de minuit) téléchargent l'APK complet :
+      leur base n'est pas celle du téléphone de test.
+- [ ] Diagnostic des couvertures : les échecs d'images sont dans les logs sous `ShiroImage`.
 
 ### Plus tard
 

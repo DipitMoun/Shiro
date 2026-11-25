@@ -77,6 +77,13 @@ object SettingsBrowseScreen : SearchableSettings {
                             navigator.push(MangaExtensionReposScreen())
                         },
                     ),
+                    Preference.PreferenceItem.TextPreference(
+                        title = "Santé des dépôts",
+                        subtitle = "Vérifie que les dépôts répondent et que leurs extensions sont compatibles",
+                        onClick = {
+                            navigator.push(eu.kanade.presentation.more.settings.screen.browse.ExtensionRepoHealthScreen())
+                        },
+                    ),
                 ),
             ),
             Preference.PreferenceGroup(
