@@ -61,6 +61,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import tachiyomi.domain.entries.anime.interactor.GetAnime
+import tachiyomi.domain.entries.anime.model.asAnimeCover
+import tachiyomi.domain.entries.manga.interactor.GetManga
+import tachiyomi.domain.entries.manga.model.asMangaCover
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf as chatMutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -139,6 +147,26 @@ class SocialChatScreen(
         val friends by model.friends.collectAsStateWithLifecycle()
         val selfAvatar by model.selfAvatar.collectAsStateWithLifecycle()
         val typingIds by model.typing.collectAsStateWithLifecycle()
+        // Same cover model as the work page (cover cache, source headers), not the raw URL:
+        // some covers only load through it.
+        val coverModel by produceState<Any?>(
+            chatContext.posterUrl,
+            chatContext.animeId,
+            chatContext.medium,
+            chatContext.posterUrl,
+        ) {
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (chatContext.animeId <= 0L) {
+                        null
+                    } else if (chatContext.medium == SocialChatMedium.MANGA) {
+                        Injekt.get<GetManga>().await(chatContext.animeId)?.asMangaCover()
+                    } else {
+                        Injekt.get<GetAnime>().await(chatContext.animeId)?.asAnimeCover()
+                    }
+                }.getOrNull()
+            } ?: chatContext.posterUrl
+        }
         val clipboard = LocalClipboardManager.current
 
         var selectedKey by rememberSaveable(chatContext) {
@@ -235,7 +263,7 @@ class SocialChatScreen(
         }
 
         Box(Modifier.fillMaxSize()) {
-            ChatBackground(posterUrl = chatContext.posterUrl)
+            ChatBackground(posterUrl = coverModel)
             Scaffold(
                 containerColor = Color.Transparent,
                 topBar = {
@@ -245,9 +273,9 @@ class SocialChatScreen(
                         ),
                         title = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (chatContext.posterUrl != null) {
+                                if (coverModel != null) {
                                     AsyncImage(
-                                        model = chatContext.posterUrl,
+                                        model = coverModel,
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier
@@ -458,7 +486,7 @@ class SocialChatScreen(
                                                     first = row.first,
                                                     last = row.last,
                                                     medium = chatContext.medium,
-                                                    posterUrl = chatContext.posterUrl,
+                                                    posterUrl = coverModel,
                                                     participants = participants,
                                                     selfMxid = selfMxid,
                                                     reactions = item.reactions,
@@ -501,7 +529,7 @@ class SocialChatScreen(
                                             first = true,
                                             last = true,
                                             medium = chatContext.medium,
-                                            posterUrl = chatContext.posterUrl,
+                                            posterUrl = coverModel,
                                             participants = participants,
                                             selfMxid = selfMxid,
                                             reactions = emptyList(),
@@ -887,7 +915,7 @@ class SocialChatScreen(
 }
 
 @Composable
-private fun ChatBackground(posterUrl: String?) {
+private fun ChatBackground(posterUrl: Any?) {
     Box(Modifier.fillMaxSize()) {
         if (posterUrl != null) {
             AsyncImage(
@@ -1201,7 +1229,7 @@ private fun TimecodePickerDialog(
             Column {
                 Text(animeTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    text = "${chosenEpisode.key.value} · ${formatTimecode(chosenEpisode.durationSeconds * 1000L)}",
+                    text = "Épisode ${chapterNumberLabel(chosenEpisode.number)} · ${formatTimecode(chosenEpisode.durationSeconds * 1000L)}",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -1210,34 +1238,16 @@ private fun TimecodePickerDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    episodes.forEach { candidate ->
-                        Surface(
-                            color = if (candidate.key == chosenEpisode.key) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            },
-                            shape = RoundedCornerShape(7.dp),
-                            modifier = Modifier.clickable {
-                                selectedKey = candidate.key.value
-                                minute = 0
-                                seconds = 0
-                            },
-                        ) {
-                            Text(
-                                text = candidate.key.value,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
-                            )
-                        }
-                    }
-                }
+                EpisodeChooser(
+                    episodes = episodes,
+                    chosen = chosenEpisode,
+                    medium = SocialChatMedium.ANIME,
+                    onChoose = { candidate ->
+                        selectedKey = candidate.key.value
+                        minute = 0
+                        seconds = 0
+                    },
+                )
                 Text("Choisis la minute", fontSize = 11.sp)
                 LazyColumn(
                     modifier = Modifier
@@ -1383,9 +1393,17 @@ private fun PagePickerDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "$mangaTitle · chapitre ${chapterNumberLabel(chosen.number)}",
+                    text = mangaTitle,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                EpisodeChooser(
+                    episodes = chapters,
+                    chosen = chosen,
+                    medium = SocialChatMedium.MANGA,
+                    onChoose = { selectedKey = it.key.value },
                 )
                 androidx.compose.material3.OutlinedTextField(
                     value = pageText,

@@ -240,6 +240,16 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
                 add(MangaCoverKeyer())
             }
 
+            // A cover that fails to load is otherwise invisible: say which one and why.
+            eventListener(
+                object : coil3.EventListener() {
+                    override fun onError(request: coil3.request.ImageRequest, result: coil3.request.ErrorResult) {
+                        logcat(LogPriority.WARN, result.throwable) {
+                            "Image failed: ${request.data.toString().take(200)}"
+                        }
+                    }
+                },
+            )
             crossfade((300 * this@App.animatorDurationScale).toInt())
             allowRgb565(DeviceUtil.isLowRamDevice(this@App))
             if (networkPreferences.verboseLogging().get()) logger(DebugLogger())

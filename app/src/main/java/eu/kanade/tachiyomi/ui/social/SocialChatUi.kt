@@ -49,6 +49,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Close
@@ -278,7 +280,7 @@ internal fun ChatBubble(
     first: Boolean,
     last: Boolean,
     medium: SocialChatMedium,
-    posterUrl: String?,
+    posterUrl: Any?,
     participants: Map<String, SocialChatFriend>,
     selfMxid: String,
     reactions: List<eu.kanade.tachiyomi.data.social.matrix.ReactionSummary>,
@@ -587,7 +589,7 @@ internal fun ChatMomentCard(
     medium: SocialChatMedium,
     episode: SocialChatEpisode,
     position: Long,
-    posterUrl: String?,
+    posterUrl: Any?,
     onOpen: (SocialChatEpisode, Long, Boolean) -> Unit,
 ) {
     val manga = medium == SocialChatMedium.MANGA
@@ -917,3 +919,81 @@ internal fun ChatComposer(
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Episode / chapter selection for moments
+// ---------------------------------------------------------------------------
+
+/**
+ * Chooser used by both moment pickers: previous / next arrows around a scrolling row of
+ * numbered chips that keeps the chosen one in view.
+ */
+@Composable
+internal fun EpisodeChooser(
+    episodes: List<SocialChatEpisode>,
+    chosen: SocialChatEpisode,
+    medium: SocialChatMedium,
+    onChoose: (SocialChatEpisode) -> Unit,
+) {
+    val ordered = remember(episodes) { episodes.distinctBy { it.key.value }.sortedBy { it.number } }
+    val index = ordered.indexOfFirst { it.key.value == chosen.key.value }.coerceAtLeast(0)
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(chosen.key.value) {
+        listState.animateScrollToItem((index - 2).coerceAtLeast(0))
+    }
+    val prefix = if (medium == SocialChatMedium.MANGA) "Ch." else "Ép."
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = if (medium == SocialChatMedium.MANGA) "Chapitre" else "Épisode",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = { ordered.getOrNull(index - 1)?.let(onChoose) },
+                enabled = index > 0,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(Icons.Filled.ChevronLeft, contentDescription = "Précédent")
+            }
+            androidx.compose.foundation.lazy.LazyRow(
+                state = listState,
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                items(ordered.size, key = { ordered[it].key.value }) { position ->
+                    val candidate = ordered[position]
+                    val selected = candidate.key.value == chosen.key.value
+                    Surface(
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        },
+                        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { onChoose(candidate) },
+                    ) {
+                        Text(
+                            text = "$prefix ${chapterNumberLabel(candidate.number)}",
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                        )
+                    }
+                }
+            }
+            IconButton(
+                onClick = { ordered.getOrNull(index + 1)?.let(onChoose) },
+                enabled = index < ordered.lastIndex,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(Icons.Filled.ChevronRight, contentDescription = "Suivant")
+            }
+        }
+        chosen.title?.takeIf { it.isNotBlank() }?.let {
+            Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}

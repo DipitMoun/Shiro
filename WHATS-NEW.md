@@ -15,6 +15,29 @@ Dernière release publiée : build du 18/11/2026 (commit `40d0fb031`).
 
 ### Quoi de neuf
 
+**Chat**
+- Le chat est refait : messages regroupés par personne, jours séparés, repère « Nouveaux
+  messages » à l'ouverture, et un bouton pour revenir au dernier message.
+- Les avatars de tes amis descendent sous le dernier message qu'ils ont lu. Tu vois aussi quand
+  quelqu'un écrit, et tes messages affichent envoyé ou lu.
+- Glisse un message vers la gauche pour y répondre, appuie longtemps pour réagir ou copier. Un
+  message qui n'est pas parti se renvoie d'un appui, et ton brouillon est gardé par salon.
+- Les moments anime et manga utilisent la même carte, floutée tant qu'on n'a pas touché pour
+  révéler le spoiler.
+- Pour partager un moment, tu choisis maintenant l'épisode ou le chapitre avec des flèches et
+  une liste qui défile.
+- La couverture de l'œuvre s'affiche de nouveau en fond et dans l'en-tête du chat.
+
+**Correctifs**
+- Plus de plantage de l'application sur certaines sources qui répondent en compression zstd.
+- Plus de plantage en ouvrant un manga dont un chapitre a un numéro à virgule (311.01).
+
+---
+
+## 0.19.1 (25/11/2026)
+
+### Quoi de neuf
+
 **Manga**
 - Les extensions manga du catalogue actuel de Keiyoushi se chargent de nouveau, y compris les
   françaises : MANGA Plus, Webtoons et bien d'autres. Le nouveau format d'extensions est pris
