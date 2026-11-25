@@ -15,6 +15,10 @@ Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 
 ### Quoi de neuf
 
+**Application**
+- Cet écran « Quoi de neuf » remplace la grande fenêtre : même présentation que l'écran d'erreur,
+  avec « Continuer » et « Voir toutes les versions ».
+
 **Correctif**
 - Le petit bouton « Reprendre » revient dans le carrousel d'activité récente (Animé et Manga), même quand
   le réglage qui l'affiche sur les grilles est désactivé.
