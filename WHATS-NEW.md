@@ -202,7 +202,7 @@ Téléchargements et mises à jour
       leur base n'est pas celle du téléphone de test.
 - [ ] Diagnostic des couvertures : les échecs d'images sont dans les logs sous `ShiroImage`.
 
-### À faire ce week-end (demandé le 25/11/2026, pas maintenant)
+### À faire ce week-end (demandé le 25/11/2026, pas avant)
 
 1. **Retrouver la version exacte d'une œuvre grâce à l'extension.** À la création d'un salon,
    enregistrer comme paramètre le nom (le paquet) de l'extension / la source que l'auteur utilise,
@@ -210,43 +210,78 @@ Téléchargements et mises à jour
    on rouvre directement la bonne source. Variante : le faire depuis le salon « activité » qui gère
    la bibliothèque, en y mettant la source de chaque œuvre. Si l'utilisateur qui clique n'a pas
    cette extension, lui proposer de l'installer.
-2. **Même principe pour le clic sur les activités** (fil d'activité) : ouvrir l'œuvre exacte par sa
-   source au lieu d'une recherche.
-3. **Stories éphémères de 24 h** (social Matrix), cahier des charges ci-dessous.
+2. **Même principe pour le clic sur les activités** (fil d'activité).
+3. **Carrousel « activité récente » : « à regarder maintenant » et « bientôt »**, sans supprimer ce
+   qu'il fait aujourd'hui et sans agrandir la section (même rangée, mêmes tailles de cartes).
+   - Cartes « à regarder maintenant » : pastille du numéro de l'épisode suivant, point « Nouveau »
+     quand il vient de sortir, petite icône si déjà téléchargé. Appui long : détail (épisode,
+     source, heure de sortie, télécharger).
+   - Cartes « bientôt » : **rondes** (choix visuel décidé), avec compte à rebours (« Demain »,
+     « J‑2 », « 19 h »), uniquement pour les œuvres de la bibliothèque. Quand l'épisode sort et
+     qu'une source l'a, la carte passe en « à regarder ».
+   - Manga : seulement « à lire » (pas de calendrier de sortie fiable).
+   - Le bouton « Reprendre » du carrousel ne dépend plus du réglage des grilles (fait en 0.19.8).
+4. **Réparer la source des dates de sortie** (constat du 25/11, mesuré sur JoJo Steel Ball Run).
+   - Bug : le calendrier demande à AniList `airingSchedule(airingAt_greater…)` sur `Media`, ce qui
+     est refusé (HTTP 400 « Unknown argument ») et l'erreur est avalée : le calendrier ne reçoit
+     jamais rien d'AniList. Correction : `Page.airingSchedules(mediaId_in, airingAt_greater,
+     airingAt_lesser, sort: TIME)`, vérifiée (0,8 s, bonnes dates) ; repli `Media.airingSchedule
+     (notYetAired: true)`.
+   - Jikan (MyAnimeList) est injoignable (connexion refusée même sur la racine) : le sortir du
+     calendrier. Kitsu (dates par épisode, sans heure) et TVmaze en secours.
+   - Garder le dernier résultat en cache (aujourd'hui une erreur donne un calendrier vide, sans
+     message) et réessayer.
+   - Numérotation : les sources comptent différemment une œuvre en plusieurs parties (AniList :
+     « 2nd & 3rd STAGE » repart à 1 ; Kitsu : continu). Rapprocher par ordre dans l'entrée et par
+     date, pas seulement par numéro. Exemple : Steel Ball Run, épisode 10 (AniList) le 27/11/2026
+     08:00 UTC, épisode 11 le 04/12/2026 08:00 UTC.
+5. **Stories éphémères de 24 h** (social Matrix), cahier des charges ci-dessous.
 
-#### Stories éphémères de 24 h
+#### Stories éphémères de 24 h, depuis la page Social (Matrix)
 
-Chaque utilisateur peut publier des moments (photos et vidéos multiples) dans un fil « Stories »
-de l'onglet Social. Les amis les voient pendant 24 h, puis elles disparaissent.
+Les stories sont créées uniquement depuis la page Social, via un bouton « + » en haut du fil. Elles
+apparaissent dans une section en haut du fil des amis et disparaissent après 24 h.
 
-Fonctionnement attendu
-- Chaque utilisateur a un salon Matrix dédié à ses stories. Ses amis en sont membres.
-- Une story est un envoi de média dans ce salon, avec une date d'expiration (publication + 24 h).
-- Après 24 h, l'app masque la story. Elle envoie aussi une redaction pour retirer le contenu du
-  message. Ce n'est pas une suppression réelle du fichier sur le serveur : à savoir.
+Deux types de story
 
-Quota d'envoi (par utilisateur, pas partagé), chiffres donnés pour le plan gratuit matrix.org
-- Limite journalière : 100 Mo par 24 h. Limite mensuelle : 500 Mo sur 28 jours.
-- Taille max par pièce jointe : 10 Mo.
-- Les médias reçus ne comptent pas, seuls les envois comptent. Les aperçus de liens comptent aussi.
+1. Photo ou vidéo (galerie)
+   - Envoyée dans le salon story de l'utilisateur (un salon Matrix par utilisateur, amis membres).
+   - Consomme le quota Matrix : 100 Mo par 24 h, 500 Mo sur 28 jours, 10 Mo max par pièce jointe.
+     Plusieurs médias possibles par story. Les médias reçus ne comptent pas dans le quota.
+2. Extrait musical (AnimeThemes)
+   - L'utilisateur choisit une œuvre de sa bibliothèque, puis un OP ou ED via l'API AnimeThemes, et
+     un moment de départ.
+   - Le message ne contient que la référence : identifiant AniList de l'œuvre, identifiant du
+     thème, moment de départ. Aucun fichier, aucun lien vidéo, donc aucun quota consommé.
+   - Chez l'ami, Shiro refait la résolution au moment de la lecture (appel à AnimeThemes) et lit le
+     flux depuis le moment choisi, sans télécharger ni stocker le média. Si la résolution échoue :
+     « impossible de charger cet extrait ».
+   - Ne jamais réhéberger ni copier les fichiers AnimeThemes.
 
-Compteur local
-- L'app enregistre la taille réelle envoyée (fichier chiffré si chiffrement) et l'horodatage de
-  chaque envoi.
-- Elle affiche le total des 24 dernières heures et des 28 derniers jours, avec la date approximative
-  du prochain retour de quota.
-- Au-delà de 50 Mo en un envoi, demander confirmation. Si le quota restant est insuffisant, bloquer
-  l'envoi avec un message clair.
+Compteur de quota (photo/vidéo uniquement)
+- Enregistrer localement la taille réelle envoyée (fichier chiffré si chiffrement) et l'horodatage.
+- Afficher le total des 24 dernières heures et des 28 derniers jours, avec la date approximative du
+  prochain retour de quota.
+- Avertir au-delà de 50 Mo en un envoi. Bloquer l'envoi si le quota restant est insuffisant, avec
+  un message clair.
+
+Expiration
+- Après 24 h, la story est masquée dans l'app, puis une redaction est envoyée pour retirer le
+  contenu du message. Ce n'est pas une suppression réelle du fichier côté serveur : ne pas le
+  présenter comme tel dans l'UI.
+
+Contraintes de travail
+- Ne pas modifier la structure existante de la page Social hors de la zone des stories : la refonte
+  UI est déjà en cours, garder les changements isolés et ciblés (extraits, pas de réécriture).
+- Ne rien modifier sans montrer le diff avant.
+- Travailler sur la branche `phase2-matrix`.
 
 À vérifier avant de finaliser
-- Si la fenêtre de 24 h est glissante ou calée sur un jour fixe (non précisé par matrix.org) : test
-  à faire avec un compte.
+- Si la fenêtre de quota (24 h et 28 jours) est glissante ou calée sur un jour fixe (non précisé
+  par matrix.org).
 - Si supprimer un média libère du quota : supposer que non tant que ce n'est pas testé.
-- Les limites ci-dessus sont celles annoncées : les confirmer sur le serveur réellement utilisé.
-
-Hors périmètre pour l'instant
-- Pas de stockage hors Matrix (pas de Firebase, pas de R2).
-- Pas de file d'attente ni de partage de quota entre utilisateurs.
+- Les identifiants externes acceptés par l'API AnimeThemes pour la recherche.
+- Les limites de quota ci-dessus sont celles annoncées : les confirmer sur le serveur utilisé.
 
 ### Plus tard
 
