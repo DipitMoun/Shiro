@@ -173,7 +173,12 @@ data class EpisodeKey private constructor(val value: String) : java.io.Serializa
         fun of(number: Double): EpisodeKey {
             require(number >= 0.0 && number.isFinite()) { "Episode number must be finite and positive" }
 
-            val numberText = BigDecimal.valueOf(number).stripTrailingZeros().toPlainString()
+            // Chapter numbers are stored as floats, so 311.01 reaches us as 311.010009765625:
+            // keep the two decimals the key format allows.
+            val numberText = BigDecimal.valueOf(number)
+                .setScale(2, java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+                .toPlainString()
             val whole = numberText.substringBefore('.')
             val fraction = numberText.substringAfter('.', "")
             val width = if (whole.length <= 3) 3 else 4

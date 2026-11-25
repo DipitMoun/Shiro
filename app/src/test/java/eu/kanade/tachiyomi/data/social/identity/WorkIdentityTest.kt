@@ -68,6 +68,13 @@ class WorkIdentityTest {
     }
 
     @Test
+    fun `float noise in a chapter number does not break the key`() {
+        assertEquals("E311.01", EpisodeKey.of(311.01f.toDouble()).value)
+        assertEquals("E010.5", EpisodeKey.of(10.5000001).value)
+        assertEquals("E003", EpisodeKey.of(2.999999).value)
+    }
+
+    @Test
     fun `episode keys parse canonical forms and reject invalid ones`() {
         assertEquals("E003.5", EpisodeKey.parse("E003.5")?.value)
         assertEquals("MAIN", EpisodeKey.parse("MAIN")?.value)
