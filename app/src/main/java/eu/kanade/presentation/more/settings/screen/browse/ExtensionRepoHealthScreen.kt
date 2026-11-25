@@ -43,7 +43,14 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.extension.BlockedUpdate
 import eu.kanade.tachiyomi.extension.ExtensionRepoHealthChecker
+import eu.kanade.tachiyomi.extension.HealthReport
+import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
+import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import androidx.compose.material3.TextButton
 import eu.kanade.tachiyomi.extension.RepoHealth
 import eu.kanade.tachiyomi.extension.RepoStatus
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -102,7 +109,29 @@ class ExtensionRepoHealthScreen : Screen() {
                 item {
                     Summary(state)
                 }
-                items(state.report, key = { (if (it.anime) "a:" else "m:") + it.url }) { repo ->
+                if (state.report.blocked.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Mises à jour bloquées",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    items(state.report.blocked, key = { "b:" + it.pkgName }) { blocked ->
+                        BlockedCard(blocked, onUninstall = { model.uninstall(blocked) })
+                    }
+                    item {
+                        Text(
+                            text = "Dépôts",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+                items(state.report.repos, key = { (if (it.anime) "a:" else "m:") + it.url }) { repo ->
                     RepoCard(repo)
                 }
             }
@@ -112,11 +141,13 @@ class ExtensionRepoHealthScreen : Screen() {
 
 @Composable
 private fun Summary(state: ExtensionRepoHealthState) {
-    val problems = state.report.count { it.hasProblem }
+    val problems = state.report.repos.count { it.hasProblem }
     val text = when {
-        state.loading && state.report.isEmpty() -> "Vérification des dépôts…"
-        state.report.isEmpty() -> "Aucun dépôt ajouté."
-        problems == 0 -> "Tous les dépôts répondent et leurs extensions sont compatibles."
+        state.loading && state.report.repos.isEmpty() -> "Vérification des dépôts…"
+        state.report.repos.isEmpty() -> "Aucun dépôt ajouté."
+        problems == 0 && state.report.blocked.isEmpty() ->
+            "Tous les dépôts répondent et leurs extensions sont compatibles."
+        problems == 0 -> "Les dépôts répondent, mais des mises à jour d'extensions sont bloquées."
         problems == 1 -> "1 dépôt demande ton attention."
         else -> "$problems dépôts demandent ton attention."
     }
@@ -185,9 +216,41 @@ private fun RepoCard(repo: RepoHealth) {
     }
 }
 
+@Composable
+private fun BlockedCard(blocked: BlockedUpdate, onUninstall: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.WarningAmber, null, tint = Color(0xFFFFB300), modifier = Modifier.size(22.dp))
+                Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                    Text(blocked.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(
+                        text = (if (blocked.anime) "Anime" else "Manga") +
+                            " · installée en ${blocked.installedVersion}, ${blocked.availableVersion} disponible",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Text(
+                text = "Cette extension a été installée depuis une autre source, signée avec une autre clé : " +
+                    "Android refuse la mise à jour. Désinstalle-la, puis installe-la de nouveau depuis " +
+                    "« ${blocked.repoName} » dans la liste des extensions.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onUninstall) { Text("Désinstaller") }
+        }
+    }
+}
+
 data class ExtensionRepoHealthState(
     val loading: Boolean = false,
-    val report: List<RepoHealth> = emptyList(),
+    val report: HealthReport = HealthReport(emptyList(), emptyList()),
 )
 
 class ExtensionRepoHealthScreenModel(
@@ -201,8 +264,21 @@ class ExtensionRepoHealthScreenModel(
         if (_state.value.loading) return
         _state.value = _state.value.copy(loading = true)
         screenModelScope.launch {
-            val report = runCatching { checker.checkAll() }.getOrDefault(emptyList())
+            val report = runCatching { checker.checkAll() }.getOrDefault(HealthReport(emptyList(), emptyList()))
             _state.value = ExtensionRepoHealthState(loading = false, report = report)
+        }
+    }
+
+    /** Hands over to Android's uninstall prompt; the list is checked again once it is done. */
+    fun uninstall(blocked: BlockedUpdate) {
+        if (blocked.anime) {
+            val manager = Injekt.get<AnimeExtensionManager>()
+            manager.installedExtensionsFlow.value.firstOrNull { it.pkgName == blocked.pkgName }
+                ?.let(manager::uninstallExtension)
+        } else {
+            val manager = Injekt.get<MangaExtensionManager>()
+            manager.installedExtensionsFlow.value.firstOrNull { it.pkgName == blocked.pkgName }
+                ?.let(manager::uninstallExtension)
         }
     }
 }

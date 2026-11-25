@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.extension
 
+import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
 import eu.kanade.tachiyomi.extension.anime.util.AnimeExtensionLoader
+import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.manga.api.MangaExtensionApi
 import eu.kanade.tachiyomi.extension.manga.util.MangaExtensionLoader
 import mihon.data.extension.anime.service.AnimeExtensionStoreService
@@ -42,6 +44,46 @@ data class RepoHealth(
 
 /** One extension as the health check sees it. */
 data class RepoExtension(val name: String, val libVersion: Double)
+
+/** An installed extension, reduced to what the signature check needs. */
+data class InstalledInfo(
+    val name: String,
+    val pkgName: String,
+    val versionName: String,
+    val versionCode: Long,
+    /** SHA-256 of the APK signature, null when unknown. */
+    val signature: String?,
+)
+
+/** An extension a repo offers, with the key that repo signs with. */
+data class AvailableInfo(
+    val pkgName: String,
+    val versionName: String,
+    val versionCode: Long,
+    val signingKey: String,
+    val repoName: String,
+)
+
+/**
+ * A newer version exists, but Android will not install it over the current one because it is
+ * signed with another key (the extension came from another repo or app). The app hides such
+ * updates; the fix is to uninstall, then install again from [repoName].
+ */
+data class BlockedUpdate(
+    val anime: Boolean,
+    val name: String,
+    val pkgName: String,
+    val installedVersion: String,
+    val availableVersion: String,
+    val repoName: String,
+)
+
+data class HealthReport(
+    val repos: List<RepoHealth>,
+    val blocked: List<BlockedUpdate>,
+) {
+    val hasProblem: Boolean get() = blocked.isNotEmpty() || repos.any { it.hasProblem }
+}
 
 /** The rules, kept apart from the network so they can be tested. */
 object RepoHealthRules {
@@ -86,11 +128,37 @@ object RepoHealthRules {
         )
     }
 
+    private fun sameKey(installed: String?, offered: String): Boolean =
+        installed == null ||
+            offered.isBlank() ||
+            offered == "NO_SIGNING_KEY" ||
+            offered.startsWith("NOFINGERPRINT") ||
+            offered.equals(installed, ignoreCase = true)
+
+    fun blockedUpdates(
+        anime: Boolean,
+        installed: List<InstalledInfo>,
+        available: List<AvailableInfo>,
+    ): List<BlockedUpdate> {
+        val byPackage = available.groupBy { it.pkgName }
+        return installed.mapNotNull { ext ->
+            val newer = byPackage[ext.pkgName].orEmpty().filter { it.versionCode > ext.versionCode }
+            if (newer.isEmpty()) return@mapNotNull null
+            // One newer build this install accepts is enough: the normal update path works.
+            if (newer.any { sameKey(ext.signature, it.signingKey) }) return@mapNotNull null
+            val best = newer.maxBy { it.versionCode }
+            BlockedUpdate(anime, ext.name, ext.pkgName, ext.versionName, best.versionName, best.repoName)
+        }
+    }
+
     /** Stable text of the problems, to notify only when something changes. */
-    fun signature(report: List<RepoHealth>): String =
-        report.filter { it.hasProblem }
-            .sortedBy { it.url }
-            .joinToString("|") { "${it.url}:${it.status}:${it.incompatible.size}" }
+    fun signature(report: HealthReport): String =
+        (
+            report.repos.filter { it.hasProblem }
+                .sortedBy { it.url }
+                .map { "${it.url}:${it.status}:${it.incompatible.size}" } +
+                report.blocked.sortedBy { it.pkgName }.map { "blocked:${it.pkgName}:${it.availableVersion}" }
+            ).joinToString("|")
 }
 
 /** Looks at every anime store and manga repo the user has added. */
@@ -98,11 +166,17 @@ class ExtensionRepoHealthChecker(
     private val getAnimeStores: GetAnimeExtensionStores = Injekt.get(),
     private val animeService: AnimeExtensionStoreService = Injekt.get(),
     private val getMangaRepos: GetMangaExtensionRepo = Injekt.get(),
+    private val animeManager: AnimeExtensionManager = Injekt.get(),
+    private val mangaManager: MangaExtensionManager = Injekt.get(),
 ) {
 
-    suspend fun checkAll(): List<RepoHealth> = withIOContext {
+    suspend fun checkAll(): HealthReport = withIOContext {
+        val animeAvailable = mutableListOf<AvailableInfo>()
         val anime = getAnimeStores.get().map { store ->
             val result = animeService.getExtensions(store)
+            result.getOrNull()?.forEach {
+                animeAvailable += AvailableInfo(it.pkgName, it.versionName, it.versionCode, store.signingKey, store.name)
+            }
             RepoHealthRules.classify(
                 anime = true,
                 name = store.name,
@@ -112,18 +186,45 @@ class ExtensionRepoHealthChecker(
                 outdatedStub = false,
             )
         }
+
         val api = MangaExtensionApi()
+        val mangaAvailable = mutableListOf<AvailableInfo>()
         val manga = getMangaRepos.getAll().map { repo ->
             val probe = api.probe(repo)
+            val name = repo.shortName ?: repo.name
+            probe.extensions.forEach {
+                mangaAvailable += AvailableInfo(
+                    it.pkgName,
+                    it.versionName,
+                    it.versionCode,
+                    it.signingKey.ifBlank { repo.signingKeyFingerprint },
+                    name,
+                )
+            }
             RepoHealthRules.classify(
                 anime = false,
-                name = repo.shortName ?: repo.name,
+                name = name,
                 url = repo.baseUrl,
                 extensions = if (probe.error != null) null else probe.extensions.map { RepoExtension(it.name, it.libVersion) },
                 error = probe.error?.message,
                 outdatedStub = probe.stubWithoutNewIndex,
             )
         }
-        anime + manga
+
+        val blocked = RepoHealthRules.blockedUpdates(
+            anime = true,
+            installed = animeManager.installedExtensionsFlow.value.map {
+                InstalledInfo(it.name, it.pkgName, it.versionName, it.versionCode, it.signatureHash)
+            },
+            available = animeAvailable,
+        ) + RepoHealthRules.blockedUpdates(
+            anime = false,
+            installed = mangaManager.installedExtensionsFlow.value.map {
+                InstalledInfo(it.name, it.pkgName, it.versionName, it.versionCode, it.signatureHash)
+            },
+            available = mangaAvailable,
+        )
+
+        HealthReport(anime + manga, blocked)
     }
 }

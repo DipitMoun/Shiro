@@ -57,6 +57,10 @@ import eu.kanade.tachiyomi.ui.social.SocialChatContext
 import eu.kanade.tachiyomi.ui.social.SocialChatScreen
 import kotlinx.coroutines.delay
 import tachiyomi.domain.entries.anime.interactor.GetAnimeFavorites
+import tachiyomi.domain.entries.anime.model.asAnimeCover
+import tachiyomi.domain.entries.manga.interactor.GetMangaFavorites
+import tachiyomi.domain.entries.manga.model.Manga
+import tachiyomi.domain.entries.manga.model.asMangaCover
 import tachiyomi.domain.entries.anime.model.Anime
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -206,9 +210,11 @@ internal fun MessagesContent(contentPadding: PaddingValues) {
     val inbox = remember { Injekt.get<SocialInbox>() }
     val conversations by inbox.conversations.collectAsStateWithLifecycle()
     var library by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var mangaLibrary by remember { mutableStateOf<List<Manga>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         library = runCatching { Injekt.get<GetAnimeFavorites>().await() }.getOrDefault(emptyList())
+        mangaLibrary = runCatching { Injekt.get<GetMangaFavorites>().await() }.getOrDefault(emptyList())
         while (true) {
             inbox.refresh()
             delay(REFRESH_MS)
@@ -223,6 +229,15 @@ internal fun MessagesContent(contentPadding: PaddingValues) {
         localByWorkId[conversation.roomKey.workId.toString()]
             ?: SocialWorkMatching.extractTitle(conversation.title)
                 ?.let { title -> SocialWorkMatching.matchTitle(title, library) { it.title } }
+
+    val localMangaByWorkId = remember(mangaLibrary) {
+        mangaLibrary.associateBy { WorkId.localStable(it.source, it.url).toString() }
+    }
+
+    fun localMangaFor(conversation: SocialConversation): Manga? =
+        localMangaByWorkId[conversation.roomKey.workId.toString()]
+            ?: SocialWorkMatching.extractTitle(conversation.title)
+                ?.let { title -> SocialWorkMatching.matchTitle(title, mangaLibrary) { it.title } }
 
     val list = conversations
     when {
@@ -266,16 +281,18 @@ internal fun MessagesContent(contentPadding: PaddingValues) {
         ) {
             items(list, key = { it.roomId }) { conversation ->
                 val local = localAnimeFor(conversation)
+                // A manga conversation finds its manga in the library the same way.
+                val localManga = if (local == null) localMangaFor(conversation) else null
                 ConversationRow(
                     conversation = conversation,
-                    coverUrl = local?.thumbnailUrl,
+                    coverUrl = local?.asAnimeCover() ?: localManga?.asMangaCover(),
                     onClick = {
                         val title = SocialWorkMatching.extractTitle(conversation.title) ?: conversation.title
                         val workId = conversation.roomKey.workId
                         navigator.push(
                             SocialChatScreen(
                                 SocialChatContext(
-                                    animeId = local?.id ?: 0L,
+                                    animeId = local?.id ?: localManga?.id ?: 0L,
                                     work = WorkIdentity(
                                         id = workId,
                                         ids = mapOf(workId.scheme.wireName to workId.remoteId),
@@ -284,10 +301,15 @@ internal fun MessagesContent(contentPadding: PaddingValues) {
                                         addedAt = null,
                                     ),
                                     title = title,
-                                    posterUrl = local?.thumbnailUrl,
+                                    posterUrl = local?.thumbnailUrl ?: localManga?.thumbnailUrl,
                                     episodes = emptyList(),
                                     initialRoomId = conversation.roomId,
                                     initialAuthorMxid = conversation.roomKey.authorMxid,
+                                    medium = if (localManga != null) {
+                                        eu.kanade.tachiyomi.ui.social.SocialChatMedium.MANGA
+                                    } else {
+                                        eu.kanade.tachiyomi.ui.social.SocialChatMedium.ANIME
+                                    },
                                 ),
                             ),
                         )
@@ -299,7 +321,7 @@ internal fun MessagesContent(contentPadding: PaddingValues) {
 }
 
 @Composable
-private fun ConversationRow(conversation: SocialConversation, coverUrl: String?, onClick: () -> Unit) {
+private fun ConversationRow(conversation: SocialConversation, coverUrl: Any?, onClick: () -> Unit) {
     val unread = conversation.unreadCount > 0
     val title = SocialWorkMatching.extractTitle(conversation.title) ?: conversation.title
     val owner = conversation.roomKey.authorMxid

@@ -72,12 +72,63 @@ class ExtensionRepoHealthTest {
 
     @Test
     fun `the signature only changes when the problems change`() {
-        val fine = listOf(anime(16.0))
-        val broken = listOf(anime(18.0))
-        val brokenMore = listOf(anime(18.0, 19.0))
+        fun report(vararg h: RepoHealth) = HealthReport(h.toList(), emptyList())
 
-        assertEquals("", RepoHealthRules.signature(fine))
-        assertEquals(RepoHealthRules.signature(broken), RepoHealthRules.signature(anime(18.0).let { listOf(it) }))
-        assertFalse(RepoHealthRules.signature(broken) == RepoHealthRules.signature(brokenMore))
+        assertEquals("", RepoHealthRules.signature(report(anime(16.0))))
+        assertEquals(
+            RepoHealthRules.signature(report(anime(18.0))),
+            RepoHealthRules.signature(report(anime(18.0))),
+        )
+        assertFalse(
+            RepoHealthRules.signature(report(anime(18.0))) == RepoHealthRules.signature(report(anime(18.0, 19.0))),
+        )
+    }
+
+    private val installedSama = InstalledInfo("Anime-Sama", "pkg.animesama", "14.18", 18, signature = "AAAA")
+
+    @Test
+    fun `a newer build signed with another key is a blocked update`() {
+        val blocked = RepoHealthRules.blockedUpdates(
+            anime = true,
+            installed = listOf(installedSama),
+            available = listOf(AvailableInfo("pkg.animesama", "16.35", 35, "BBBB", "Yūzōnō")),
+        )
+
+        assertEquals(1, blocked.size)
+        assertEquals("16.35", blocked[0].availableVersion)
+        assertEquals("Yūzōnō", blocked[0].repoName)
+    }
+
+    @Test
+    fun `an update the install accepts is not blocked`() {
+        val blocked = RepoHealthRules.blockedUpdates(
+            anime = true,
+            installed = listOf(installedSama),
+            available = listOf(
+                AvailableInfo("pkg.animesama", "16.35", 35, "BBBB", "Autre"),
+                AvailableInfo("pkg.animesama", "14.20", 20, "aaaa", "Même clé"),
+            ),
+        )
+
+        assertTrue(blocked.isEmpty())
+    }
+
+    @Test
+    fun `no newer version or an unknown key is never reported`() {
+        val older = AvailableInfo("pkg.animesama", "14.10", 10, "BBBB", "R")
+        val noKey = AvailableInfo("pkg.animesama", "16.35", 35, "NO_SIGNING_KEY", "R")
+
+        assertTrue(RepoHealthRules.blockedUpdates(true, listOf(installedSama), listOf(older)).isEmpty())
+        assertTrue(RepoHealthRules.blockedUpdates(true, listOf(installedSama), listOf(noKey)).isEmpty())
+        assertTrue(
+            RepoHealthRules.blockedUpdates(true, listOf(installedSama.copy(signature = null)), listOf(older.copy(versionCode = 99))).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `a blocked update changes the signature`() {
+        val blocked = BlockedUpdate(true, "Anime-Sama", "pkg.animesama", "14.18", "16.35", "Yūzōnō")
+
+        assertEquals("blocked:pkg.animesama:16.35", RepoHealthRules.signature(HealthReport(emptyList(), listOf(blocked))))
     }
 }

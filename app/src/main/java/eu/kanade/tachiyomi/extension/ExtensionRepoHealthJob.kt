@@ -33,8 +33,7 @@ class ExtensionRepoHealthJob(private val context: Context, params: WorkerParamet
             val previous = prefs.getString(KEY_SIGNATURE, "").orEmpty()
             prefs.edit().putString(KEY_SIGNATURE, signature).apply()
 
-            val problems = report.filter { it.hasProblem }
-            if (signature.isNotEmpty() && signature != previous) notify(problems)
+            if (signature.isNotEmpty() && signature != previous) notify(report)
             Result.success()
         } catch (e: Exception) {
             logcat(LogPriority.WARN, e) { "Repo health check failed" }
@@ -42,13 +41,18 @@ class ExtensionRepoHealthJob(private val context: Context, params: WorkerParamet
         }
     }
 
-    private fun notify(problems: List<RepoHealth>) {
-        val names = problems.joinToString(", ") { it.name }
-        val text = if (problems.size == 1) {
-            "Le dépôt « $names » demande ton attention."
-        } else {
-            "${problems.size} dépôts demandent ton attention : $names."
+    private fun notify(report: HealthReport) {
+        val problems = report.repos.filter { it.hasProblem }
+        val parts = buildList {
+            if (problems.isNotEmpty()) add(
+                if (problems.size == 1) "Le dépôt « ${problems[0].name} » demande ton attention"
+                else "${problems.size} dépôts demandent ton attention",
+            )
+            if (report.blocked.isNotEmpty()) add(
+                "${report.blocked.size} mise(s) à jour d'extension bloquée(s) par la signature",
+            )
         }
+        val text = parts.joinToString(" · ") + "."
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.notify(Notifications.ID_EXTENSION_REPO_HEALTH, Notifications.CHANNEL_EXTENSIONS_UPDATE) {

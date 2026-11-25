@@ -3,6 +3,7 @@ package eu.kanade.domain.items.chapter.interactor
 import eu.kanade.domain.entries.manga.interactor.GetExcludedScanlators
 import eu.kanade.domain.entries.manga.interactor.UpdateManga
 import eu.kanade.domain.entries.manga.model.toSManga
+import eu.kanade.domain.items.chapter.ChapterMemoStore
 import eu.kanade.domain.items.chapter.model.copyFromSChapter
 import eu.kanade.domain.items.chapter.model.toSChapter
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
@@ -59,6 +60,9 @@ class SyncChaptersWithSource(
 
         val now = ZonedDateTime.now()
         val nowMillis = now.toInstant().toEpochMilli()
+
+        // The database has no place for a chapter's memo: keep it for when its pages are asked.
+        rawSourceChapters.forEach { ChapterMemoStore.put(manga.id, it.url, it.memo) }
 
         val sourceChapters = rawSourceChapters
             .distinctBy { it.url }

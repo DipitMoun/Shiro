@@ -1,5 +1,6 @@
 package eu.kanade.domain.items.chapter.model
 
+import eu.kanade.domain.items.chapter.ChapterMemoStore
 import eu.kanade.tachiyomi.data.database.models.manga.ChapterImpl
 import eu.kanade.tachiyomi.source.model.SChapter
 import tachiyomi.domain.items.chapter.model.Chapter
@@ -13,6 +14,7 @@ fun Chapter.toSChapter(): SChapter {
         it.date_upload = dateUpload
         it.chapter_number = chapterNumber.toFloat()
         it.scanlator = scanlator
+        ChapterMemoStore.get(mangaId, url)?.let { memo -> it.memo = memo }
     }
 }
 
@@ -39,4 +41,5 @@ fun Chapter.toDbChapter(): DbChapter = ChapterImpl().also {
     it.date_upload = dateUpload
     it.chapter_number = chapterNumber.toFloat()
     it.source_order = sourceOrder.toInt()
+    ChapterMemoStore.get(mangaId, url)?.let { memo -> it.memo = memo }
 }
