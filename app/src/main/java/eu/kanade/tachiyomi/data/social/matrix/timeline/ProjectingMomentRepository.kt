@@ -218,6 +218,7 @@ class ProjectingMomentRepository(
                     pinned = false,
                     reactions = emptyList(),
                     deliveryState = DeliveryState.SENT,
+                    readBy = event.readBy,
                 )
             }
             val body = (content["body"] as? JsonPrimitive)?.content ?: return null
@@ -232,6 +233,7 @@ class ProjectingMomentRepository(
                 inReplyToEventId = inReplyToId,
                 reactions = emptyList(),
                 deliveryState = DeliveryState.SENT,
+                readBy = event.readBy,
             )
         }
 

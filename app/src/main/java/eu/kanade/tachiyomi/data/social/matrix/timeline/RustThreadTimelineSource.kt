@@ -90,7 +90,8 @@ class RustThreadTimelineSource(
             filter = TimelineFilter.All,
             internalIdPrefix = "",
             dateDividerMode = DateDividerMode.DAILY,
-            trackReadReceipts = TimelineReadReceiptTracking.DISABLED,
+            // Read receipts feed the "who has read up to here" avatars of the chat.
+            trackReadReceipts = TimelineReadReceiptTracking.MESSAGE_LIKE_EVENTS,
             reportUtds = false,
         )
 
@@ -342,6 +343,7 @@ class RustThreadTimelineSource(
                 reactions = item.reactions.flatMap { reaction ->
                     reaction.senders.map { sender -> TransportReaction(reaction.key, sender.senderId) }
                 },
+                readBy = item.readReceipts.keys.toList(),
             )
         }
     }

@@ -61,6 +61,22 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf as chatMutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -72,6 +88,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -121,6 +138,8 @@ class SocialChatScreen(
         val state by model.state.collectAsStateWithLifecycle()
         val friends by model.friends.collectAsStateWithLifecycle()
         val selfAvatar by model.selfAvatar.collectAsStateWithLifecycle()
+        val typingIds by model.typing.collectAsStateWithLifecycle()
+        val clipboard = LocalClipboardManager.current
 
         var selectedKey by rememberSaveable(chatContext) {
             mutableStateOf(chatContext.episodes.firstOrNull()?.key?.value)
@@ -197,8 +216,11 @@ class SocialChatScreen(
             customReactionTarget = null
         }
 
+        // A failed send stays in the list, marked, so it can be retried with one tap.
         LaunchedEffect(state.lastError) {
-            if (state.lastError != null) pending.clear()
+            if (state.lastError != null) {
+                for (i in pending.indices) pending[i] = pending[i].copy(failed = true)
+            }
         }
 
         LaunchedEffect(items, pending.size) {
@@ -247,7 +269,21 @@ class SocialChatScreen(
                                     )
                                     val activeAuthor = state.activeAuthorMxid ?: state.thread?.authorMxid
                                     val selfMxid = account?.userId
-                                    if (
+                                    if (typingIds.isNotEmpty()) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = typingLabel(
+                                                    typingIds.map { participants[it]?.name ?: fallbackParticipant(it).name },
+                                                ),
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            TypingDots(MaterialTheme.colorScheme.primary)
+                                        }
+                                    } else if (
                                         activeAuthor != null &&
                                         selfMxid != null &&
                                         activeAuthor != selfMxid
@@ -305,51 +341,235 @@ class SocialChatScreen(
                         )
                     } else {
                         val messageById = remember(items) { items.associateBy { it.eventId } }
+                        val roomId = timeline?.roomId
+                        val selfMxid = account.userId
                         val listState = rememberLazyListState()
-                        LaunchedEffect(items.size, pending.size) {
-                            val count = items.size + pending.size
-                            if (count > 0) listState.animateScrollToItem(count - 1)
+                        val scope = rememberCoroutineScope()
+                        val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+                        // Newest message already seen when the chat was last left: marks what is new.
+                        val unseenAfter = remember(roomId) { roomId?.let { loadSeenEvent(context, it) } }
+                        val rows = remember(items, participants, selfMxid, unseenAfter) {
+                            buildChatRows(items, selfMxid, participants, unseenAfter)
                         }
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(5.dp),
-                        ) {
-                            itemsIndexed(items, key = { _, item -> item.eventId }) { index, item ->
-                                val previous = items.getOrNull(index - 1)
-                                val showHeader = previous == null ||
-                                    previous.sender != item.sender ||
-                                    Duration.between(previous.sentAt, item.sentAt).toMinutes() >= 5
-                                ChatMessage(
-                                    item = item,
-                                    selfMxid = account.userId,
-                                    participants = participants,
-                                    messageById = messageById,
-                                    currentEpisode = selectedEpisode,
-                                    episodes = chatContext.episodes,
-                                    posterUrl = chatContext.posterUrl,
-                                    medium = chatContext.medium,
-                                    showHeader = showHeader,
-                                    onPreview = { episode, positionMs, loop ->
-                                        openPreview(context, chatContext, episode, positionMs, loop)
-                                    },
-                                    onLongPress = { actionItem = item },
-                                    onReaction = { key -> model.react(item.eventId, key) },
-                                )
+                        val rowIndexById = remember(rows) { rows.withIndex().associate { it.value.key to it.index } }
+                        val total = rows.size + pending.size
+
+                        var previousTotal by remember(roomId) { chatMutableIntStateOf(0) }
+                        LaunchedEffect(total, roomId) {
+                            if (total == 0) return@LaunchedEffect
+                            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                            val newestIsMine = pending.isNotEmpty() ||
+                                (rows.lastOrNull() as? ChatRow.Message)?.item?.sender == selfMxid
+                            when {
+                                previousTotal == 0 -> {
+                                    val marker = rows.indexOfFirst { it is ChatRow.NewMarker }
+                                    listState.scrollToItem(if (marker >= 0) marker else total - 1)
+                                }
+                                lastVisible >= previousTotal - 2 || newestIsMine ->
+                                    listState.animateScrollToItem(total - 1)
                             }
-                            items(pending, key = { it.id }) { message ->
-                                ChatPendingMessage(
-                                    text = message.text,
-                                    positions = message.positions,
-                                    participant = participants[account.userId]
-                                        ?: SocialChatFriend(account.userId, "Moi", null),
-                                    episode = selectedEpisode,
-                                    posterUrl = chatContext.posterUrl,
-                                    medium = chatContext.medium,
-                                    onPreview = { episode, positionMs, loop ->
-                                        openPreview(context, chatContext, episode, positionMs, loop)
-                                    },
+                            previousTotal = total
+                        }
+                        val atBottom by remember {
+                            derivedStateOf {
+                                val info = listState.layoutInfo
+                                (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - 2
+                            }
+                        }
+
+                        // Read receipt: tell the room we have read up to the newest message, only
+                        // while the screen is really in front.
+                        val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+                        val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+                        val newestEventId = items.lastOrNull()?.eventId
+                        LaunchedEffect(roomId, newestEventId, resumed) {
+                            if (roomId != null && newestEventId != null && resumed) model.markRead(roomId, newestEventId)
+                        }
+                        LaunchedEffect(roomId) {
+                            if (roomId != null) model.watchTyping(roomId, selfMxid)
+                        }
+                        val latestSeen by rememberUpdatedState(newestEventId)
+                        androidx.compose.runtime.DisposableEffect(roomId) {
+                            onDispose { if (roomId != null) latestSeen?.let { saveSeenEvent(context, roomId, it) } }
+                        }
+
+                        val sendNow: (String, List<Long>, String?) -> Unit = { body, positions, replyTo ->
+                            pending += SocialChatPending(
+                                id = "pending-${pending.size}-${System.nanoTime()}",
+                                text = body,
+                                positions = positions,
+                                inReplyToEventId = replyTo,
+                            )
+                            model.send(
+                                text = body,
+                                positions = positions,
+                                episode = selectedEpisode,
+                                context = chatContext,
+                                inReplyToEventId = replyTo,
+                            )
+                        }
+
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                    horizontal = 10.dp,
+                                    vertical = 10.dp,
+                                ),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                items(rows, key = { it.key }) { row ->
+                                    when (row) {
+                                        is ChatRow.Day -> ChatDayDivider(row.date)
+                                        ChatRow.NewMarker -> ChatNewMarker()
+                                        is ChatRow.Message -> {
+                                            val item = row.item
+                                            val momentEpisode = when (item) {
+                                                is SocialTimelineItem.MomentItem ->
+                                                    chatContext.episodes.firstOrNull { it.key.value == item.payload.episode.key }
+                                                        ?: selectedEpisode
+                                                is SocialTimelineItem.ReplyItem -> selectedEpisode
+                                            }
+                                            val moments = when (item) {
+                                                is SocialTimelineItem.MomentItem -> item.payload.moments.map {
+                                                    ChatMomentModel(momentEpisode, it.page?.toLong() ?: it.positionMs)
+                                                }
+                                                is SocialTimelineItem.ReplyItem -> emptyList()
+                                            }
+                                            val replyTo = (item as? SocialTimelineItem.ReplyItem)
+                                                ?.inReplyToEventId
+                                                ?.let(messageById::get)
+                                            Box(Modifier.padding(top = if (row.first) 6.dp else 0.dp)) {
+                                                ChatBubble(
+                                                    participant = participants[item.sender] ?: fallbackParticipant(item.sender),
+                                                    content = ChatBubbleContent(
+                                                        text = if (item is SocialTimelineItem.MomentItem) {
+                                                            item.payload.note.orEmpty()
+                                                        } else {
+                                                            messageText(item)
+                                                        },
+                                                        moments = moments,
+                                                        replyTarget = replyTo,
+                                                    ),
+                                                    timestamp = item.sentAt,
+                                                    mine = item.sender == selfMxid,
+                                                    first = row.first,
+                                                    last = row.last,
+                                                    medium = chatContext.medium,
+                                                    posterUrl = chatContext.posterUrl,
+                                                    participants = participants,
+                                                    selfMxid = selfMxid,
+                                                    reactions = item.reactions,
+                                                    readers = row.readers,
+                                                    seen = row.seen,
+                                                    state = item.deliveryState,
+                                                    onOpenMoment = { episode, positionMs, loop ->
+                                                        openPreview(context, chatContext, episode, positionMs, loop)
+                                                    },
+                                                    onJumpTo = { id ->
+                                                        rowIndexById[id]?.let { index ->
+                                                            scope.launch { listState.animateScrollToItem(index) }
+                                                        }
+                                                    },
+                                                    onReply = { replyTarget = item },
+                                                    onLongPress = { actionItem = item },
+                                                    onReaction = { key -> model.react(item.eventId, key) },
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                items(pending, key = { it.id }) { message ->
+                                    // No answer from the server after a while: offer a retry.
+                                    LaunchedEffect(message.id) {
+                                        kotlinx.coroutines.delay(20_000)
+                                        val index = pending.indexOfFirst { it.id == message.id }
+                                        if (index >= 0 && !pending[index].failed) pending[index] = pending[index].copy(failed = true)
+                                    }
+                                    Box(Modifier.padding(top = 6.dp)) {
+                                        ChatBubble(
+                                            participant = participants[selfMxid] ?: SocialChatFriend(selfMxid, "Moi", null),
+                                            content = ChatBubbleContent(
+                                                text = message.text,
+                                                moments = message.positions.map { ChatMomentModel(selectedEpisode, it) },
+                                                replyTarget = null,
+                                            ),
+                                            timestamp = null,
+                                            mine = true,
+                                            first = true,
+                                            last = true,
+                                            medium = chatContext.medium,
+                                            posterUrl = chatContext.posterUrl,
+                                            participants = participants,
+                                            selfMxid = selfMxid,
+                                            reactions = emptyList(),
+                                            readers = emptyList(),
+                                            seen = false,
+                                            state = if (message.failed) {
+                                                eu.kanade.tachiyomi.data.social.matrix.DeliveryState.FAILED
+                                            } else {
+                                                eu.kanade.tachiyomi.data.social.matrix.DeliveryState.PENDING
+                                            },
+                                            onOpenMoment = { episode, positionMs, loop ->
+                                                openPreview(context, chatContext, episode, positionMs, loop)
+                                            },
+                                            onJumpTo = {},
+                                            onReply = {},
+                                            onLongPress = null,
+                                            onReaction = null,
+                                            onRetry = {
+                                                pending.remove(message)
+                                                sendNow(message.text, message.positions, message.inReplyToEventId)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+
+                            val jumpVisible = !atBottom && total > 0
+                            val jumpAlpha by androidx.compose.animation.core.animateFloatAsState(
+                                targetValue = if (jumpVisible) 1f else 0f,
+                                label = "jump",
+                            )
+                            if (jumpAlpha > 0.01f) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                                    shape = CircleShape,
+                                    shadowElevation = 4.dp,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(14.dp)
+                                        .size(40.dp)
+                                        .alpha(jumpAlpha)
+                                        .scale(0.7f + 0.3f * jumpAlpha)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                            scope.launch { listState.animateScrollToItem((total - 1).coerceAtLeast(0)) }
+                                        },
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Aller au dernier message")
+                                    }
+                                }
+                            }
+                        }
+
+                        if (typingIds.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.padding(start = 16.dp, bottom = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TypingDots(MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = typingLabel(
+                                        typingIds.map { participants[it]?.name ?: fallbackParticipant(it).name },
+                                    ),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -397,27 +617,19 @@ class SocialChatScreen(
                                 },
                             )
                         } else ChatComposer(
+                            draftKey = "${roomId ?: chatContext.work.id.value}",
                             chips = composerChips,
                             medium = chatContext.medium,
                             onRemoveChip = { composerChips.remove(it) },
                             onCommands = { showCommands = true },
                             onTimecodeRequest = { showTimecodePicker = true },
+                            onTyping = { if (roomId != null) model.notifyTyping(roomId, true) },
                             onSend = { text ->
                                 val body = text.trim()
                                 val positions = composerChips.toList()
                                 if (body.isNotEmpty() || positions.isNotEmpty()) {
-                                    pending += SocialChatPending(
-                                        id = "pending-${pending.size}-${System.nanoTime()}",
-                                        text = body,
-                                        positions = positions,
-                                    )
-                                    model.send(
-                                        text = body,
-                                        positions = positions,
-                                        episode = selectedEpisode,
-                                        context = chatContext,
-                                        inReplyToEventId = replyTarget?.eventId,
-                                    )
+                                    sendNow(body, positions, replyTarget?.eventId)
+                                    if (roomId != null) model.notifyTyping(roomId, false)
                                     composerChips.clear()
                                     replyTarget = null
                                 }
@@ -567,6 +779,26 @@ class SocialChatScreen(
                                     actionItem = null
                                 }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                clipboard.setText(AnnotatedString(messageText(item)))
+                                actionItem = null
+                            }
+                            .padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Text(
+                            text = "Copier le texte",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 10.dp),
                         )
                     }
                     Surface(
@@ -782,7 +1014,7 @@ private fun EpisodeRail(
     }
 }
 
-private val chatTimeFormatter: DateTimeFormatter =
+internal val chatTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
 
 private val defaultReactions = listOf("👍", "❤️", "😂", "😮", "😢", "🔥")
@@ -817,267 +1049,24 @@ private val participantColors = listOf(
     Color(0xFFF5C2E7),
 )
 
-private fun participantColor(mxid: String): Color =
+internal fun participantColor(mxid: String): Color =
     participantColors[(mxid.hashCode() and Int.MAX_VALUE) % participantColors.size]
 
-private fun fallbackParticipant(mxid: String): SocialChatFriend =
+internal fun fallbackParticipant(mxid: String): SocialChatFriend =
     SocialChatFriend(
         mxid = mxid,
         name = mxid.substringBefore(':').removePrefix("@"),
         avatarBytes = null,
     )
 
-private fun messageText(item: SocialTimelineItem): String = when (item) {
+internal fun messageText(item: SocialTimelineItem): String = when (item) {
     is SocialTimelineItem.MomentItem ->
         item.payload.note ?: MomentPayloadCodec.fallbackBody(item.payload)
     is SocialTimelineItem.ReplyItem -> item.body
 }
 
 @Composable
-private fun ChatMessage(
-    item: SocialTimelineItem,
-    selfMxid: String,
-    participants: Map<String, SocialChatFriend>,
-    messageById: Map<String, SocialTimelineItem>,
-    currentEpisode: SocialChatEpisode,
-    episodes: List<SocialChatEpisode>,
-    posterUrl: String?,
-    medium: SocialChatMedium,
-    showHeader: Boolean,
-    onPreview: (SocialChatEpisode, Long, Boolean) -> Unit,
-    onLongPress: (SocialTimelineItem) -> Unit,
-    onReaction: (String) -> Unit,
-) {
-    val participant = participants[item.sender] ?: fallbackParticipant(item.sender)
-    val momentEpisode = when (item) {
-        is SocialTimelineItem.MomentItem -> {
-            episodes.firstOrNull { it.key.value == item.payload.episode.key } ?: currentEpisode
-        }
-        is SocialTimelineItem.ReplyItem -> currentEpisode
-    }
-    val positions = when (item) {
-        is SocialTimelineItem.MomentItem -> item.payload.moments.map { it.page?.toLong() ?: it.positionMs }
-        is SocialTimelineItem.ReplyItem -> emptyList()
-    }
-    val replyTarget = (item as? SocialTimelineItem.ReplyItem)
-        ?.inReplyToEventId
-        ?.let(messageById::get)
-
-    DiscordMessageRow(
-        participant = participant,
-        text = messageText(item),
-        timestamp = item.sentAt,
-        replyTarget = replyTarget,
-        participants = participants,
-        reactions = item.reactions.map { it.key to it.count },
-        positions = positions,
-        episode = momentEpisode,
-        posterUrl = posterUrl,
-        medium = medium,
-        isMine = item.sender == selfMxid,
-        showHeader = showHeader,
-        onPreview = onPreview,
-        onLongPress = { onLongPress(item) },
-        onReaction = onReaction,
-    )
-}
-
-@Composable
-private fun ChatPendingMessage(
-    text: String,
-    positions: List<Long>,
-    participant: SocialChatFriend,
-    episode: SocialChatEpisode,
-    posterUrl: String?,
-    medium: SocialChatMedium,
-    onPreview: (SocialChatEpisode, Long, Boolean) -> Unit,
-) {
-    DiscordMessageRow(
-        participant = participant,
-        text = text,
-        timestamp = null,
-        replyTarget = null,
-        participants = emptyMap(),
-        reactions = emptyList(),
-        positions = positions,
-        episode = episode,
-        posterUrl = posterUrl,
-        medium = medium,
-        isMine = true,
-        pending = true,
-        onPreview = onPreview,
-    )
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun DiscordMessageRow(
-    participant: SocialChatFriend,
-    text: String,
-    timestamp: Instant?,
-    replyTarget: SocialTimelineItem?,
-    participants: Map<String, SocialChatFriend>,
-    reactions: List<Pair<String, Int>>,
-    positions: List<Long>,
-    episode: SocialChatEpisode,
-    posterUrl: String?,
-    medium: SocialChatMedium,
-    isMine: Boolean,
-    pending: Boolean = false,
-    showHeader: Boolean = true,
-    onPreview: (SocialChatEpisode, Long, Boolean) -> Unit,
-    onLongPress: (() -> Unit)? = null,
-    onReaction: ((String) -> Unit)? = null,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = {},
-                onLongClick = onLongPress,
-            ),
-        verticalAlignment = Alignment.Top,
-    ) {
-        if (showHeader) {
-            ParticipantAvatar(
-                participant = participant,
-                size = 40.dp,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-            Spacer(Modifier.width(9.dp))
-        } else {
-            Spacer(Modifier.width(49.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            if (showHeader) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = participant.name,
-                        color = participantColor(participant.mxid),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (isMine) {
-                        Text(
-                            text = " · toi",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                    timestamp?.let {
-                        Text(
-                            text = chatTimeFormatter.format(it),
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            replyTarget?.let { target ->
-                ReplyQuote(
-                    target = target,
-                    participants = participants,
-                )
-            }
-
-            if (text.isNotBlank()) {
-                Text(
-                    text = text,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-
-            if (reactions.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.padding(top = 5.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    reactions.take(6).forEach { (key, count) ->
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(7.dp),
-                            modifier = Modifier.clickable { onReaction?.invoke(key) },
-                        ) {
-                            Text(
-                                text = "$key $count",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
-                    }
-                }
-            }
-
-            positions.forEach { position ->
-                if (medium == SocialChatMedium.MANGA) {
-                    ChatPageMomentCard(
-                        page = position.toInt(),
-                        episode = episode,
-                        onOpen = { onPreview(episode, position, false) },
-                    )
-                } else {
-                    ChatPreviewCard(
-                        positionMs = position,
-                        episode = episode,
-                        posterUrl = posterUrl,
-                        onPreview = onPreview,
-                    )
-                }
-            }
-
-            if (pending) {
-                Text(
-                    text = "Envoi…",
-                    fontSize = 9.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(top = 3.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReplyQuote(
-    target: SocialTimelineItem,
-    participants: Map<String, SocialChatFriend>,
-) {
-    val participant = participants[target.sender] ?: fallbackParticipant(target.sender)
-    val snippet = messageText(target).replace('\n', ' ').take(120)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 3.dp, bottom = 1.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ParticipantAvatar(participant = participant, size = 18.dp)
-        Text(
-            text = " ${participant.name}  ",
-            fontSize = 10.sp,
-            color = participantColor(participant.mxid),
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-        )
-        Text(
-            text = snippet,
-            fontSize = 10.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun ParticipantAvatar(
+internal fun ParticipantAvatar(
     participant: SocialChatFriend,
     size: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
@@ -1142,129 +1131,6 @@ private fun ParticipantAvatar(
 }
 
 @Composable
-private fun PreviewActionButton(
-    label: String,
-    onClick: () -> Unit,
-) {
-    Surface(
-        color = Color.Black.copy(alpha = 0.58f),
-        contentColor = Color.White,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.clickable(onClick = onClick),
-    ) {
-        Text(
-            text = label,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-        )
-    }
-}
-
-@Composable
-private fun ChatPreviewCard(
-    positionMs: Long,
-    episode: SocialChatEpisode,
-    posterUrl: String?,
-    onPreview: (SocialChatEpisode, Long, Boolean) -> Unit,
-) {
-    var revealed by rememberSaveable(episode.key.value, positionMs) { mutableStateOf(false) }
-    val durationMs = episode.durationSeconds.takeIf { it > 0L }?.times(1000L)
-    val start = (positionMs - 15_000L).coerceAtLeast(0L)
-    val end = durationMs?.let { (positionMs + 15_000L).coerceAtMost(it) }
-        ?: (positionMs + 15_000L)
-
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier
-            .widthIn(max = 320.dp)
-            .padding(top = 7.dp),
-    ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(132.dp)
-                    .clickable { if (!revealed) revealed = true },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (posterUrl != null) {
-                    AsyncImage(
-                        model = posterUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .blur(if (revealed) 0.dp else 22.dp),
-                    )
-                } else {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surface),
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)),
-                            ),
-                        ),
-                )
-                if (!revealed) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Icon(Icons.Outlined.Lock, contentDescription = null, tint = Color.White)
-                        Text(
-                            text = "Spoiler",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = "Toucher pour révéler",
-                            color = Color.White.copy(alpha = 0.75f),
-                            fontSize = 9.sp,
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        PreviewActionButton(
-                            label = "Boucler 30 s",
-                            onClick = { onPreview(episode, positionMs, true) },
-                        )
-                        PreviewActionButton(
-                            label = "Reprendre",
-                            onClick = { onPreview(episode, positionMs, false) },
-                        )
-                    }
-                }
-                Text(
-                    text = "${episode.key.value} · ${formatTimecode(start)} – ${formatTimecode(end)}",
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun ReplyComposerBanner(
     target: SocialTimelineItem,
     participants: Map<String, SocialChatFriend>,
@@ -1295,120 +1161,6 @@ private fun ReplyComposerBanner(
         }
         IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
             Icon(Icons.Outlined.Close, contentDescription = "Annuler la réponse", modifier = Modifier.size(15.dp))
-        }
-    }
-}
-
-@Composable
-private fun ChatComposer(
-    chips: List<Long>,
-    medium: SocialChatMedium,
-    onRemoveChip: (Long) -> Unit,
-    onCommands: () -> Unit,
-    onTimecodeRequest: () -> Unit,
-    onSend: (String) -> Unit,
-) {
-    var draft by remember { mutableStateOf("") }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-    ) {
-        if (chips.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(start = 8.dp, bottom = 6.dp, end = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                chips.forEach { position ->
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        shape = RoundedCornerShape(8.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = if (medium == SocialChatMedium.MANGA) "p. $position" else formatTimecode(position),
-                                fontSize = 10.sp,
-                                modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
-                            )
-                            IconButton(
-                                onClick = { onRemoveChip(position) },
-                                modifier = Modifier.size(24.dp),
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Close,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(13.dp),
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onCommands) {
-                    Icon(Icons.Default.Add, contentDescription = "Commandes")
-                }
-                Box(Modifier.weight(1f)) {
-                    if (draft.isEmpty()) {
-                        Text(
-                            text = "Envoyer un message…",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 14.sp,
-                        )
-                    }
-                    BasicTextField(
-                        value = draft,
-                        onValueChange = { value ->
-                            val command = if (medium == SocialChatMedium.MANGA) "/page" else "/timecode"
-                            if (value.contains(command, ignoreCase = true)) {
-                                draft = value.replace(command, "", ignoreCase = true)
-                                onTimecodeRequest()
-                            } else {
-                                draft = value
-                            }
-                        },
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 10.dp),
-                        maxLines = 4,
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        onSend(draft)
-                        draft = ""
-                    },
-                    enabled = draft.isNotBlank() || chips.isNotEmpty(),
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Envoyer",
-                        tint = if (draft.isNotBlank() || chips.isNotEmpty()) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-            }
         }
     }
 }
@@ -1599,61 +1351,15 @@ private fun openPreview(
     )
 }
 
-private data class SocialChatPending(
+internal data class SocialChatPending(
     val id: String,
     val text: String,
     val positions: List<Long>,
+    val failed: Boolean = false,
+    val inReplyToEventId: String? = null,
 )
 
-/** A page of a chapter shared in the chat; opens the reader on that page. */
-@Composable
-private fun ChatPageMomentCard(
-    page: Int,
-    episode: SocialChatEpisode,
-    onOpen: () -> Unit,
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier
-            .widthIn(max = 320.dp)
-            .padding(top = 7.dp)
-            .clickable(onClick = onOpen),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.MenuBook,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Column(modifier = Modifier.padding(start = 12.dp)) {
-                Text(
-                    text = "Page $page",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = episode.title?.takeIf { it.isNotBlank() }
-                        ?: "Chapitre ${chapterNumberLabel(episode.number)}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(16.dp))
-            Text(
-                text = "Lire",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-    }
-}
-
-private fun chapterNumberLabel(number: Double): String =
+internal fun chapterNumberLabel(number: Double): String =
     if (number % 1.0 == 0.0) number.toInt().toString() else number.toString()
 
 /** Picks the page to share: the chapter (any of the work's) and a page number. */
@@ -1722,4 +1428,13 @@ private fun AddToLibraryPrompt(title: String, onOpen: () -> Unit) {
             Button(onClick = onOpen) { Text("Voir l'œuvre") }
         }
     }
+}
+
+private const val SEEN_PREFS = "shiro_social_seen"
+
+private fun loadSeenEvent(context: Context, roomId: String): String? =
+    context.getSharedPreferences(SEEN_PREFS, Context.MODE_PRIVATE).getString(roomId, null)
+
+private fun saveSeenEvent(context: Context, roomId: String, eventId: String) {
+    context.getSharedPreferences(SEEN_PREFS, Context.MODE_PRIVATE).edit().putString(roomId, eventId).apply()
 }

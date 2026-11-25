@@ -147,6 +147,8 @@ data class TransportEvent(
     val redactedByEventId: String? = null,
     /** Aggregated reactions transported with a message item. */
     val reactions: List<TransportReaction> = emptyList(),
+    /** Users whose read receipt points at this event. */
+    val readBy: List<String> = emptyList(),
 )
 
 data class TransportReaction(
@@ -253,6 +255,8 @@ sealed interface SocialTimelineItem {
     val sentAt: Instant
     val reactions: List<ReactionSummary>
     val deliveryState: DeliveryState
+    /** Users whose read receipt currently sits on this entry (the last thing each one has read). */
+    val readBy: List<String>
 
     /** `m.room.message` carrying a decoded `org.shiro.moment` payload. */
     data class MomentItem(
@@ -267,6 +271,7 @@ sealed interface SocialTimelineItem {
         val pinned: Boolean,
         override val reactions: List<ReactionSummary>,
         override val deliveryState: DeliveryState,
+        override val readBy: List<String> = emptyList(),
     ) : SocialTimelineItem
 
     /** Plain threaded reply; never carries a moment payload. */
@@ -279,6 +284,7 @@ sealed interface SocialTimelineItem {
         val inReplyToEventId: String?,
         override val reactions: List<ReactionSummary>,
         override val deliveryState: DeliveryState,
+        override val readBy: List<String> = emptyList(),
     ) : SocialTimelineItem
 }
 

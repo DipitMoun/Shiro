@@ -26,12 +26,15 @@ import eu.kanade.tachiyomi.ui.social.overlay.SocialOverlayController
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import java.time.Instant
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import org.matrix.rustcomponents.sdk.ReceiptType
+import org.matrix.rustcomponents.sdk.TypingNotificationsListener
 
 /**
  * Work-level chat: one Matrix room per user + work, one thread per episode.
@@ -67,6 +70,17 @@ class SocialChatScreenModel(
 
     private val _selfAvatar = MutableStateFlow<ByteArray?>(null)
     val selfAvatar: StateFlow<ByteArray?> = _selfAvatar.asStateFlow()
+
+    private val _typing = MutableStateFlow<List<String>>(emptyList())
+
+    /** Mxids currently typing in the open room (never includes the user). */
+    val typing: StateFlow<List<String>> = _typing.asStateFlow()
+
+    private var typingHandle: org.matrix.rustcomponents.sdk.TaskHandle? = null
+    private var typingRoomId: String? = null
+    private var typingStopJob: Job? = null
+    private var lastReadEventId: String? = null
+    private var lastTypingSentAt = 0L
 
     private var ensuredRoomForWork = false
     private var ensuredRoomId: String? = null
@@ -132,6 +146,62 @@ class SocialChatScreenModel(
                 )
             }
         }
+    }
+
+    /** Tells the room the user has read up to the newest message, so friends see it. */
+    fun markRead(roomId: String, newestEventId: String) {
+        if (newestEventId == lastReadEventId) return
+        lastReadEventId = newestEventId
+        screenModelScope.launch {
+            runCatching { session.clientOrNull()?.getRoom(roomId)?.markAsRead(ReceiptType.READ) }
+                .onFailure { logcat(LogPriority.WARN, it) { "markAsRead failed" } }
+        }
+    }
+
+    /** Follows who is typing in [roomId]; replaces any earlier subscription. */
+    fun watchTyping(roomId: String, selfMxid: String) {
+        if (typingRoomId == roomId) return
+        typingHandle?.cancel()
+        typingRoomId = roomId
+        _typing.value = emptyList()
+        lastReadEventId = null
+        val room = session.clientOrNull()?.getRoom(roomId) ?: return
+        typingHandle = room.subscribeToTypingNotifications(
+            object : TypingNotificationsListener {
+                override fun call(typingUserIds: List<String>) {
+                    _typing.value = typingUserIds.filter { it != selfMxid }
+                }
+            },
+        )
+    }
+
+    /** Sends the typing notice; it is withdrawn by itself when the user stops. */
+    fun notifyTyping(roomId: String, typing: Boolean) {
+        typingStopJob?.cancel()
+        val now = System.currentTimeMillis()
+        // One notice every few seconds is enough while typing; a stop is always sent.
+        if (!typing || now - lastTypingSentAt > TYPING_RESEND_MS) {
+            lastTypingSentAt = if (typing) now else 0L
+            screenModelScope.launch {
+                runCatching { session.clientOrNull()?.getRoom(roomId)?.typingNotice(typing) }
+            }
+        }
+        if (typing) {
+            typingStopJob = screenModelScope.launch {
+                kotlinx.coroutines.delay(TYPING_TIMEOUT_MS)
+                runCatching { session.clientOrNull()?.getRoom(roomId)?.typingNotice(false) }
+            }
+        }
+    }
+
+    override fun onDispose() {
+        typingHandle?.cancel()
+        typingRoomId?.let { room ->
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                runCatching { session.clientOrNull()?.getRoom(room)?.typingNotice(false) }
+            }
+        }
+        super.onDispose()
     }
 
     fun react(eventId: String, key: String) {
@@ -277,5 +347,10 @@ class SocialChatScreenModel(
                 null
             }
         }
+    }
+
+    private companion object {
+        const val TYPING_TIMEOUT_MS = 5_000L
+        const val TYPING_RESEND_MS = 3_000L
     }
 }
