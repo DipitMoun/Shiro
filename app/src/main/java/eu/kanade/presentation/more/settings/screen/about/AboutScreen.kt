@@ -222,7 +222,7 @@ object AboutScreen : Screen() {
                     else -> {}
                 }
             } catch (e: Exception) {
-                context.toast(e.message)
+                context.toast("Impossible de vérifier les mises à jour. Vérifie ta connexion, ou la version n'est pas encore publiée.")
                 logcat(LogPriority.ERROR, e)
             } finally {
                 onFinish()
