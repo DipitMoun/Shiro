@@ -15,6 +15,10 @@ Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 
 ### Quoi de neuf
 
+**Correctif**
+- « Voir l'œuvre » dans une conversation ouvre l'œuvre exacte : une œuvre dont le titre n'est qu'un
+  morceau du bon (« Le Retour » pour « Le retour du clan Hwasan ») n'est plus prise pour elle.
+
 **Chat**
 - Tu peux envoyer des images et des GIF : le bouton image à côté du champ de saisie, ou
   « Image ou GIF » dans le menu +. Les grosses photos sont réduites avant l'envoi, les GIF

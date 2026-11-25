@@ -55,19 +55,21 @@ internal object SocialWorkMatching {
             if (candidate.isEmpty()) return 0
             if (candidate == wanted) return 1000
             if (candidate.contains(wanted) || wanted.contains(candidate)) {
-                // "Le retour" is contained in "Le retour du clan Hwasan" but is not the same work:
-                // the further apart the lengths, the lower the score.
-                return 500 - minOf(450, kotlin.math.abs(candidate.length - wanted.length) * 6)
+                // "Le retour" is inside "Le retour du clan Hwasan" but is another work: a title
+                // only counts when it covers most of the other one.
+                val ratio = minOf(candidate.length, wanted.length).toFloat() / maxOf(candidate.length, wanted.length)
+                return if (ratio >= MIN_CONTAINED_RATIO) (600 + (ratio - MIN_CONTAINED_RATIO) * 500).toInt() else 0
             }
             val candidateWords = words(name).toSet()
             if (wantedWords.isEmpty() || candidateWords.isEmpty()) return 0
             val shared = wantedWords.intersect(candidateWords).size
-            return shared * 200 / (wantedWords.size + candidateWords.size - shared)
+            val jaccard = shared.toFloat() / (wantedWords.size + candidateWords.size - shared)
+            return if (jaccard >= MIN_SHARED_WORDS) (jaccard * 500).toInt() else 0
         }
 
         return items
             .map { item -> item to (namesOf(item).maxOfOrNull(::score) ?: 0) }
-            .filter { it.second >= 40 }
+            .filter { it.second >= MIN_SCORE }
             .maxByOrNull { it.second }
             ?.first
     }
@@ -87,6 +89,10 @@ internal object SocialWorkMatching {
         s = s.replace(Regex("""\s+(vostfr|vf)\s*$""", RegexOption.IGNORE_CASE), "")
         return s.trim().replace(Regex("""\s{2,}"""), " ")
     }
+
+    private const val MIN_CONTAINED_RATIO = 0.6f
+    private const val MIN_SHARED_WORDS = 0.6f
+    private const val MIN_SCORE = 300
 
     private fun normalize(value: String) = value.lowercase().replace(Regex("[^a-z0-9]"), "")
 
