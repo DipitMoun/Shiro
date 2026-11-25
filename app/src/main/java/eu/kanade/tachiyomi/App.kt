@@ -244,9 +244,11 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
             eventListener(
                 object : coil3.EventListener() {
                     override fun onError(request: coil3.request.ImageRequest, result: coil3.request.ErrorResult) {
-                        logcat(LogPriority.WARN, result.throwable) {
-                            "Image failed: ${request.data.toString().take(200)}"
-                        }
+                        // android.util.Log, not logcat(): the app logger is off unless verbose logging is on.
+                        android.util.Log.w(
+                            "ShiroImage",
+                            "Image failed: ${request.data.toString().take(200)} -> ${result.throwable}",
+                        )
                     }
                 },
             )

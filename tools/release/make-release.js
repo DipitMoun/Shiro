@@ -5,7 +5,7 @@
 //   - patches from the previous versions (what an update really has to download)
 //   - latest.json, the file the app reads to learn about the update
 //
-//   node tools/release/make-release.js [--base-url URL] [--out dist/release] [--keep 3]
+//   node tools/release/make-release.js [--base-url URL] [--out dist/release] [--keep 3] [--universal 1]
 //
 // Every APK built is also kept in release-archive/<versionCode>/ : that is what the next
 // release is compared with. Keep the archive; without it there are no patches.
@@ -32,10 +32,13 @@ const meta = JSON.parse(fs.readFileSync(path.join(apkDir, "output-metadata.json"
 if (!meta.elements?.length) throw new Error("output-metadata.json has no APK");
 const versionCode = meta.elements[0].versionCode;
 const versionName = meta.elements[0].versionName;
-const builds = meta.elements.map((e) => ({
-  abi: e.filters?.find((f) => f.filterType === "ABI")?.value || "universal",
-  file: path.join(apkDir, e.outputFile),
-}));
+// The universal APK is huge and no tester needs it; add --universal to publish it anyway.
+const builds = meta.elements
+  .map((e) => ({
+    abi: e.filters?.find((f) => f.filterType === "ABI")?.value || "universal",
+    file: path.join(apkDir, e.outputFile),
+  }))
+  .filter((b) => b.abi !== "universal" || args.universal !== undefined);
 
 const baseUrl = (args["base-url"] || `https://github.com/DipitMoun/Shiro/releases/download/v${versionName}`).replace(/\/$/, "");
 fs.mkdirSync(outDir, { recursive: true });

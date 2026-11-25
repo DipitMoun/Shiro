@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.util.system.NetworkState
 import eu.kanade.tachiyomi.util.system.activeNetworkState
 import eu.kanade.tachiyomi.util.system.networkStateFlow
 import eu.kanade.tachiyomi.util.system.notificationBuilder
+import eu.kanade.tachiyomi.data.download.DownloadKeepAlive
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -66,19 +67,26 @@ class MangaDownloadJob(context: Context, workerParams: WorkerParameters) : Corou
 
         setForegroundSafely()
 
-        coroutineScope {
-            combineTransform(
-                applicationContext.networkStateFlow(),
-                downloadPreferences.downloadOnlyOverWifi().changes(),
-                transform = { a, b -> emit(checkNetworkState(a, b)) },
-            )
-                .onEach { networkCheck = it }
-                .launchIn(this)
-        }
+        // CPU and Wi-Fi stay awake for as long as the job lives (screen off, other app in front).
+        val keepAlive = DownloadKeepAlive(applicationContext, TAG)
+        keepAlive.acquire()
+        try {
+            coroutineScope {
+                combineTransform(
+                    applicationContext.networkStateFlow(),
+                    downloadPreferences.downloadOnlyOverWifi().changes(),
+                    transform = { a, b -> emit(checkNetworkState(a, b)) },
+                )
+                    .onEach { networkCheck = it }
+                    .launchIn(this)
+            }
 
-        // Keep the worker running when needed
-        while (active) {
-            active = !isStopped && downloadManager.isRunning && networkCheck
+            // Keep the worker running when needed
+            while (active) {
+                active = !isStopped && downloadManager.isRunning && networkCheck
+            }
+        } finally {
+            keepAlive.release()
         }
 
         return Result.success()

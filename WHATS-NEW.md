@@ -15,6 +15,22 @@ Dernière release publiée : build du 18/11/2026 (commit `40d0fb031`).
 
 ### Quoi de neuf
 
+**Téléchargements**
+- Ils continuent écran éteint ou quand tu passes sur une autre application : le téléphone
+  garde le processeur et le Wi-Fi éveillés pendant un téléchargement.
+- Au premier téléchargement, une notification te propose d'autoriser Shiro à rester actif en
+  arrière-plan, ce que certains téléphones exigent pour ne pas couper l'application.
+
+**Bibliothèque**
+- Les couvertures manquantes du carrousel « activité récente » (Animé et Manga) s'affichent
+  de nouveau.
+
+---
+
+## 0.19.2 (25/11/2026)
+
+### Quoi de neuf
+
 **Chat**
 - Le chat est refait : messages regroupés par personne, jours séparés, repère « Nouveaux
   messages » à l'ouverture, et un bouton pour revenir au dernier message.

@@ -1,5 +1,6 @@
 package eu.kanade.presentation.library.manga
 
+import tachiyomi.domain.entries.manga.model.asMangaCover
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -177,6 +178,7 @@ fun MangaLibraryContent(
             id = it.libraryManga.manga.id,
             title = it.libraryManga.manga.title,
             coverUrl = it.libraryManga.manga.thumbnailUrl,
+            coverModel = it.libraryManga.manga.asMangaCover(),
             progress = EntryProgress(seriesPercent = it.progressPercent()),
             canContinue = it.libraryManga.unreadCount > 0,
         )

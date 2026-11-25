@@ -68,6 +68,8 @@ data class RecentWork(
     val id: Long,
     val title: String,
     val coverUrl: String?,
+    /** Cover as the library grid loads it (cover cache, source headers); preferred over [coverUrl]. */
+    val coverModel: Any? = null,
     val progress: EntryProgress,
     /** True when the work still has entries to resume (unseen episodes / unread chapters). */
     val canContinue: Boolean = false,
@@ -122,9 +124,9 @@ private fun RecentWorkCard(
                 .clip(RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            if (!work.coverUrl.isNullOrBlank()) {
+            if (work.coverModel != null || !work.coverUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = work.coverUrl,
+                    model = work.coverModel ?: work.coverUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),

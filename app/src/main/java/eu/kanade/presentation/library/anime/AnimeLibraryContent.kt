@@ -1,5 +1,6 @@
 package eu.kanade.presentation.library.anime
 
+import tachiyomi.domain.entries.anime.model.asAnimeCover
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -217,6 +218,7 @@ fun AnimeLibraryContent(
             id = it.libraryAnime.anime.id,
             title = it.libraryAnime.anime.title,
             coverUrl = it.libraryAnime.anime.thumbnailUrl,
+            coverModel = it.libraryAnime.anime.asAnimeCover(),
             progress = recentProgress[it.libraryAnime.anime.id]
                 ?: EntryProgress(seriesPercent = it.progressPercent()),
             canContinue = it.libraryAnime.unseenCount > 0,
