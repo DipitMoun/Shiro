@@ -194,6 +194,52 @@ Téléchargements et mises à jour
       leur base n'est pas celle du téléphone de test.
 - [ ] Diagnostic des couvertures : les échecs d'images sont dans les logs sous `ShiroImage`.
 
+### À faire ce week-end (demandé le 25/11/2026, pas maintenant)
+
+1. **Retrouver la version exacte d'une œuvre grâce à l'extension.** À la création d'un salon,
+   enregistrer comme paramètre le nom (le paquet) de l'extension / la source que l'auteur utilise,
+   pour ne plus passer par la recherche multi-source quand un ami clique sur « Voir l'œuvre » :
+   on rouvre directement la bonne source. Variante : le faire depuis le salon « activité » qui gère
+   la bibliothèque, en y mettant la source de chaque œuvre. Si l'utilisateur qui clique n'a pas
+   cette extension, lui proposer de l'installer.
+2. **Même principe pour le clic sur les activités** (fil d'activité) : ouvrir l'œuvre exacte par sa
+   source au lieu d'une recherche.
+3. **Stories éphémères de 24 h** (social Matrix), cahier des charges ci-dessous.
+
+#### Stories éphémères de 24 h
+
+Chaque utilisateur peut publier des moments (photos et vidéos multiples) dans un fil « Stories »
+de l'onglet Social. Les amis les voient pendant 24 h, puis elles disparaissent.
+
+Fonctionnement attendu
+- Chaque utilisateur a un salon Matrix dédié à ses stories. Ses amis en sont membres.
+- Une story est un envoi de média dans ce salon, avec une date d'expiration (publication + 24 h).
+- Après 24 h, l'app masque la story. Elle envoie aussi une redaction pour retirer le contenu du
+  message. Ce n'est pas une suppression réelle du fichier sur le serveur : à savoir.
+
+Quota d'envoi (par utilisateur, pas partagé), chiffres donnés pour le plan gratuit matrix.org
+- Limite journalière : 100 Mo par 24 h. Limite mensuelle : 500 Mo sur 28 jours.
+- Taille max par pièce jointe : 10 Mo.
+- Les médias reçus ne comptent pas, seuls les envois comptent. Les aperçus de liens comptent aussi.
+
+Compteur local
+- L'app enregistre la taille réelle envoyée (fichier chiffré si chiffrement) et l'horodatage de
+  chaque envoi.
+- Elle affiche le total des 24 dernières heures et des 28 derniers jours, avec la date approximative
+  du prochain retour de quota.
+- Au-delà de 50 Mo en un envoi, demander confirmation. Si le quota restant est insuffisant, bloquer
+  l'envoi avec un message clair.
+
+À vérifier avant de finaliser
+- Si la fenêtre de 24 h est glissante ou calée sur un jour fixe (non précisé par matrix.org) : test
+  à faire avec un compte.
+- Si supprimer un média libère du quota : supposer que non tant que ce n'est pas testé.
+- Les limites ci-dessus sont celles annoncées : les confirmer sur le serveur réellement utilisé.
+
+Hors périmètre pour l'instant
+- Pas de stockage hors Matrix (pas de Firebase, pas de R2).
+- Pas de file d'attente ni de partage de quota entre utilisateurs.
+
 ### Plus tard
 
 - [ ] Sauvegarde : liste d'amis sociale (dépend du compte Matrix, à réfléchir).
