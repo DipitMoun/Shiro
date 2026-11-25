@@ -40,6 +40,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.AlertDialog
@@ -237,6 +238,46 @@ class SocialChatScreen(
         val timeline = if (state.activeRoomId != null) state.roomTimeline else state.timeline
         val items = timeline?.items.orEmpty()
 
+        val imageScope = androidx.compose.runtime.rememberCoroutineScope()
+        val sendImageNow: (PickedImage, String?) -> Unit = { image, replyTo ->
+            val ownImages = items.count {
+                it is SocialTimelineItem.ReplyItem && it.media != null && it.sender == account?.userId
+            }
+            pending += SocialChatPending(
+                id = "pending-image-${System.nanoTime()}",
+                text = "",
+                positions = emptyList(),
+                inReplyToEventId = replyTo,
+                image = image,
+                imageBaseline = ownImages,
+            )
+            model.sendImage(image, "", replyTo)
+        }
+        val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia(),
+        ) { uri ->
+            if (uri != null) {
+                imageScope.launch {
+                    val image = ChatImagePreparer.prepare(context, uri)
+                    if (image == null) {
+                        android.widget.Toast
+                            .makeText(context, "Image illisible ou trop lourde", android.widget.Toast.LENGTH_SHORT)
+                            .show()
+                    } else {
+                        sendImageNow(image, replyTarget?.eventId)
+                        replyTarget = null
+                    }
+                }
+            }
+        }
+        val launchImagePicker: () -> Unit = {
+            pickImage.launch(
+                androidx.activity.result.PickVisualMediaRequest(
+                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly,
+                ),
+            )
+        }
+
         LaunchedEffect(state.thread, state.activeRoomId) {
             pending.clear()
             replyTarget = null
@@ -259,7 +300,11 @@ class SocialChatScreen(
                     is SocialTimelineItem.ReplyItem -> item.body
                 }
             }.toSet()
-            pending.removeAll { it.text in sentTexts }
+            val ownImages = items.count {
+                it is SocialTimelineItem.ReplyItem && it.media != null && it.sender == account?.userId
+            }
+            pending.removeAll { it.text in sentTexts && it.image == null }
+            pending.removeAll { it.image != null && ownImages > it.imageBaseline }
         }
 
         Box(Modifier.fillMaxSize()) {
@@ -473,13 +518,13 @@ class SocialChatScreen(
                                                 ChatBubble(
                                                     participant = participants[item.sender] ?: fallbackParticipant(item.sender),
                                                     content = ChatBubbleContent(
-                                                        text = if (item is SocialTimelineItem.MomentItem) {
-                                                            item.payload.note.orEmpty()
-                                                        } else {
-                                                            messageText(item)
+                                                        text = when (item) {
+                                                            is SocialTimelineItem.MomentItem -> item.payload.note.orEmpty()
+                                                            is SocialTimelineItem.ReplyItem -> item.body
                                                         },
                                                         moments = moments,
                                                         replyTarget = replyTo,
+                                                        image = (item as? SocialTimelineItem.ReplyItem)?.media,
                                                     ),
                                                     timestamp = item.sentAt,
                                                     mine = item.sender == selfMxid,
@@ -523,6 +568,7 @@ class SocialChatScreen(
                                                 text = message.text,
                                                 moments = message.positions.map { ChatMomentModel(selectedEpisode, it) },
                                                 replyTarget = null,
+                                                pendingImage = message.image,
                                             ),
                                             timestamp = null,
                                             mine = true,
@@ -549,7 +595,11 @@ class SocialChatScreen(
                                             onReaction = null,
                                             onRetry = {
                                                 pending.remove(message)
-                                                sendNow(message.text, message.positions, message.inReplyToEventId)
+                                                if (message.image != null) {
+                                                    sendImageNow(message.image, message.inReplyToEventId)
+                                                } else {
+                                                    sendNow(message.text, message.positions, message.inReplyToEventId)
+                                                }
                                             },
                                         )
                                     }
@@ -627,19 +677,28 @@ class SocialChatScreen(
                         // replying needs the work, so the user is invited to add it instead.
                         val notInLibrary = chatContext.initialRoomId != null && chatContext.animeId == 0L
                         val openScope = androidx.compose.runtime.rememberCoroutineScope()
+                        var opening by remember { mutableStateOf(false) }
                         if (notInLibrary) {
                             AddToLibraryPrompt(
                                 title = chatContext.title,
+                                loading = opening,
                                 onOpen = {
-                                    openScope.launch {
-                                        val screen = eu.kanade.presentation.social.SocialWorkOpener()
-                                            .open(chatContext.title, isManga = chatContext.medium == SocialChatMedium.MANGA)
-                                        if (screen != null) {
-                                            navigator.push(screen)
-                                        } else {
-                                            android.widget.Toast
-                                                .makeText(context, "Œuvre introuvable", android.widget.Toast.LENGTH_SHORT)
-                                                .show()
+                                    if (!opening) {
+                                        opening = true
+                                        openScope.launch {
+                                            try {
+                                                val screen = eu.kanade.presentation.social.SocialWorkOpener()
+                                                    .open(chatContext.title, isManga = chatContext.medium == SocialChatMedium.MANGA)
+                                                if (screen != null) {
+                                                    navigator.push(screen)
+                                                } else {
+                                                    android.widget.Toast
+                                                        .makeText(context, "Œuvre introuvable", android.widget.Toast.LENGTH_SHORT)
+                                                        .show()
+                                                }
+                                            } finally {
+                                                opening = false
+                                            }
                                         }
                                     }
                                 },
@@ -652,6 +711,7 @@ class SocialChatScreen(
                             onCommands = { showCommands = true },
                             onTimecodeRequest = { showTimecodePicker = true },
                             onTyping = { if (roomId != null) model.notifyTyping(roomId, true) },
+                            onAttach = launchImagePicker,
                             onSend = { text ->
                                 val body = text.trim()
                                 val positions = composerChips.toList()
@@ -718,6 +778,31 @@ class SocialChatScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp, bottom = 12.dp),
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                showCommands = false
+                                launchImagePicker()
+                            }
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Image,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Column(Modifier.padding(start = 12.dp)) {
+                            Text("Image ou GIF", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                "Envoyer une photo ou un GIF de ta galerie",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1090,7 +1175,8 @@ internal fun fallbackParticipant(mxid: String): SocialChatFriend =
 internal fun messageText(item: SocialTimelineItem): String = when (item) {
     is SocialTimelineItem.MomentItem ->
         item.payload.note ?: MomentPayloadCodec.fallbackBody(item.payload)
-    is SocialTimelineItem.ReplyItem -> item.body
+    is SocialTimelineItem.ReplyItem ->
+        if (item.body.isBlank() && item.media != null) "Photo" else item.body
 }
 
 @Composable
@@ -1367,6 +1453,9 @@ internal data class SocialChatPending(
     val positions: List<Long>,
     val failed: Boolean = false,
     val inReplyToEventId: String? = null,
+    /** Image being sent, with how many own images the timeline had when it left. */
+    val image: PickedImage? = null,
+    val imageBaseline: Int = 0,
 )
 
 internal fun chapterNumberLabel(number: Double): String =
@@ -1430,20 +1519,56 @@ private fun PagePickerDialog(
 
 /** Shown instead of the composer when the work is not in the user's library. */
 @Composable
-private fun AddToLibraryPrompt(title: String, onOpen: () -> Unit) {
+private fun AddToLibraryPrompt(title: String, loading: Boolean, onOpen: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = "Cette œuvre n'est pas dans ta bibliothèque. Ajoute « $title » pour répondre à la conversation.",
-                style = MaterialTheme.typography.bodyMedium,
+            Icon(
+                imageVector = Icons.Outlined.ChatBubbleOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(26.dp),
             )
-            Button(onClick = onOpen) { Text("Voir l'œuvre") }
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            Text(
+                text = "Cette œuvre n'est pas dans ta bibliothèque. Ajoute-la pour répondre à la conversation.",
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            Button(
+                onClick = onOpen,
+                enabled = !loading,
+                shape = CircleShape,
+                modifier = Modifier.padding(top = 8.dp).height(44.dp).widthIn(min = 180.dp),
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Text("Voir l'œuvre", fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }

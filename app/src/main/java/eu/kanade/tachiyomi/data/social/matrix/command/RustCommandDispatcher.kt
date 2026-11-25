@@ -25,6 +25,9 @@ import org.matrix.rustcomponents.sdk.EditedContent
 import org.matrix.rustcomponents.sdk.EventOrTransactionId
 import org.matrix.rustcomponents.sdk.MessageType
 import org.matrix.rustcomponents.sdk.Room
+import org.matrix.rustcomponents.sdk.UploadSource
+import org.matrix.rustcomponents.sdk.UploadParameters
+import org.matrix.rustcomponents.sdk.ImageInfo
 import org.matrix.rustcomponents.sdk.TextMessageContent
 import org.matrix.rustcomponents.sdk.Timeline
 import org.matrix.rustcomponents.sdk.TimelineConfiguration
@@ -88,6 +91,9 @@ class RustCommandDispatcher(
                         contentJson = textContent(command.body, command.inReplyToEventId),
                     )
                 }
+
+            is SocialCommand.SendImageToRoom ->
+                retryingOnNetworkError { sendImage(client, command) }
 
             is SocialCommand.PublishToMyThread -> {
                 val payload = command.payload
@@ -272,6 +278,41 @@ class RustCommandDispatcher(
             reportUtds = false,
         )
         return room.timelineWithConfiguration(config)
+    }
+
+    private suspend fun sendImage(client: Client, command: SocialCommand.SendImageToRoom): SocialResult<String> {
+        val room = client.getRoom(command.roomId) ?: return failure("Room ${command.roomId} not found")
+        return try {
+            val timeline = openLiveTimeline(room)
+            try {
+                val parameters = UploadParameters(
+                    source = UploadSource.Data(command.bytes, command.filename),
+                    caption = command.caption?.takeIf { it.isNotBlank() },
+                    formattedCaption = null,
+                    mentions = null,
+                    inReplyTo = command.inReplyToEventId,
+                    extraContentJson = null,
+                )
+                val info = ImageInfo(
+                    command.height.toULong(),
+                    command.width.toULong(),
+                    command.mimeType,
+                    command.bytes.size.toULong(),
+                    null,
+                    null,
+                    null,
+                    command.mimeType.equals("image/gif", ignoreCase = true),
+                )
+                timeline.sendImage(parameters, null, info).join()
+                SocialResult.Success("")
+            } finally {
+                try { timeline.close() } catch (_: Throwable) {}
+            }
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            SocialResult.Failure(mapError(t, "sendImage"))
+        }
     }
 
     private suspend fun openLiveTimeline(room: Room): Timeline {

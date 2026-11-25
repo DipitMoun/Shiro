@@ -15,6 +15,30 @@ Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 
 ### Quoi de neuf
 
+**Chat**
+- Tu peux envoyer des images et des GIF : le bouton image à côté du champ de saisie, ou
+  « Image ou GIF » dans le menu +. Les grosses photos sont réduites avant l'envoi, les GIF
+  gardent leur animation, et un appui sur une image l'ouvre en grand.
+- Quand tu ouvres la conversation d'une œuvre que tu n'as pas, le bouton « Voir l'œuvre » tourne
+  pendant la recherche et ouvre la bonne œuvre (plus « Le retour » à la place de « Le retour du
+  clan Hwasan »). La bannière est aussi refaite.
+- Les conversations des mangas affichent leur couverture dans l'onglet Messages.
+
+**Extensions**
+- Nouvel écran « Santé des dépôts » (Réglages → Navigation) : il dit si chaque dépôt répond, s'il
+  utilise une version d'extensions que Shiro ne sait pas charger, et signale les extensions dont la
+  mise à jour est bloquée parce qu'elles viennent d'une autre source (il suffit alors de les
+  désinstaller puis de les réinstaller depuis le bon dépôt). Une vérification hebdomadaire prévient
+  par notification quand quelque chose change.
+- Les extensions manga qui s'appuient sur des informations propres à un chapitre (nouveau
+  format) fonctionnent mieux : ces informations sont désormais conservées.
+
+---
+
+## 0.19.3 (25/11/2026)
+
+### Quoi de neuf
+
 **Téléchargements**
 - Ils continuent écran éteint ou quand tu passes sur une autre application : le téléphone
   garde le processeur et le Wi-Fi éveillés pendant un téléchargement.
@@ -143,17 +167,18 @@ Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 ### Pas encore fait (état du 25/11/2026)
 
 Chat
-- [ ] Images et GIF dans le chat : envoi de médias Matrix et affichage (non fait, gros chantier).
+- [x] Images et GIF dans le chat (fait le 25/11) : à valider sur téléphone (GIF animés, images chiffrées).
 - [ ] Vérifier les accusés de lecture et « écrit… » avec un ami qui a aussi la 0.19.2 ou plus.
-- [ ] Couvertures des conversations manga dans l'onglet Messages (seul l'anime les a).
+- [x] Couvertures des conversations manga dans l'onglet Messages (fait le 25/11).
 - [ ] Le fil « activité » à 0 : cause jamais confirmée (compte `@shiro_moun` sur l'ancienne release ?).
 
 Sources et dépôts
-- [ ] Anime-Sama anime : pas installé sur le téléphone (le dépôt `yuzono/anime-repo` le propose en
-      lib 16, compatible). Vérifier que ce dépôt est bien ajouté, puis l'installer.
+- [ ] Anime-Sama anime : installé en 14.18 depuis une autre app (autre clé de signature), donc la
+      mise à jour en 16.35 du dépôt `yuzono/anime-repo` est refusée par Android. L'écran « Santé des
+      dépôts » le signale ; il faut désinstaller puis réinstaller depuis ce dépôt.
 - [ ] Tester l'écran « Santé des dépôts » (Réglages → Navigation) sur le téléphone.
-- [ ] `SChapter.memo` n'est pas gardé en base : une extension qui s'en sert entre la liste des
-      chapitres et les pages peut échouer.
+- [x] `SChapter.memo` conservé hors base (fait le 25/11, `ChapterMemoStore`) : à valider avec une
+      extension qui s'en sert.
 - [ ] Lire les extensions JS (Weebox/Seanime) : abandonné pour l'instant, à rouvrir hors de l'app.
 
 Téléchargements et mises à jour

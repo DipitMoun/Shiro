@@ -204,6 +204,24 @@ class SocialChatScreenModel(
         super.onDispose()
     }
 
+    fun sendImage(
+        image: PickedImage,
+        caption: String,
+        inReplyToEventId: String?,
+    ) {
+        screenModelScope.launch {
+            controller.sendImage(
+                bytes = image.bytes,
+                filename = image.filename,
+                mimeType = image.mimeType,
+                width = image.width,
+                height = image.height,
+                caption = caption.trim().takeIf { it.isNotEmpty() },
+                inReplyToEventId = inReplyToEventId,
+            )
+        }
+    }
+
     fun react(eventId: String, key: String) {
         screenModelScope.launch { controller.react(eventId, key) }
     }

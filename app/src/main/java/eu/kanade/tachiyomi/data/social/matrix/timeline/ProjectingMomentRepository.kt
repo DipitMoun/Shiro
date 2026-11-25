@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.social.matrix.timeline
 
 import eu.kanade.tachiyomi.data.social.identity.EpisodeKey
 import eu.kanade.tachiyomi.data.social.identity.WorkId
+import eu.kanade.tachiyomi.data.social.matrix.ChatMedia
 import eu.kanade.tachiyomi.data.social.matrix.DeliveryState
 import eu.kanade.tachiyomi.data.social.matrix.MomentPayload
 import eu.kanade.tachiyomi.data.social.matrix.ReactionEntry
@@ -134,6 +135,7 @@ class ProjectingMomentRepository(
 
     companion object {
         internal const val PAGE_SIZE = 30
+        private val FILE_NAME = Regex("""^\S+\.(jpe?g|png|gif|webp|heic|heif|avif|bmp)$""", RegexOption.IGNORE_CASE)
         internal val json = Json { ignoreUnknownKeys = true; isLenient = true }
     }
 
@@ -221,20 +223,45 @@ class ProjectingMomentRepository(
                     readBy = event.readBy,
                 )
             }
-            val body = (content["body"] as? JsonPrimitive)?.content ?: return null
+            val rawBody = (content["body"] as? JsonPrimitive)?.content ?: return null
             val inReplyTo = (content["m.relates_to"] as? JsonObject)
                 ?.get("m.in_reply_to") as? JsonObject
             val inReplyToId = (inReplyTo?.get("event_id") as? JsonPrimitive)?.content
+            val media = parseImage(content)
+            // For an image the body is the file name unless the sender added a caption.
+            val body = if (media != null && looksLikeFileName(rawBody, content)) "" else rawBody
             return SocialTimelineItem.ReplyItem(
                 eventId = event.eventId,
                 sender = event.sender,
                 sentAt = Instant.ofEpochMilli(event.originServerTs),
                 body = body,
+                media = media,
                 inReplyToEventId = inReplyToId,
                 reactions = emptyList(),
                 deliveryState = DeliveryState.SENT,
                 readBy = event.readBy,
             )
+        }
+
+        private fun parseImage(content: JsonObject): ChatMedia? {
+            if ((content["msgtype"] as? JsonPrimitive)?.content != "m.image") return null
+            val url = (content["url"] as? JsonPrimitive)?.content
+            val file = content["file"] as? JsonObject
+            if (url == null && file == null) return null
+            val info = content["info"] as? JsonObject
+            return ChatMedia(
+                url = url,
+                encryptedFileJson = file?.toString(),
+                mimeType = (info?.get("mimetype") as? JsonPrimitive)?.content,
+                width = (info?.get("w") as? JsonPrimitive)?.content?.toIntOrNull(),
+                height = (info?.get("h") as? JsonPrimitive)?.content?.toIntOrNull(),
+            )
+        }
+
+        private fun looksLikeFileName(body: String, content: JsonObject): Boolean {
+            val filename = (content["filename"] as? JsonPrimitive)?.content
+            if (filename != null) return body == filename
+            return FILE_NAME.matches(body.trim())
         }
 
         private fun parseMoment(obj: JsonObject): MomentPayload? =

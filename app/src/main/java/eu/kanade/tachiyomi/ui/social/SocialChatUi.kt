@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -55,6 +56,8 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -268,6 +271,10 @@ internal data class ChatBubbleContent(
     val text: String,
     val moments: List<ChatMomentModel>,
     val replyTarget: SocialTimelineItem?,
+    /** Image of a received message. */
+    val image: eu.kanade.tachiyomi.data.social.matrix.ChatMedia? = null,
+    /** Image still being sent: shown from the local bytes. */
+    val pendingImage: PickedImage? = null,
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -416,6 +423,10 @@ internal fun ChatBubble(
                             )
                         }
 
+                        if (content.image != null || content.pendingImage != null) {
+                            ChatImage(media = content.image, local = content.pendingImage)
+                        }
+
                         content.moments.forEach { moment ->
                             ChatMomentCard(
                                 medium = medium,
@@ -431,7 +442,9 @@ internal fun ChatBubble(
                                 text = content.text,
                                 fontSize = 15.sp,
                                 lineHeight = 21.sp,
-                                modifier = Modifier.padding(top = if (content.moments.isNotEmpty() || content.replyTarget != null) 6.dp else 0.dp),
+                                modifier = Modifier.padding(
+                                    top = if (content.moments.isNotEmpty() || content.replyTarget != null || content.image != null || content.pendingImage != null) 6.dp else 0.dp,
+                                ),
                             )
                         }
 
@@ -793,6 +806,7 @@ internal fun ChatComposer(
     onCommands: () -> Unit,
     onTimecodeRequest: () -> Unit,
     onTyping: () -> Unit,
+    onAttach: () -> Unit,
     onSend: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -859,7 +873,7 @@ internal fun ChatComposer(
                     IconButton(onClick = onCommands) {
                         Icon(Icons.Default.Add, contentDescription = "Commandes", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Box(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Box(Modifier.weight(1f).padding(end = 4.dp)) {
                         if (draft.isEmpty()) {
                             Text(
                                 text = "Message",
@@ -891,6 +905,13 @@ internal fun ChatComposer(
                             cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
                             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                             maxLines = 6,
+                        )
+                    }
+                    IconButton(onClick = onAttach) {
+                        Icon(
+                            Icons.Outlined.Image,
+                            contentDescription = "Image ou GIF",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -994,6 +1015,99 @@ internal fun EpisodeChooser(
         }
         chosen.title?.takeIf { it.isNotBlank() }?.let {
             Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Images and GIFs
+// ---------------------------------------------------------------------------
+
+/**
+ * An image of the chat: from the Matrix server for a received one, from the local bytes while it
+ * is being sent. Tap to see it full screen.
+ */
+@Composable
+internal fun ChatImage(
+    media: eu.kanade.tachiyomi.data.social.matrix.ChatMedia?,
+    local: PickedImage?,
+) {
+    val context = LocalContext.current
+    var viewing by remember { mutableStateOf(false) }
+
+    val loaded by androidx.compose.runtime.produceState<Result<ByteArray>?>(
+        initialValue = media?.let { eu.kanade.tachiyomi.data.social.matrix.media.SocialMediaLoader.cached(it) }
+            ?.let { Result.success(it) },
+        media?.cacheKey,
+    ) {
+        if (media != null && value == null) {
+            value = runCatching { eu.kanade.tachiyomi.data.social.matrix.media.SocialMediaLoader.load(media) }
+        }
+    }
+    val bytes = local?.bytes ?: loaded?.getOrNull()
+    val width = local?.width ?: media?.width
+    val height = local?.height ?: media?.height
+    val ratio = if (width != null && height != null && width > 0 && height > 0) {
+        (width.toFloat() / height).coerceIn(0.6f, 2f)
+    } else {
+        4f / 3f
+    }
+    val key = local?.filename ?: media?.cacheKey.orEmpty()
+
+    Box(
+        modifier = Modifier
+            .widthIn(min = 160.dp, max = 260.dp)
+            .fillMaxWidth()
+            .aspectRatio(ratio)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(enabled = bytes != null) { viewing = true },
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            bytes != null -> AsyncImage(
+                model = coil3.request.ImageRequest.Builder(context)
+                    .data(bytes)
+                    .memoryCacheKey(key)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            loaded?.isFailure == true -> Icon(
+                Icons.Outlined.BrokenImage,
+                contentDescription = "Image indisponible",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            else -> androidx.compose.material3.CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp,
+            )
+        }
+    }
+
+    if (viewing && bytes != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { viewing = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.94f))
+                    .clickable { viewing = false },
+                contentAlignment = Alignment.Center,
+            ) {
+                AsyncImage(
+                    model = coil3.request.ImageRequest.Builder(context)
+                        .data(bytes)
+                        .memoryCacheKey(key + "/full")
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }

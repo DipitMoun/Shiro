@@ -36,21 +36,40 @@ internal object SocialWorkMatching {
         return title.takeIf { it.isNotBlank() }
     }
 
-    fun <T> matchTitle(title: String, items: List<T>, titleOf: (T) -> String): T? {
-        val normRoom = normalize(title)
-        if (normRoom.isEmpty()) return null
-        items.find {
-            val normLocal = normalize(titleOf(it))
-            normLocal.isNotEmpty() &&
-                (normLocal == normRoom || normLocal.contains(normRoom) || normRoom.contains(normLocal))
-        }?.let { return it }
+    /** The item whose title is closest to [title]; see [bestMatch]. */
+    fun <T> matchTitle(title: String, items: List<T>, titleOf: (T) -> String): T? =
+        bestMatch(title, items) { listOf(titleOf(it)) }
 
-        val roomWords = words(title)
-        if (roomWords.isEmpty()) return null
-        return items.find { item ->
-            val localWords = words(titleOf(item))
-            roomWords.any { rw -> localWords.any { lw -> lw == rw || lw.contains(rw) || rw.contains(lw) } }
+    /**
+     * The candidate whose title is closest to [title]: an exact title beats one that merely
+     * contains it, which beats shared words. Takes every name a candidate has (original title,
+     * synonyms). Null when nothing is reasonably close.
+     */
+    fun <T> bestMatch(title: String, items: List<T>, namesOf: (T) -> List<String>): T? {
+        val wanted = normalize(title)
+        if (wanted.isEmpty()) return null
+        val wantedWords = words(title).toSet()
+
+        fun score(name: String): Int {
+            val candidate = normalize(name)
+            if (candidate.isEmpty()) return 0
+            if (candidate == wanted) return 1000
+            if (candidate.contains(wanted) || wanted.contains(candidate)) {
+                // "Le retour" is contained in "Le retour du clan Hwasan" but is not the same work:
+                // the further apart the lengths, the lower the score.
+                return 500 - minOf(450, kotlin.math.abs(candidate.length - wanted.length) * 6)
+            }
+            val candidateWords = words(name).toSet()
+            if (wantedWords.isEmpty() || candidateWords.isEmpty()) return 0
+            val shared = wantedWords.intersect(candidateWords).size
+            return shared * 200 / (wantedWords.size + candidateWords.size - shared)
         }
+
+        return items
+            .map { item -> item to (namesOf(item).maxOfOrNull(::score) ?: 0) }
+            .filter { it.second >= 40 }
+            .maxByOrNull { it.second }
+            ?.first
     }
 
     fun cleanTitleForSearch(raw: String): String {
@@ -152,7 +171,12 @@ internal class SocialWorkOpener(
     private suspend fun search(title: String, type: CatalogType) = runCatching {
         val repository = CatalogRepository(network, type)
         val cleaned = SocialWorkMatching.cleanTitleForSearch(title)
-        repository.search(cleaned).firstOrNull()
-            ?: if (cleaned != title) repository.search(title).firstOrNull() else null
+        // The first hit of a search is not always the work asked for ("Le retour" before
+        // "Le retour du clan Hwasan"): look at every result of both spellings, keep the closest.
+        val results = (repository.search(cleaned) + if (cleaned != title) repository.search(title) else emptyList())
+            .distinctBy { it.id }
+        SocialWorkMatching.bestMatch(title, results) { work ->
+            listOfNotNull(work.title, work.originalTitle) + work.synonyms
+        } ?: results.firstOrNull()
     }.getOrNull()
 }

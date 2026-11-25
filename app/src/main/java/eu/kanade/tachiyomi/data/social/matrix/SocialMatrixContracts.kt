@@ -285,7 +285,25 @@ sealed interface SocialTimelineItem {
         override val reactions: List<ReactionSummary>,
         override val deliveryState: DeliveryState,
         override val readBy: List<String> = emptyList(),
+        /** Set when the message is an image or a GIF; [body] is then only its caption. */
+        val media: ChatMedia? = null,
     ) : SocialTimelineItem
+}
+
+/** An image (or GIF) attached to a message: where to fetch it, never the bytes themselves. */
+data class ChatMedia(
+    /** `mxc://` address of a clear-text image, null when it is encrypted. */
+    val url: String?,
+    /** The `file` JSON of an encrypted attachment (key and address), null when clear. */
+    val encryptedFileJson: String?,
+    val mimeType: String?,
+    val width: Int?,
+    val height: Int?,
+) {
+    val isGif: Boolean get() = mimeType.equals("image/gif", ignoreCase = true)
+
+    /** Stable key for caches. */
+    val cacheKey: String get() = url ?: encryptedFileJson.orEmpty()
 }
 
 /** Liveness of the timeline feed for one thread. */
@@ -370,6 +388,18 @@ sealed interface SocialCommand {
     data class SendToRoom(
         val roomId: String,
         val body: String,
+        val inReplyToEventId: String? = null,
+    ) : SocialCommand
+
+    /** An image or GIF sent directly to a room. */
+    data class SendImageToRoom(
+        val roomId: String,
+        val bytes: ByteArray,
+        val filename: String,
+        val mimeType: String,
+        val width: Int,
+        val height: Int,
+        val caption: String? = null,
         val inReplyToEventId: String? = null,
     ) : SocialCommand
 

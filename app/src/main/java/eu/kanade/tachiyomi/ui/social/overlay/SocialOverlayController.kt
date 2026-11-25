@@ -303,6 +303,23 @@ class SocialOverlayController(
         }
     }
 
+    /** Sends an image or GIF to the open room. */
+    suspend fun sendImage(
+        bytes: ByteArray,
+        filename: String,
+        mimeType: String,
+        width: Int,
+        height: Int,
+        caption: String?,
+        inReplyToEventId: String?,
+    ): SocialResult<String> {
+        val roomId = _state.value.activeRoomId
+            ?: return SocialResult.Failure(SocialError.Unknown("Aucun salon ouvert"))
+        return dispatch(
+            SocialCommand.SendImageToRoom(roomId, bytes, filename, mimeType, width, height, caption, inReplyToEventId),
+        )
+    }
+
     suspend fun react(eventId: String, key: String): SocialResult<String> {
         val roomId = _state.value.activeRoomId
         return if (roomId != null) {
