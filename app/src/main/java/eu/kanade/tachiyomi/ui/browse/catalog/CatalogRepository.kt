@@ -1,5 +1,14 @@
 package eu.kanade.tachiyomi.ui.browse.catalog
 
+import uy.kohesive.injekt.api.get
+import uy.kohesive.injekt.Injekt
+import kotlinx.serialization.json.long
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.coroutines.delay
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -122,55 +131,119 @@ class CatalogRepository(
         fetched
     }
 
+    /**
+     * Prochaines diffusions (31 jours) des œuvres données, par identifiant AniList.
+     *
+     * Le résultat est gardé 3 h (mémoire + disque). Si AniList ne répond pas, on rend le dernier
+     * résultat connu au lieu d'un calendrier vide : le réseau mobile est souvent mauvais.
+     */
     suspend fun getAiringSchedule(anilistIds: List<Int>): List<AiringEvent> = withContext(Dispatchers.IO) {
         if (anilistIds.isEmpty()) return@withContext emptyList()
 
-        val now = System.currentTimeMillis() / 1000L
-        // Un mois : le calendrier mensuel de la page Mises à jour doit être
-        // alimenté au-delà de la semaine courante.
-        val windowEnd = now + 31 * 24 * 3600
+        val nowSeconds = System.currentTimeMillis() / 1000L
+        val windowEnd = nowSeconds + AIRING_WINDOW_SECONDS
+        val key = anilistIds.distinct().sorted().joinToString(",")
 
-        val query = """
-            query (${'$'}ids: [Int], ${'$'}from: Int, ${'$'}to: Int) {
-              Page(perPage: 50) {
-                media(id_in: ${'$'}ids, type: ANIME) {
-                  id
-                  title { romaji english }
-                  coverImage { large }
-                  airingSchedule(airingAt_greater: ${'$'}from, airingAt_lesser: ${'$'}to) {
-                    nodes {
-                      episode
-                      airingAt
-                    }
-                  }
-                }
-              }
-            }
-        """
-
-        val vars = buildJsonObject {
-            put("ids", JsonArray(anilistIds.map { JsonPrimitive(it) }))
-            put("from", JsonPrimitive(now))
-            put("to", JsonPrimitive(windowEnd))
+        val cached = airingCached(key)
+        if (cached != null && System.currentTimeMillis() - cached.fetchedAt < AIRING_CACHE_TTL_MS) {
+            return@withContext cached.events.filter { it.airingAt >= nowSeconds }
         }
 
-        val response = anilistRequest(query, vars) ?: return@withContext emptyList()
-        val data = runCatching {
-            json.decodeFromString<AiringScheduleResponse>(response).data?.Page?.media
-        }.getOrNull() ?: return@withContext emptyList()
+        val fetched = fetchAiringSchedule(anilistIds.distinct(), nowSeconds, windowEnd)
+        if (fetched != null) {
+            airingStore(key, fetched)
+            return@withContext fetched
+        }
+        // AniList did not answer: the last known schedule, still in the future, beats nothing.
+        cached?.events?.filter { it.airingAt >= nowSeconds }.orEmpty()
+    }
 
-        data.flatMap { media ->
-            media.airingSchedule?.nodes.orEmpty().map { node ->
-                AiringEvent(
-                    mediaId = media.id,
+    /** Null when AniList could not be read; an empty list means "nothing airs". */
+    private suspend fun fetchAiringSchedule(ids: List<Int>, from: Long, to: Long): List<AiringEvent>? {
+        val events = mutableListOf<AiringEvent>()
+        for (page in 1..AIRING_MAX_PAGES) {
+            val vars = buildJsonObject {
+                put("ids", JsonArray(ids.map { JsonPrimitive(it) }))
+                put("from", JsonPrimitive(from))
+                put("to", JsonPrimitive(to))
+                put("page", JsonPrimitive(page))
+            }
+            var parsed: AiringPage? = null
+            for (attempt in 1..AIRING_ATTEMPTS) {
+                parsed = runCatching {
+                    anilistRequest(AIRING_QUERY, vars)?.let {
+                        json.decodeFromString<AiringScheduleResponse>(it).data?.Page
+                    }
+                }.getOrNull()
+                if (parsed != null) break
+                if (attempt < AIRING_ATTEMPTS) delay(AIRING_RETRY_DELAY_MS * attempt)
+            }
+            val result = parsed ?: return if (page == 1) null else events.sortedBy { it.airingAt }
+            result.airingSchedules.forEach { node ->
+                events += AiringEvent(
+                    mediaId = node.mediaId,
                     episode = node.episode,
                     airingAt = node.airingAt,
-                    title = media.title?.english ?: media.title?.romaji ?: "Sans titre",
-                    coverUrl = media.coverImage?.large,
+                    title = node.media?.title?.english ?: node.media?.title?.romaji ?: "Sans titre",
+                    coverUrl = node.media?.coverImage?.large,
                 )
             }
-        }.sortedBy { it.airingAt }
+            if (result.pageInfo?.hasNextPage != true) break
+        }
+        return events.sortedBy { it.airingAt }
     }
+
+    private class CachedAiring(val fetchedAt: Long, val events: List<AiringEvent>)
+
+    private fun airingCached(key: String): CachedAiring? {
+        synchronized(cacheLock) { airingCache[key] }?.let { return it }
+        // After a restart: what was saved on disk, if it is for the same works.
+        return runCatching {
+            val raw = airingPrefs().getString(AIRING_PREF_PREFIX + key.hashCode(), null) ?: return null
+            val obj = json.parseToJsonElement(raw).jsonObject
+            val events = obj["events"]!!.jsonArray.map { e ->
+                val o = e.jsonObject
+                AiringEvent(
+                    mediaId = o["m"]!!.jsonPrimitive.int,
+                    episode = o["e"]!!.jsonPrimitive.int,
+                    airingAt = o["a"]!!.jsonPrimitive.long,
+                    title = o["t"]!!.jsonPrimitive.content,
+                    coverUrl = o["c"]?.jsonPrimitive?.contentOrNull,
+                )
+            }
+            CachedAiring(obj["at"]!!.jsonPrimitive.long, events).also {
+                synchronized(cacheLock) { airingCache[key] = it }
+            }
+        }.getOrNull()
+    }
+
+    private fun airingStore(key: String, events: List<AiringEvent>) {
+        val entry = CachedAiring(System.currentTimeMillis(), events)
+        synchronized(cacheLock) { airingCache[key] = entry }
+        runCatching {
+            val obj = buildJsonObject {
+                put("at", JsonPrimitive(entry.fetchedAt))
+                put(
+                    "events",
+                    JsonArray(
+                        events.map { e ->
+                            buildJsonObject {
+                                put("m", JsonPrimitive(e.mediaId))
+                                put("e", JsonPrimitive(e.episode))
+                                put("a", JsonPrimitive(e.airingAt))
+                                put("t", JsonPrimitive(e.title))
+                                e.coverUrl?.let { put("c", JsonPrimitive(it)) }
+                            }
+                        },
+                    ),
+                )
+            }
+            airingPrefs().edit().putString(AIRING_PREF_PREFIX + key.hashCode(), obj.toString()).apply()
+        }
+    }
+
+    private fun airingPrefs() =
+        Injekt.get<android.app.Application>().getSharedPreferences("shiro_airing_cache", android.content.Context.MODE_PRIVATE)
 
     /**
      * Retrouve l'identifiant AniList à partir d'un identifiant MyAnimeList.
@@ -235,20 +308,26 @@ class CatalogRepository(
     @Serializable
     private data class AiringScheduleResponse(val data: AiringScheduleData? = null)
     @Serializable
-    private data class AiringScheduleData(val Page: AiringSchedulePage? = null)
+    private data class AiringScheduleData(val Page: AiringPage? = null)
     @Serializable
-    private data class AiringSchedulePage(val media: List<AiringScheduleMedia> = emptyList())
-    @Serializable
-    private data class AiringScheduleMedia(
-        val id: Int,
-        val title: AniListTitle? = null,
-        val coverImage: AniListCover? = null,
-        val airingSchedule: AiringScheduleNodes? = null,
+    private data class AiringPage(
+        val pageInfo: AiringPageInfo? = null,
+        val airingSchedules: List<AiringScheduleNode> = emptyList(),
     )
     @Serializable
-    private data class AiringScheduleNodes(val nodes: List<AiringScheduleNode> = emptyList())
+    private data class AiringPageInfo(val hasNextPage: Boolean? = null)
     @Serializable
-    private data class AiringScheduleNode(val episode: Int, val airingAt: Long)
+    private data class AiringScheduleNode(
+        val mediaId: Int,
+        val episode: Int,
+        val airingAt: Long,
+        val media: AiringScheduleMedia? = null,
+    )
+    @Serializable
+    private data class AiringScheduleMedia(
+        val title: AniListTitle? = null,
+        val coverImage: AniListCover? = null,
+    )
     suspend fun recommendations(
         seedTitle: String,
         force: Boolean = false,
@@ -660,6 +739,33 @@ class CatalogRepository(
         const val FEED_CACHE_TTL_MS = 60 * 60 * 1000L
         const val RECOMMENDATIONS_CACHE_TTL_MS = 60 * 60 * 1000L
         const val ANILIST_ID_TTL_MS = 6 * 60 * 60 * 1000L
+        const val AIRING_CACHE_TTL_MS = 3 * 60 * 60 * 1000L
+        const val AIRING_WINDOW_SECONDS = 31L * 24 * 3600
+        const val AIRING_MAX_PAGES = 3
+        const val AIRING_ATTEMPTS = 3
+        const val AIRING_RETRY_DELAY_MS = 700L
+        const val AIRING_PREF_PREFIX = "airing_"
+
+        // Page.airingSchedules, not Media.airingSchedule(airingAt_greater...): AniList refuses the
+        // latter with HTTP 400, which used to leave the calendar silently empty.
+        const val AIRING_QUERY = """
+            query ($ids: [Int], $from: Int, $to: Int, $page: Int) {
+              Page(page: $page, perPage: 50) {
+                pageInfo { hasNextPage }
+                airingSchedules(
+                  mediaId_in: $ids,
+                  airingAt_greater: $from,
+                  airingAt_lesser: $to,
+                  sort: TIME
+                ) {
+                  mediaId
+                  episode
+                  airingAt
+                  media { title { romaji english } coverImage { large } }
+                }
+              }
+            }
+        """
 
         // Partagé entre les instances du repository : changer d'onglet ne doit
         // pas relancer AniList si la page de découverte est recréée.
@@ -667,6 +773,7 @@ class CatalogRepository(
         var discoverCache: CachedDiscover? = null
         val recommendationsCache = mutableMapOf<String, CachedRecommendations>()
         val aniListIdCache = mutableMapOf<String, CachedAniListId>()
+        val airingCache = mutableMapOf<String, CachedAiring>()
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
         val COMBINING_MARKS = Regex("\\p{M}+")
         val NON_ALNUM = Regex("[^a-z0-9]+")

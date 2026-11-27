@@ -126,7 +126,7 @@ class AnimeLibraryScreenModel(
     }
 
     fun popCategory(): Long? {
-        val popped = if (categoryStack.isNotEmpty()) categoryStack.removeLast() else null
+        val popped = if (categoryStack.isNotEmpty()) categoryStack.removeAt(categoryStack.lastIndex) else null
         if (popped != null) persistCategoryStack()
         return popped
     }
