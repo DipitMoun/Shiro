@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -247,7 +248,13 @@ object SocialNotificationHelper {
     }
 
     /** "Moun added Frieren, you might like it": only for works the user does not have. */
-    fun showActivity(context: Context, activity: SocialActivityItem, actorName: String, avatarBytes: ByteArray?) {
+    fun showActivity(
+        context: Context,
+        activity: SocialActivityItem,
+        actorName: String,
+        avatarBytes: ByteArray?,
+        banner: Bitmap? = null,
+    ) {
         val avatar = avatarBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
         val verb = when (activity.kind) {
             SocialActivityKind.ANIME_ADDED -> "a ajouté"
@@ -263,6 +270,16 @@ object SocialNotificationHelper {
             .setWhen(activity.timestamp)
             .setShowWhen(true)
             .setContentIntent(openAppIntent(context))
+            .apply {
+                // Expanded, the cover takes the place of the avatar and fills the notification.
+                if (banner != null) {
+                    setStyle(
+                        NotificationCompat.BigPictureStyle()
+                            .bigPicture(banner)
+                            .bigLargeIcon(null as Bitmap?),
+                    )
+                }
+            }
             .build()
         post(context, "social_activity:${activity.eventId}", Notifications.ID_SOCIAL_ACTIVITY, notification)
     }

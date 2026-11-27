@@ -174,7 +174,8 @@ class SocialActivityService(
             val actorName = friends.friends.value.firstOrNull { it.mxid == activity.actorMxid }?.displayName
                 ?: activity.actorMxid.substringBefore(':').removePrefix("@")
             val avatar = runCatching { avatarLoader.loadProfileAvatar(activity.actorMxid, 128) }.getOrNull()
-            SocialNotificationHelper.showActivity(context, activity, actorName, avatar)
+            val banner = eu.kanade.tachiyomi.ui.social.ActivityCoverBanner.load(activity.coverUrl)
+            SocialNotificationHelper.showActivity(context, activity, actorName, avatar, banner)
         }
     }
 
