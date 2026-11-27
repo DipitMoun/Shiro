@@ -519,6 +519,23 @@ class MainActivity : BaseActivity() {
             )
         }
 
+        // A backup file opened or shared from elsewhere: copied here, then the restore screen opens on it.
+        val backupUri = incomingBackupUri(intent)
+        if (backupUri != null) {
+            lifecycleScope.launch {
+                val local = withContext(Dispatchers.IO) { copyIncomingBackup(backupUri) }
+                if (local == null) {
+                    toast("Fichier de sauvegarde illisible")
+                } else {
+                    navigator.popUntilRoot()
+                    navigator.push(RestoreBackupScreen(local.toString()))
+                }
+            }
+            intent.data = null
+            ready = true
+            return true
+        }
+
         if (intent.hasExtra("roomId") || intent.action?.startsWith("social.room.") == true) {
             return openSocialRoomIntent(intent, navigator)
         }
@@ -658,23 +675,6 @@ class MainActivity : BaseActivity() {
     }
 
     private fun openSocialRoomIntent(intent: Intent, navigator: Navigator): Boolean {
-        // A backup file opened or shared from elsewhere: copied here, then the restore screen opens on it.
-        val backupUri = incomingBackupUri(intent)
-        if (backupUri != null) {
-            lifecycleScope.launch {
-                val local = withContext(Dispatchers.IO) { copyIncomingBackup(backupUri) }
-                if (local == null) {
-                    toast("Fichier de sauvegarde illisible")
-                } else {
-                    navigator.popUntilRoot()
-                    navigator.push(RestoreBackupScreen(local.toString()))
-                }
-            }
-            intent.data = null
-            ready = true
-            return true
-        }
-
         val roomId = intent.getStringExtra("roomId") ?: return false
         val workIdString = intent.getStringExtra("workId") ?: return false
         val workId = WorkId.parse(workIdString) ?: return false

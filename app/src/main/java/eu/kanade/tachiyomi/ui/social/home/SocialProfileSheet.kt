@@ -5,6 +5,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -122,27 +123,33 @@ internal fun SocialProfileSheet(
                 .padding(bottom = 28.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(84.dp)
-                        .clip(CircleShape)
-                        .clickable(enabled = !avatarBusy) { picker.launch("image/*") },
-                ) {
-                    Avatar(bitmap = avatar, size = 84.dp)
-                    if (avatarBusy) {
-                        Box(
-                            Modifier.size(84.dp).background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.45f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                Box(modifier = Modifier.size(84.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(84.dp)
+                            .clip(CircleShape)
+                            .clickable(enabled = !avatarBusy) { picker.launch("image/*") },
+                    ) {
+                        Avatar(bitmap = avatar, size = 84.dp)
+                        if (avatarBusy) {
+                            Box(
+                                Modifier.size(84.dp).background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.45f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                            }
                         }
-                    } else {
+                    }
+                    // Outside the clipped circle, so the corner of the badge is not cut off.
+                    if (!avatarBusy) {
                         Box(
                             Modifier
                                 .align(Alignment.BottomEnd)
-                                .size(26.dp)
+                                .size(28.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
+                                .background(MaterialTheme.colorScheme.primary)
+                                .border(2.dp, MaterialTheme.colorScheme.surfaceContainerLow, CircleShape)
+                                .clickable { picker.launch("image/*") },
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(Icons.Outlined.Edit, "Changer la photo", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(15.dp))

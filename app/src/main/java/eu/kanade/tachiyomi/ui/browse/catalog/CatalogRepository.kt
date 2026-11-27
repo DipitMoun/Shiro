@@ -288,7 +288,8 @@ class CatalogRepository(
                 json.decodeFromString<AniListResponse>(it).data?.Page?.media?.firstOrNull()?.id
             }.getOrNull()
         }
-        writeCachedAniListId(key, id)
+        // A request that failed says nothing about the title: only a real answer is remembered.
+        if (response != null) writeCachedAniListId(key, id)
         id
     }
 

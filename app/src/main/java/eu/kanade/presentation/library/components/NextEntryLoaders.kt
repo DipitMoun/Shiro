@@ -68,7 +68,7 @@ class AnimeUpcomingLoader(
     private val tracks: AnimeTrackRepository = Injekt.get(),
 ) {
 
-    suspend fun load(library: List<Anime>, withinDays: Int = 7, limit: Int = 4): List<Pair<Anime, AiringEvent>> {
+    suspend fun load(library: List<Anime>, withinDays: Int = 7, limit: Int = 8): List<Pair<Anime, AiringEvent>> {
         if (library.isEmpty()) return emptyList()
         val nowSeconds = System.currentTimeMillis() / 1000L
         val until = nowSeconds + withinDays * 24L * 3600L
@@ -148,7 +148,8 @@ class AnimeUpcomingLoader(
         )
         library
             .filter { it.id !in result && it.status in ongoing }
-            .sortedByDescending { it.lastUpdate }
+            // Works just added come first: they are what the user is waiting to see on the cards.
+            .sortedWith(compareByDescending<Anime> { it.dateAdded }.thenByDescending { it.lastUpdate })
             .take(MAX_TITLE_RESOLUTIONS)
             .forEach { anime ->
                 catalog.resolveAniListIdByTitle(anime.title)?.let { result[anime.id] = it }
@@ -159,6 +160,6 @@ class AnimeUpcomingLoader(
     private companion object {
         const val ANILIST_TRACKER_ID = 2L
         const val MAL_TRACKER_ID = 1L
-        const val MAX_TITLE_RESOLUTIONS = 15
+        const val MAX_TITLE_RESOLUTIONS = 25
     }
 }
