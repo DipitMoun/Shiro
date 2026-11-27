@@ -907,6 +907,7 @@
     <string name="channel_social_invites">Invitations d'amis</string>
     <string name="channel_social_activity">Activité des amis</string>
     <string name="channel_social_stories">Stories des amis</string>
+    <string name="channel_release_reminders">Rappels de sortie</string>
     <string name="channel_social_sync">Synchronisation Matrix</string>
     <string name="social_notification_sync_title">Shiro synchronise Matrix</string>
     <string name="social_notification_sync_text">Messages et invitations en direct</string>

@@ -104,6 +104,7 @@ object Notifications {
     const val ID_SOCIAL_SYNC = 9003
     const val ID_SOCIAL_ACTIVITY = 9004
     const val ID_SOCIAL_STORIES = 9005
+    const val ID_RELEASE_REMINDERS = 9006
     const val CHANNEL_EXTENSIONS_UPDATE = "ext_apk_update_channel"
     // v2: importance raised to HIGH (heads-up); an existing channel importance cannot change.
     const val CHANNEL_SOCIAL_MESSAGES = "social_matrix_messages_v2"
@@ -111,6 +112,7 @@ object Notifications {
     const val CHANNEL_SOCIAL_SYNC = "social_matrix_sync_v2"
     const val CHANNEL_SOCIAL_ACTIVITY = "social_activity_channel"
     const val CHANNEL_SOCIAL_STORIES = "social_stories_channel"
+    const val CHANNEL_RELEASE_REMINDERS = "release_reminders_channel"
     const val ID_UPDATES_TO_EXTS = -401
     const val ID_EXTENSION_INSTALLER = -402
 
@@ -233,6 +235,10 @@ object Notifications {
                 },
                 buildNotificationChannel(CHANNEL_SOCIAL_STORIES, IMPORTANCE_DEFAULT) {
                     setName(context.stringResource(MR.strings.channel_social_stories))
+                    setShowBadge(true)
+                },
+                buildNotificationChannel(CHANNEL_RELEASE_REMINDERS, IMPORTANCE_DEFAULT) {
+                    setName(context.stringResource(MR.strings.channel_release_reminders))
                     setShowBadge(true)
                 },
                 buildNotificationChannel(CHANNEL_SOCIAL_SYNC, IMPORTANCE_MIN) {

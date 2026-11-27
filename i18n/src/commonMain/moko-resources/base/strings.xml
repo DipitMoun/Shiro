@@ -1066,6 +1066,7 @@
     <string name="channel_social_invites">Friend requests</string>
     <string name="channel_social_activity">Friends activity</string>
     <string name="channel_social_stories">Friends stories</string>
+    <string name="channel_release_reminders">Release reminders</string>
     <string name="channel_social_sync">Matrix sync</string>
     <string name="social_notification_sync_title">Shiro is syncing Matrix</string>
     <string name="social_notification_sync_text">Live messages and invitations</string>

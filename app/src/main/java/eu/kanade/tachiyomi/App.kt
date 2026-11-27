@@ -195,6 +195,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         runCatching { TelegramSyncJob.setupTask(this) }
         runCatching { eu.kanade.tachiyomi.data.updater.AppUpdateJob.setupTask(this) }
         runCatching { eu.kanade.tachiyomi.extension.ExtensionRepoHealthJob.setupTask(this) }
+        runCatching { eu.kanade.tachiyomi.data.release.ReleaseReminderJob.setupTask(this) }
 
         // Met à niveau les index Telegram produits par un ancien parseur.
         scope.launch(Dispatchers.IO) {

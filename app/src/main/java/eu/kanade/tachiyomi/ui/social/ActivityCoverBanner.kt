@@ -28,6 +28,7 @@ object ActivityCoverBanner {
     private const val MARGIN = 28
     private const val MAX_DOWNLOAD_BYTES = 6L * 1024 * 1024
     private const val MAX_DECODED_SIDE = 1400
+    private const val POSTER_ICON_WIDTH = 128
 
     /** Size of the poster in the banner: as tall as the margins allow, never wider than [maxWidth]. */
     internal fun posterSize(srcWidth: Int, srcHeight: Int, bannerHeight: Int, margin: Int, maxWidth: Int): Pair<Int, Int> {
@@ -41,8 +42,13 @@ object ActivityCoverBanner {
         return width to height
     }
 
-    /** Downloads the cover (https only: the address comes from a friend's message) and draws the banner. */
-    suspend fun load(url: String?): Bitmap? {
+    /** The wide picture, and the poster alone for the collapsed notification. */
+    class Rendered(val banner: Bitmap, val poster: Bitmap)
+
+    /** Downloads the cover (https only: the address may come from a friend's message) and draws the banner. */
+    suspend fun load(url: String?): Bitmap? = loadWithPoster(url)?.banner
+
+    suspend fun loadWithPoster(url: String?): Rendered? {
         if (url == null || !url.startsWith("https://")) return null
         return withContext(Dispatchers.IO) {
             runCatching {
@@ -53,7 +59,10 @@ object ActivityCoverBanner {
                     if (body.contentLength() > MAX_DOWNLOAD_BYTES) return@use null
                     body.bytes().takeIf { it.size <= MAX_DOWNLOAD_BYTES }
                 } ?: return@runCatching null
-                decode(bytes)?.let { cover -> render(cover).also { if (it !== cover) cover.recycle() } }
+                decode(bytes)?.let { cover ->
+                    val poster = Bitmap.createScaledBitmap(cover, POSTER_ICON_WIDTH, POSTER_ICON_WIDTH * 3 / 2, true)
+                    Rendered(render(cover), poster).also { cover.recycle() }
+                }
             }.getOrNull()
         }
     }
