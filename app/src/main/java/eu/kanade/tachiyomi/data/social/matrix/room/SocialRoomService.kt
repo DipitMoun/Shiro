@@ -40,9 +40,23 @@ data class EnsuredRoom(
     val created: Boolean,
 )
 
+/**
+ * Remembers which version of a room's source description was already sent, so the state event is
+ * not re-sent (and does not clutter the room) every time the chat is opened.
+ */
+interface RoomSourceMemo {
+    /** True the first time [stamp] is seen for [roomId]; the call records it. */
+    fun firstTime(roomId: String, stamp: String): Boolean
+
+    object Never : RoomSourceMemo {
+        override fun firstTime(roomId: String, stamp: String) = false
+    }
+}
+
 class DefaultSocialRoomService(
     private val transport: MatrixRoomTransport,
     private val bindings: RoomBindingStore,
+    private val sourceMemo: RoomSourceMemo = RoomSourceMemo.Never,
 ) : SocialRoomService {
 
     override suspend fun ensureRoom(
@@ -59,6 +73,7 @@ class DefaultSocialRoomService(
         val existing = (cached as SocialResult.Success).value
         if (existing != null) {
             val plan = AudiencePolicy.plan(selfUserId = selfMxid, workId = work.id, friends = friends)
+            publishSourceIfNew(existing, roomKey, work, plan)
             return SocialResult.Success(EnsuredRoom(roomId = existing, plan = plan, created = false))
         }
 
@@ -177,6 +192,16 @@ class DefaultSocialRoomService(
         return SocialResult.Success(rootEventId)
     }
 
+    /** Rooms created before the source was recorded get it the first time their owner opens them. */
+    private suspend fun publishSourceIfNew(roomId: String, roomKey: SocialRoomKey, work: WorkIdentity, plan: AudiencePlan) {
+        val source = work.source ?: return
+        if (!sourceMemo.firstTime(roomId, source.encode())) return
+        val sent = transport.sendStateEvent(roomId, "org.shiro.room", buildInitialState(roomKey, work, plan))
+        if (sent is SocialResult.Failure) {
+            android.util.Log.w("SocialRoom", "source state update failed: ${sent.error}")
+        }
+    }
+
     private fun buildInitialState(
         roomKey: SocialRoomKey,
         work: WorkIdentity,
@@ -195,6 +220,7 @@ class DefaultSocialRoomService(
             append("\"ids\":{$aliases},")
             append("\"title\":$title")
             append("},")
+            work.source?.let { append("\"source\":${it.encode()},") }
             append("\"owner\":${jsonString(roomKey.authorMxid)},")
             append("\"visibility\":\"invite\",")
             append("\"inviteReason\":${jsonString(plan.inviteReason)}")

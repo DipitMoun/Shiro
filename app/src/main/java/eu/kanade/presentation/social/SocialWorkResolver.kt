@@ -1,5 +1,13 @@
 package eu.kanade.presentation.social
 
+import tachiyomi.domain.entries.manga.interactor.NetworkToLocalManga
+import tachiyomi.domain.entries.anime.interactor.NetworkToLocalAnime
+import eu.kanade.tachiyomi.data.social.WorkSourceRef
+import eu.kanade.tachiyomi.data.social.ExtensionInstallHelper
+import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.animesource.model.SAnime
+import eu.kanade.domain.entries.manga.model.toDomainManga
+import eu.kanade.domain.entries.anime.model.toDomainAnime
 import cafe.adriel.voyager.core.screen.Screen
 import eu.kanade.tachiyomi.data.multisource.MultiSourceMangaWorkOpener
 import eu.kanade.tachiyomi.data.multisource.MultiSourceWorkOpener
@@ -151,6 +159,14 @@ internal object SocialChatContextResolver {
     }
 }
 
+/** What opening a friend's exact version of a work gave. */
+internal sealed interface SourceOpenResult {
+    data class Open(val screen: Screen) : SourceOpenResult
+
+    /** The friend's extension is not installed here: it has to be installed first. */
+    data class MissingExtension(val ref: WorkSourceRef) : SourceOpenResult
+}
+
 /**
  * Opens a work known only by its title: from the library when the user has it, otherwise
  * from the catalog (created on the fly as a multi-source entry).
@@ -160,6 +176,28 @@ internal class SocialWorkOpener(
     private val getMangaFavorites: GetMangaFavorites = Injekt.get(),
     private val network: NetworkHelper = Injekt.get(),
 ) {
+
+    /**
+     * Opens exactly the version of the work a friend uses: same extension, same source, same
+     * address, with no search. If the extension is not installed here, says so.
+     */
+    suspend fun openBySource(ref: WorkSourceRef): SourceOpenResult {
+        if (!ExtensionInstallHelper.isInstalled(ref)) return SourceOpenResult.MissingExtension(ref)
+        val title = ref.title ?: ref.url
+        return if (ref.isManga) {
+            val manga = SManga.create().apply {
+                url = ref.url
+                this.title = title
+            }.toDomainManga(ref.sourceId)
+            SourceOpenResult.Open(MangaScreen(Injekt.get<NetworkToLocalManga>().await(manga).id, true))
+        } else {
+            val anime = SAnime.create().apply {
+                url = ref.url
+                this.title = title
+            }.toDomainAnime(ref.sourceId)
+            SourceOpenResult.Open(AnimeScreen(animeId = Injekt.get<NetworkToLocalAnime>().await(anime).id, fromSource = true))
+        }
+    }
 
     /**
      * @param isManga true or false when the kind of work is known; null when it is not (a

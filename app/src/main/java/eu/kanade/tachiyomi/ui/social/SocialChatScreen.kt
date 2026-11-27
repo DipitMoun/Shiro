@@ -678,6 +678,56 @@ class SocialChatScreen(
                         val notInLibrary = chatContext.initialRoomId != null && chatContext.animeId == 0L
                         val openScope = androidx.compose.runtime.rememberCoroutineScope()
                         var opening by remember { mutableStateOf(false) }
+                        var missingExtension by remember { mutableStateOf<eu.kanade.tachiyomi.data.social.WorkSourceRef?>(null) }
+                        var installingExtension by remember { mutableStateOf(false) }
+                        val searchByTitle: () -> Unit = {
+                            opening = true
+                            openScope.launch {
+                                try {
+                                    val screen = eu.kanade.presentation.social.SocialWorkOpener()
+                                        .open(chatContext.title, isManga = if (chatContext.medium == SocialChatMedium.MANGA) true else null)
+                                    if (screen != null) {
+                                        navigator.push(screen)
+                                    } else {
+                                        android.widget.Toast
+                                            .makeText(context, "Œuvre introuvable", android.widget.Toast.LENGTH_SHORT)
+                                            .show()
+                                    }
+                                } finally {
+                                    opening = false
+                                }
+                            }
+                        }
+                        missingExtension?.let { ref ->
+                            eu.kanade.presentation.social.MissingExtensionDialog(
+                                ref = ref,
+                                installing = installingExtension,
+                                onInstall = {
+                                    installingExtension = true
+                                    openScope.launch {
+                                        val started = runCatching {
+                                            eu.kanade.tachiyomi.data.social.ExtensionInstallHelper.install(ref)
+                                        }.getOrDefault(false)
+                                        installingExtension = false
+                                        missingExtension = null
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            if (started) {
+                                                "Installation de l'extension lancée, rouvre l'œuvre ensuite"
+                                            } else {
+                                                "Extension introuvable dans tes dépôts : ajoute le bon dépôt d'abord"
+                                            },
+                                            android.widget.Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
+                                },
+                                onSearchInstead = {
+                                    missingExtension = null
+                                    searchByTitle()
+                                },
+                                onDismiss = { missingExtension = null },
+                            )
+                        }
                         if (notInLibrary) {
                             AddToLibraryPrompt(
                                 title = chatContext.title,
@@ -686,18 +736,17 @@ class SocialChatScreen(
                                     if (!opening) {
                                         opening = true
                                         openScope.launch {
-                                            try {
-                                                val screen = eu.kanade.presentation.social.SocialWorkOpener()
-                                                    .open(chatContext.title, isManga = if (chatContext.medium == SocialChatMedium.MANGA) true else null)
-                                                if (screen != null) {
-                                                    navigator.push(screen)
-                                                } else {
-                                                    android.widget.Toast
-                                                        .makeText(context, "Œuvre introuvable", android.widget.Toast.LENGTH_SHORT)
-                                                        .show()
-                                                }
-                                            } finally {
-                                                opening = false
+                                            // The owner's extension and source first: the exact version, no search.
+                                            val ref = chatContext.initialRoomId?.let {
+                                                runCatching { Injekt.get<eu.kanade.tachiyomi.data.social.matrix.room.RoomSourceReader>().read(it) }.getOrNull()
+                                            }
+                                            val exact = ref?.let { eu.kanade.presentation.social.SocialWorkOpener().openBySource(it) }
+                                            opening = false
+                                            when (exact) {
+                                                is eu.kanade.presentation.social.SourceOpenResult.Open -> navigator.push(exact.screen)
+                                                is eu.kanade.presentation.social.SourceOpenResult.MissingExtension ->
+                                                    missingExtension = exact.ref
+                                                null -> searchByTitle()
                                             }
                                         }
                                     }

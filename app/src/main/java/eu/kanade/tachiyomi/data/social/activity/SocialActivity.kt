@@ -23,6 +23,8 @@ data class SocialActivityItem(
     val title: String,
     val coverUrl: String?,
     val timestamp: Long,
+    /** The friend's extension and source for this work, when the friend's app recorded it. */
+    val source: eu.kanade.tachiyomi.data.social.WorkSourceRef? = null,
 )
 
 /**
@@ -34,10 +36,14 @@ object SocialActivityCodec {
 
     private const val TOPIC_PREFIX = "shiro:activity:"
 
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
 
     @Serializable
-    private data class Payload(val t: String, val c: String? = null)
+    private data class Payload(
+        val t: String,
+        val c: String? = null,
+        val s: eu.kanade.tachiyomi.data.social.WorkSourceRef? = null,
+    )
 
     fun topicFor(ownerMxid: String): String = TOPIC_PREFIX + ownerMxid
 
@@ -47,8 +53,13 @@ object SocialActivityCodec {
 
     fun isActivityMsgtype(msgtype: String): Boolean = SocialActivityKind.fromMsgtype(msgtype) != null
 
-    fun encode(kind: SocialActivityKind, title: String, coverUrl: String?): String {
-        val body = json.encodeToString(Payload.serializer(), Payload(t = title, c = coverUrl))
+    fun encode(
+        kind: SocialActivityKind,
+        title: String,
+        coverUrl: String?,
+        source: eu.kanade.tachiyomi.data.social.WorkSourceRef? = null,
+    ): String {
+        val body = json.encodeToString(Payload.serializer(), Payload(t = title, c = coverUrl, s = source))
         return buildJsonObject {
             put("msgtype", kind.msgtype)
             put("body", body)
@@ -72,6 +83,7 @@ object SocialActivityCodec {
             title = payload.t,
             coverUrl = payload.c?.takeIf { it.startsWith("http") },
             timestamp = timestamp,
+            source = payload.s?.takeIf { it.pkg.isNotBlank() && it.url.isNotBlank() && it.sourceId != 0L },
         )
     }
 }

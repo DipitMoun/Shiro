@@ -1,5 +1,10 @@
 package eu.kanade.tachiyomi.ui.social.home
 
+import eu.kanade.tachiyomi.data.social.activity.SocialActivityItem
+import eu.kanade.tachiyomi.data.social.WorkSourceRef
+import eu.kanade.tachiyomi.data.social.ExtensionInstallHelper
+import eu.kanade.presentation.social.SourceOpenResult
+import eu.kanade.presentation.social.MissingExtensionDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -290,6 +295,8 @@ private fun SignedInContent(
     val feed by activityService.feed.collectAsStateWithLifecycle()
     val workOpener = remember { SocialWorkOpener() }
     var openingWork by remember { mutableStateOf(false) }
+    var missingExtension by remember { mutableStateOf<Pair<WorkSourceRef, SocialActivityItem>?>(null) }
+    var installingExtension by remember { mutableStateOf(false) }
 
     LaunchedEffect(account.userId) {
         inviteMonitor.refresh()
@@ -376,6 +383,18 @@ private fun SignedInContent(
                         if (openingWork) return@ActivityRow
                         openingWork = true
                         scope.launch {
+                            val ref = activity.source
+                            val exact = ref?.let { workOpener.openBySource(it) }
+                            if (exact is SourceOpenResult.Open) {
+                                openingWork = false
+                                navigator.push(exact.screen)
+                                return@launch
+                            }
+                            if (exact is SourceOpenResult.MissingExtension) {
+                                openingWork = false
+                                missingExtension = exact.ref to activity
+                                return@launch
+                            }
                             val screen = workOpener.open(
                                 activity.title,
                                 isManga = activity.kind == SocialActivityKind.MANGA_ADDED,
@@ -387,6 +406,33 @@ private fun SignedInContent(
                 )
             }
         }
+    }
+
+    missingExtension?.let { (ref, activity) ->
+        MissingExtensionDialog(
+            ref = ref,
+            installing = installingExtension,
+            onInstall = {
+                installingExtension = true
+                scope.launch {
+                    val started = runCatching { ExtensionInstallHelper.install(ref) }.getOrDefault(false)
+                    installingExtension = false
+                    missingExtension = null
+                    onMessage(
+                        if (started) "Installation de l'extension lancée, rouvre l'œuvre ensuite"
+                        else "Extension introuvable dans tes dépôts : ajoute le bon dépôt d'abord",
+                    )
+                }
+            },
+            onSearchInstead = {
+                missingExtension = null
+                scope.launch {
+                    val screen = workOpener.open(activity.title, isManga = activity.kind == SocialActivityKind.MANGA_ADDED)
+                    if (screen != null) navigator.push(screen) else onMessage("Œuvre introuvable")
+                }
+            },
+            onDismiss = { missingExtension = null },
+        )
     }
 
     pendingRemoval?.let { friend ->

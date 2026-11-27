@@ -224,6 +224,7 @@ class MangaScreen(
                                 title = manga.title,
                                 legacyId = WorkId.parse("local:${manga.id}"),
                                 addedAt = manga.dateAdded,
+                                source = eu.kanade.tachiyomi.data.social.WorkSourceRefs.forManga(manga),
                             ),
                             title = manga.title,
                             posterUrl = manga.thumbnailUrl,

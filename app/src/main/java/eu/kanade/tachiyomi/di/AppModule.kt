@@ -375,7 +375,11 @@ class AppModule(val app: Application) : InjektModule {
             DefaultSocialRoomService(
                 transport = get<MatrixRoomTransport>(),
                 bindings = get<RoomBindingStore>(),
+                sourceMemo = eu.kanade.tachiyomi.data.social.matrix.room.PrefsRoomSourceMemo(app),
             )
+        }
+        addSingletonFactory {
+            eu.kanade.tachiyomi.data.social.matrix.room.RoomSourceReader(matrixCredentialStore, get())
         }
         addSingletonFactory { SocialNotificationCursor(app) }
         addSingletonFactory { SocialOwnProfile(get<MatrixSessionManager>(), get<SocialAvatarLoader>()) }

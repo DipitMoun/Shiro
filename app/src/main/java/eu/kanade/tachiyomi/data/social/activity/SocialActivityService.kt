@@ -109,7 +109,9 @@ class SocialActivityService(
                 .collect { animes ->
                     publishAdditions(
                         kind = SocialActivityKind.ANIME_ADDED,
-                        current = animes.associate { it.id to (it.title to it.thumbnailUrl) },
+                        current = animes.associate {
+                            it.id to AddedWork(it.title, it.thumbnailUrl, eu.kanade.tachiyomi.data.social.WorkSourceRefs.forAnime(it))
+                        },
                     )
                 }
         }
@@ -119,7 +121,9 @@ class SocialActivityService(
                 .collect { mangas ->
                     publishAdditions(
                         kind = SocialActivityKind.MANGA_ADDED,
-                        current = mangas.associate { it.id to (it.title to it.thumbnailUrl) },
+                        current = mangas.associate {
+                            it.id to AddedWork(it.title, it.thumbnailUrl, eu.kanade.tachiyomi.data.social.WorkSourceRefs.forManga(it))
+                        },
                     )
                 }
         }
@@ -184,9 +188,11 @@ class SocialActivityService(
             .take(MAX_FEED)
     }
 
-    private suspend fun publishAdditions(kind: SocialActivityKind, current: Map<Long, Pair<String, String?>>) {
+    private class AddedWork(val title: String, val cover: String?, val source: eu.kanade.tachiyomi.data.social.WorkSourceRef?)
+
+    private suspend fun publishAdditions(kind: SocialActivityKind, current: Map<Long, AddedWork>) {
         val self = selfMxid() ?: return
-        libraryTitles = libraryTitles + current.values.map { normalize(it.first) }
+        libraryTitles = libraryTitles + current.values.map { normalize(it.title) }
 
         val key = "known_${kind.name}_$self"
         val known = prefs.getStringSet(key, null)
@@ -200,8 +206,9 @@ class SocialActivityService(
         if (added.isEmpty() || added.size > MAX_BURST || !_shareEnabled.value) return
 
         val roomId = roomMutex.withLock { prefs.getString(roomKey(self), null) } ?: return
-        added.values.forEach { (title, cover) ->
-            val content = SocialActivityCodec.encode(kind, title, cover?.takeIf { it.startsWith("http") })
+        added.values.forEach { work ->
+            val title = work.title
+            val content = SocialActivityCodec.encode(kind, title, work.cover?.takeIf { it.startsWith("http") }, work.source)
             when (val sent = transport.sendMessage(roomId, content)) {
                 is SocialResult.Success -> logcat(LogPriority.INFO) { "activity published: $title" }
                 is SocialResult.Failure -> logcat(LogPriority.WARN) { "activity publish failed: ${sent.error}" }

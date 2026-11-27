@@ -93,6 +93,8 @@ data class WorkIdentity(
     val legacyId: WorkId? = null,
     /** Wall-clock creation time of the local anime row, in epoch millis. */
     val addedAt: Long? = null,
+    /** The extension and source this version of the work comes from, when it has one. */
+    val source: eu.kanade.tachiyomi.data.social.WorkSourceRef? = null,
 ) : java.io.Serializable {
     init {
         require(ids.values.all { it.isNotBlank() }) { "Alias values must not be blank" }

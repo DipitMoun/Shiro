@@ -265,6 +265,7 @@ class AnimeScreen(
                                 title = anime.title,
                                 legacyId = WorkId.parse("local:${anime.id}"),
                                 addedAt = anime.dateAdded,
+                                source = eu.kanade.tachiyomi.data.social.WorkSourceRefs.forAnime(anime),
                             ),
                             title = anime.title,
                             posterUrl = anime.thumbnailUrl,
