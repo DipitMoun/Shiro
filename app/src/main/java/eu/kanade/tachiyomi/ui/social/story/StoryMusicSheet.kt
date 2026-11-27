@@ -87,6 +87,7 @@ internal fun StoryMusicSheet(onDismiss: () -> Unit, onPicked: (ThemeRef) -> Unit
                                 themeId = selectedTheme.themeId,
                                 startSeconds = start,
                                 label = "${selectedAnime.title} · ${selectedTheme.slug}",
+                                slug = selectedTheme.slug.takeIf { it.isNotBlank() },
                             ),
                         )
                     },

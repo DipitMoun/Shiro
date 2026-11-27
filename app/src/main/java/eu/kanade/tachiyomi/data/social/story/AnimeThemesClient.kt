@@ -27,6 +27,14 @@ data class ThemeOption(
 /** A theme ready to be played: where to stream it from. Never stored, never copied. */
 data class ResolvedTheme(val streamUrl: String, val isAudioOnly: Boolean)
 
+/** What AnimeThemes says about one theme. */
+data class ThemeDetails(
+    val slug: String?,
+    val songTitle: String?,
+    val artist: String?,
+    val stream: ResolvedTheme?,
+)
+
 /**
  * AnimeThemes (https://animethemes.moe), read only. The app asks it for the themes of an anime
  * when a story is made, and again for the stream when a story is played: nothing of it is
@@ -63,24 +71,34 @@ class AnimeThemesClient(private val network: NetworkHelper) {
         }
     }
 
-    /** The stream of a theme, preferring the audio-only file. Null when it cannot be resolved. */
-    suspend fun resolve(themeId: Long): ResolvedTheme? = withContext(Dispatchers.IO) {
+    /**
+     * Title, artist and stream of a theme, the stream preferring the audio-only file. Null when
+     * AnimeThemes does not answer: the caller then falls back to other sources for the card.
+     */
+    suspend fun fetchTheme(themeId: Long): ThemeDetails? = withContext(Dispatchers.IO) {
         val url = BASE.toHttpUrl().newBuilder()
             .addPathSegment("animetheme")
             .addPathSegment(themeId.toString())
-            .addQueryParameter("include", "animethemeentries.videos.audio")
+            .addQueryParameter("include", "song.artists,animethemeentries.videos.audio")
             .build()
         val root = fetch(url.toString()) ?: return@withContext null
         val theme = root["animetheme"]?.asObject() ?: return@withContext null
+        val song = theme["song"]?.asObject()
         val videos = theme["animethemeentries"]?.asArray().orEmpty()
             .flatMap { it.asObject()?.get("videos")?.asArray().orEmpty() }
             .mapNotNull { it.asObject() }
-        videos.firstNotNullOfOrNull { video ->
+        val stream = videos.firstNotNullOfOrNull { video ->
             video["audio"]?.asObject()?.get("link")?.asString()?.takeIf { it.startsWith("http") }
                 ?.let { ResolvedTheme(it, isAudioOnly = true) }
         } ?: videos.firstNotNullOfOrNull { video ->
             video["link"]?.asString()?.takeIf { it.startsWith("http") }?.let { ResolvedTheme(it, isAudioOnly = false) }
         }
+        ThemeDetails(
+            slug = theme["slug"]?.asString(),
+            songTitle = song?.get("title")?.asString(),
+            artist = song?.get("artists")?.asArray()?.firstOrNull()?.asObject()?.get("name")?.asString(),
+            stream = stream,
+        )
     }
 
     private fun fetch(url: String): JsonObject? = runCatching {

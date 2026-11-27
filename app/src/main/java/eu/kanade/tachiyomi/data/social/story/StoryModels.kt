@@ -35,6 +35,8 @@ data class ThemeRef(
     @SerialName("s") val startSeconds: Int = 0,
     /** Label for the card, so something readable shows before (or without) the resolution. */
     @SerialName("t") val label: String? = null,
+    /** "OP1", "ED2"…: lets a backup source find the title and artist when AnimeThemes is down. */
+    @SerialName("sl") val slug: String? = null,
 ) {
     fun encode(): String = JSON.encodeToString(serializer(), this)
 

@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.ui.social.story
 
+import eu.kanade.tachiyomi.data.social.story.ThemeResolver
+import eu.kanade.tachiyomi.data.social.story.ThemePlayback
 import android.media.MediaPlayer
 import android.widget.VideoView
 import androidx.compose.animation.core.Animatable
@@ -60,7 +62,6 @@ import eu.kanade.tachiyomi.data.social.friends.SocialFriendStore
 import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
 import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
 import eu.kanade.tachiyomi.data.social.matrix.media.SocialAvatarLoader
-import eu.kanade.tachiyomi.data.social.story.AnimeThemesClient
 import eu.kanade.tachiyomi.data.social.story.SocialStoryService
 import eu.kanade.tachiyomi.data.social.story.StoryContent
 import eu.kanade.tachiyomi.data.social.story.StoryExpiry
@@ -372,22 +373,22 @@ private fun StoryVideo(item: StoryItem, service: SocialStoryService, paused: Boo
     }
 }
 
-/** A music story: the card first, the extract resolved and streamed when it is played. */
+/**
+ * A music story: the card (artwork, title, artist) and, when the stream can be found, the extract.
+ * If AnimeThemes does not answer, the card still shows (artwork from AniList, texts from Jikan)
+ * and only the sound is missing, with a clear message.
+ */
 @Composable
 private fun StoryMusic(content: StoryContent.Music, paused: Boolean, modifier: Modifier) {
-    val client = remember { AnimeThemesClient(Injekt.get()) }
+    val resolver = remember { ThemeResolver(Injekt.get()) }
     val theme = content.theme
-    val resolved by produceState<Result<String>?>(null, theme) {
-        value = runCatching {
-            client.resolve(theme.themeId)?.streamUrl ?: error("not resolved")
-        }
-    }
+    val playback by produceState<ThemePlayback?>(null, theme) { value = resolver.resolve(theme) }
     val player = remember { MediaPlayer() }
     var failed by remember { mutableStateOf(false) }
 
-    LaunchedEffect(resolved) {
-        val result = resolved ?: return@LaunchedEffect
-        val url = result.getOrNull()
+    LaunchedEffect(playback) {
+        val resolved = playback ?: return@LaunchedEffect
+        val url = resolved.streamUrl
         if (url == null) {
             failed = true
             return@LaunchedEffect
@@ -404,31 +405,50 @@ private fun StoryMusic(content: StoryContent.Music, paused: Boolean, modifier: M
         }.onFailure { failed = true }
     }
     LaunchedEffect(paused) {
-        runCatching { if (paused) player.pause() else if (resolved?.isSuccess == true && !player.isPlaying) player.start() }
+        runCatching { if (paused) player.pause() else if (playback?.streamUrl != null && !failed && !player.isPlaying) player.start() }
     }
     DisposableEffect(Unit) { onDispose { runCatching { player.release() } } }
 
+    val meta = playback?.metadata
     Box(
         modifier.background(Brush.verticalGradient(listOf(Color(0xFF2A1B5E), Color(0xFF0B0B14)))),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(
-                Modifier.size(120.dp).clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = 0.12f)),
+                Modifier.size(180.dp).clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.MusicNote, null, tint = Color.White, modifier = Modifier.size(56.dp))
+                if (meta?.coverUrl != null) {
+                    coil3.compose.AsyncImage(
+                        model = meta.coverUrl,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Icon(Icons.Outlined.MusicNote, null, tint = Color.White, modifier = Modifier.size(56.dp))
+                }
             }
             Text(
-                text = theme.label ?: "Extrait musical",
+                text = meta?.title ?: theme.label ?: "Extrait musical",
                 color = Color.White,
-                fontSize = 18.sp,
+                fontSize = 19.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 32.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
+            val subtitle = listOfNotNull(meta?.artist, meta?.slug ?: theme.slug).joinToString(" · ")
+            if (subtitle.isNotBlank()) {
+                Text(subtitle, color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)
+            }
             Text(
-                text = if (failed) "Impossible de charger cet extrait" else "Depuis ${theme.startSeconds / 60}:${"%02d".format(theme.startSeconds % 60)}",
-                color = Color.White.copy(alpha = 0.7f),
+                text = when {
+                    failed -> "Impossible de charger cet extrait"
+                    playback == null -> "Chargement…"
+                    else -> "Depuis ${theme.startSeconds / 60}:${"%02d".format(theme.startSeconds % 60)}"
+                },
+                color = Color.White.copy(alpha = 0.6f),
                 fontSize = 13.sp,
             )
         }

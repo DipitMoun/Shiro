@@ -292,6 +292,7 @@ private fun SignedInContent(
     var removing by remember { mutableStateOf(false) }
 
     val activityService = remember { Injekt.get<SocialActivityService>() }
+    val storyService = remember { Injekt.get<eu.kanade.tachiyomi.data.social.story.SocialStoryService>() }
     val feed by activityService.feed.collectAsStateWithLifecycle()
     val workOpener = remember { SocialWorkOpener() }
     var openingWork by remember { mutableStateOf(false) }
@@ -302,6 +303,8 @@ private fun SignedInContent(
         inviteMonitor.refresh()
         activityService.start()
         activityService.refreshFeed()
+        storyService.start()
+        storyService.refresh()
     }
 
     LazyColumn(
@@ -312,6 +315,12 @@ private fun SignedInContent(
     ) {
         item(key = "profile") {
             ProfileHeader(account = account, onEditProfile = onEditProfile, onShowQr = onShowQr)
+        }
+        item(key = "stories") {
+            eu.kanade.tachiyomi.ui.social.story.StoriesRow(
+                selfMxid = account.userId,
+                selfName = account.displayName ?: account.userId,
+            )
         }
 
         if (invites.isNotEmpty()) {
