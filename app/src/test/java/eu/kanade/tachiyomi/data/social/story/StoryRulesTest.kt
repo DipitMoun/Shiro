@@ -71,7 +71,7 @@ class StoryRulesTest {
 
     @Test
     fun `the month quota blocks when the day is fine`() {
-        val records = (1..5).map { SentRecord(now - TimeUnit.DAYS.toMillis(it * 4L), 98 * mb) } // 490 MB
+        val records = (1..5).map { SentRecord(now - TimeUnit.DAYS.toMillis(it * 4L), 99 * mb) } // 495 MB
         val verdict = StoryQuota.verdict(records, now, 9 * mb) as SendVerdict.QuotaExceeded
 
         assertEquals(QuotaWindow.MONTH, verdict.reason)
