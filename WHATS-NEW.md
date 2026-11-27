@@ -15,36 +15,47 @@ Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 
 ### Quoi de neuf
 
-**Application**
-- Cet écran « Quoi de neuf » remplace la grande fenêtre : même présentation que l'écran d'erreur,
-  avec « Continuer » et « Voir toutes les versions ».
-
-**Correctif**
-- Le petit bouton « Reprendre » revient dans le carrousel d'activité récente (Animé et Manga), même quand
-  le réglage qui l'affiche sur les grilles est désactivé.
-- Les couvertures qui restaient grises dans la case d'une catégorie (mosaïque des collections, Animé et
-  Manga) s'affichent de nouveau.
-- « Voir l'œuvre » dans une conversation ouvre l'œuvre exacte : l'app cherche dans les animes et les
-  mangas, garde le titre le plus proche (synonymes compris), et une œuvre dont le titre n'est qu'un
-  morceau du bon (« Le Retour » pour « Le retour du clan Hwasan ») n'est plus prise pour elle.
+**Stories**
+- Publie une photo ou une vidéo courte en story depuis la page Social : le « + » sur ton avatar, tout
+  en haut. Tes amis la voient pendant 24 h dans le ruban, avec un anneau coloré tant qu'ils ne l'ont
+  pas vue. Tu peux y ajouter une légende.
+- Partage un extrait musical d'une œuvre de ta bibliothèque (un opening ou un ending, à partir du
+  moment que tu choisis). Rien n'est envoyé : tes amis l'écoutent en direct depuis AnimeThemes. Si le
+  service ne répond pas, la carte reste avec la pochette, le titre et l'artiste, sans le son.
+- Un compteur d'envoi (100 Mo par 24 h, 500 Mo sur 28 jours, 10 Mo par fichier) te dit ce qu'il reste.
+  Les extraits musicaux n'en consomment pas. Après 24 h, la story disparaît de l'app et son contenu
+  est retiré du message ; le fichier peut toutefois rester sur le serveur.
 
 **Chat**
-- Tu peux envoyer des images et des GIF : le bouton image à côté du champ de saisie, ou
-  « Image ou GIF » dans le menu +. Les grosses photos sont réduites avant l'envoi, les GIF
-  gardent leur animation, et un appui sur une image l'ouvre en grand.
-- Quand tu ouvres la conversation d'une œuvre que tu n'as pas, le bouton « Voir l'œuvre » tourne
-  pendant la recherche et ouvre la bonne œuvre (plus « Le retour » à la place de « Le retour du
-  clan Hwasan »). La bannière est aussi refaite.
+- Images et GIF : envoie-les depuis le bouton image du champ de saisie. Les images reçues sont décodées
+  par Android, donc plus de cases grises, et les GIF restent animés.
+- « Voir l'œuvre » ouvre exactement la version qu'utilise ton ami (même extension, même source) au lieu
+  de chercher. Si tu n'as pas l'extension, l'app propose de l'installer. Même chose depuis le fil
+  d'activité.
 - Les conversations des mangas affichent leur couverture dans l'onglet Messages.
 
-**Extensions**
-- Nouvel écran « Santé des dépôts » (Réglages → Navigation) : il dit si chaque dépôt répond, s'il
-  utilise une version d'extensions que Shiro ne sait pas charger, et signale les extensions dont la
-  mise à jour est bloquée parce qu'elles viennent d'une autre source (il suffit alors de les
-  désinstaller puis de les réinstaller depuis le bon dépôt). Une vérification hebdomadaire prévient
-  par notification quand quelque chose change.
-- Les extensions manga qui s'appuient sur des informations propres à un chapitre (nouveau
-  format) fonctionnent mieux : ces informations sont désormais conservées.
+**Bibliothèque**
+- Le carrousel d'activité récente montre le numéro du prochain épisode ou chapitre sur chaque affiche
+  et, pour les animés, des cartes rondes « bientôt » avec le compte à rebours. Appui long pour le
+  détail. Le bouton « Reprendre » revient.
+- Les couvertures grises des catégories s'affichent de nouveau.
+
+**Sorties et extensions**
+- Les dates de sortie viennent de nouveau d'AniList (la requête était refusée) : relances, cache et
+  dernier résultat gardé si le réseau est mauvais.
+- Nouvel écran « Santé des dépôts » (Réglages → Navigation) : il signale les dépôts qui ne répondent
+  plus, les extensions que Shiro ne sait pas charger et celles dont la mise à jour est bloquée par la
+  signature.
+- Les extensions manga qui s'appuient sur des informations propres à un chapitre fonctionnent mieux.
+
+**Application**
+- Cet écran « Quoi de neuf » remplace la grande fenêtre.
+- Les téléchargements continuent écran éteint ou dans une autre application.
+
+**Correctifs**
+- Plantage au retour arrière dans une catégorie sur Android 14 et moins.
+- Plantage rare à l'ouverture de la fiche d'un animé.
+- Plantage sur les sources qui répondent en compression zstd.
 
 ---
 
@@ -202,7 +213,16 @@ Téléchargements et mises à jour
       leur base n'est pas celle du téléphone de test.
 - [ ] Diagnostic des couvertures : les échecs d'images sont dans les logs sous `ShiroImage`.
 
-### À faire ce week-end (demandé le 25/11/2026, pas avant)
+### Week-end du 27/11/2026 : ce qui est fait et ce qui reste
+
+Fait dans la 0.20.0 : 1 et 2 (source exacte), 3 (carrousel), 5 (stories, avec le repli AnimeThemes → AniList/Jikan).
+Reste : du point 4, le secours Kitsu/TVmaze, la correspondance des numéros d'épisode entre sources et
+le bouton « télécharger » de l'appui long du carrousel. Pour les stories : mentions, texte sur l'image,
+grille de galerie intégrée, notification de nouvelle story, et la validation sur deux comptes (quota
+glissant ou fixe, un média supprimé rend-il du quota, réponses réelles d'AnimeThemes quand il revient).
+Prochain gros chantier : un salon par utilisateur avec un fil par œuvre.
+
+(Texte d'origine de la demande ci-dessous.)
 
 1. **Retrouver la version exacte d'une œuvre grâce à l'extension.** À la création d'un salon,
    enregistrer comme paramètre le nom (le paquet) de l'extension / la source que l'auteur utilise,
