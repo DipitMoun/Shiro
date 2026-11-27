@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +78,8 @@ data class RecentWork(
     val progress: EntryProgress,
     /** True when the work still has entries to resume (unseen episodes / unread chapters). */
     val canContinue: Boolean = false,
+    /** Number of the next episode or chapter, shown on the poster. */
+    val badge: NextEntryBadge? = null,
 )
 
 @Composable
@@ -83,8 +90,33 @@ fun RecentActivityCarousel(
     onCollectionClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
     onContinueClick: ((Long) -> Unit)? = null,
+    /** Episodes that come out soon: round cards after the works, same row. */
+    upcoming: List<UpcomingWork> = emptyList(),
 ) {
-    if (recentWorks.isEmpty() && recentCollections.isEmpty()) return
+    if (recentWorks.isEmpty() && recentCollections.isEmpty() && upcoming.isEmpty()) return
+
+    var sheetWork by remember { mutableStateOf<RecentWork?>(null) }
+    var sheetUpcoming by remember { mutableStateOf<UpcomingWork?>(null) }
+
+    sheetWork?.let { work ->
+        RecentCardSheet(
+            title = work.title,
+            detail = work.badge?.let { "Prochain : ${it.label}" + if (it.isNew) " (nouveau)" else "" + if (it.downloaded) ", téléchargé" else "" }
+                ?: "Rien de nouveau à reprendre",
+            onDismiss = { sheetWork = null },
+            onOpen = { onWorkClick(work.id) },
+            onContinue = onContinueClick?.takeIf { work.canContinue }?.let { c -> { c(work.id) } },
+        )
+    }
+    sheetUpcoming?.let { work ->
+        RecentCardSheet(
+            title = work.title,
+            detail = "Épisode ${work.episode} · ${airingDayLabel(work.airingAtSeconds)}",
+            onDismiss = { sheetUpcoming = null },
+            onOpen = { onWorkClick(work.id) },
+            onContinue = null,
+        )
+    }
 
     LazyRow(
         modifier = modifier.fillMaxWidth(),
@@ -95,10 +127,25 @@ fun RecentActivityCarousel(
             RecentWorkCard(
                 work = work,
                 onClick = { onWorkClick(work.id) },
+                onLongClick = { sheetWork = work },
                 onContinueClick = onContinueClick?.takeIf { work.canContinue }?.let { onClick ->
                     { onClick(work.id) }
                 },
             )
+        }
+        if (upcoming.isNotEmpty()) {
+            item(key = "upcoming_divider") {
+                Box(Modifier.height(165.dp), contentAlignment = Alignment.Center) { UpcomingDivider() }
+            }
+            items(upcoming, key = { "upcoming_${it.id}" }) { work ->
+                Box(Modifier.height(165.dp), contentAlignment = Alignment.Center) {
+                    UpcomingCircleCard(
+                        work = work,
+                        onClick = { onWorkClick(work.id) },
+                        onLongClick = { sheetUpcoming = work },
+                    )
+                }
+            }
         }
         items(recentCollections, key = { "coll_${it.id}" }) { coll ->
             RecentCollectionCard(coll, onClick = { onCollectionClick(coll.id) })
@@ -107,15 +154,17 @@ fun RecentActivityCarousel(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun RecentWorkCard(
     work: RecentWork,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onContinueClick: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
             .width(110.dp)
-            .clickable(onClick = onClick),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box(
             modifier = Modifier
@@ -141,6 +190,13 @@ private fun RecentWorkCard(
                     .align(Alignment.BottomEnd)
                     .padding(6.dp),
             )
+
+            work.badge?.let { badge ->
+                NextEntryTag(
+                    badge = badge,
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
+                )
+            }
 
             if (onContinueClick != null) {
                 FilledIconButton(

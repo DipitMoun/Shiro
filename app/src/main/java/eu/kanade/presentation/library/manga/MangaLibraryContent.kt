@@ -1,5 +1,7 @@
 package eu.kanade.presentation.library.manga
 
+import eu.kanade.presentation.library.components.loadNextMangaBadge
+import eu.kanade.presentation.library.components.NextEntryBadge
 import tachiyomi.domain.entries.manga.model.asMangaCover
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
@@ -171,8 +173,22 @@ fun MangaLibraryContent(
         .distinctBy { it.libraryManga.manga.id }
         .filter { it.libraryManga.lastRead > 0L }
         .sortedByDescending { it.libraryManga.lastRead }
-        .take(3)
+        .take(4)
         .toList()
+
+    // Next chapter of each recent work.
+    val getChapters: tachiyomi.domain.items.chapter.interactor.GetChaptersByMangaId by injectLazy()
+    val downloadManager: eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager by injectLazy()
+    var nextBadges by remember { mutableStateOf<Map<Long, NextEntryBadge>>(emptyMap()) }
+    val recentMangaKeys = recentWorks.map { it.libraryManga.manga.id to it.libraryManga.lastRead }
+    LaunchedEffect(recentMangaKeys) {
+        nextBadges = withContext(Dispatchers.IO) {
+            recentWorks.mapNotNull { work ->
+                runCatching { loadNextMangaBadge(work, getChapters, downloadManager) }.getOrNull()
+                    ?.let { work.libraryManga.manga.id to it }
+            }.toMap()
+        }
+    }
 
     // The carousel mirrors the resume button of the grid: same setting, same condition.
     val carouselWorks = recentWorks.map {
@@ -183,6 +199,7 @@ fun MangaLibraryContent(
             coverModel = it.libraryManga.manga.asMangaCover(),
             progress = EntryProgress(seriesPercent = it.progressPercent()),
             canContinue = it.libraryManga.unreadCount > 0,
+            badge = nextBadges[it.libraryManga.manga.id],
         )
     }
     val onCarouselContinueClick: ((Long) -> Unit)? = onContinueReadingClicked?.let { onClick ->

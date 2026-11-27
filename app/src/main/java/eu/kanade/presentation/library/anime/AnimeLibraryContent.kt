@@ -1,5 +1,9 @@
 package eu.kanade.presentation.library.anime
 
+import eu.kanade.presentation.library.components.loadNextAnimeBadge
+import eu.kanade.presentation.library.components.AnimeUpcomingLoader
+import eu.kanade.presentation.library.components.UpcomingWork
+import eu.kanade.presentation.library.components.NextEntryBadge
 import tachiyomi.domain.entries.anime.model.asAnimeCover
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
@@ -203,7 +207,7 @@ fun AnimeLibraryContent(
         .distinctBy { it.libraryAnime.anime.id }
         .filter { it.libraryAnime.lastSeen > 0L }
         .sortedByDescending { it.libraryAnime.lastSeen }
-        .take(3)
+        .take(4)
         .toList()
 
     var recentProgress by remember { mutableStateOf<Map<Long, EntryProgress>>(emptyMap()) }
@@ -211,6 +215,36 @@ fun AnimeLibraryContent(
     LaunchedEffect(recentWorkKeys) {
         recentProgress = recentWorks.associate {
             it.libraryAnime.anime.id to loadAnimeProgress(it, getEpisodes)
+        }
+    }
+
+    // Next episode of each recent work, and what comes out in the next days.
+    val downloadManager: eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager by injectLazy()
+    var nextBadges by remember { mutableStateOf<Map<Long, NextEntryBadge>>(emptyMap()) }
+    LaunchedEffect(recentWorkKeys) {
+        nextBadges = withContext(Dispatchers.IO) {
+            recentWorks.mapNotNull { work ->
+                runCatching { loadNextAnimeBadge(work, getEpisodes, downloadManager) }.getOrNull()
+                    ?.let { work.libraryAnime.anime.id to it }
+            }.toMap()
+        }
+    }
+    val libraryAnimeKeys = categories.flatMap { directWorks(it) }.map { it.libraryAnime.anime.id }.distinct().sorted()
+    var upcomingWorks by remember { mutableStateOf<List<UpcomingWork>>(emptyList()) }
+    LaunchedEffect(libraryAnimeKeys) {
+        upcomingWorks = withContext(Dispatchers.IO) {
+            runCatching {
+                val library = categories.flatMap { directWorks(it) }.map { it.libraryAnime.anime }.distinctBy { it.id }
+                AnimeUpcomingLoader().load(library).map { (anime, event) ->
+                    UpcomingWork(
+                        id = anime.id,
+                        title = anime.title,
+                        coverModel = anime.asAnimeCover(),
+                        episode = event.episode,
+                        airingAtSeconds = event.airingAt,
+                    )
+                }
+            }.getOrDefault(emptyList())
         }
     }
 
@@ -224,6 +258,7 @@ fun AnimeLibraryContent(
             progress = recentProgress[it.libraryAnime.anime.id]
                 ?: EntryProgress(seriesPercent = it.progressPercent()),
             canContinue = it.libraryAnime.unseenCount > 0,
+            badge = nextBadges[it.libraryAnime.anime.id],
         )
     }
     val onCarouselContinueClick: ((Long) -> Unit)? = onContinueWatchingClicked?.let { onClick ->
@@ -286,6 +321,7 @@ fun AnimeLibraryContent(
                                 categories.find { it.id == catId }?.let { onCategoryClick(it) }
                             },
                             onContinueClick = onCarouselContinueClick,
+                            upcoming = upcomingWorks,
                         )
                     }
                 }
