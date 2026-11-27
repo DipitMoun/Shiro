@@ -2,6 +2,12 @@ package eu.kanade.tachiyomi.ui.main
 
 
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import java.io.File
+import androidx.core.content.IntentCompat
+import android.provider.OpenableColumns
+import android.net.Uri
 import eu.kanade.tachiyomi.ui.social.SocialChatContext
 import eu.kanade.tachiyomi.ui.social.SocialChatScreen
 import eu.kanade.tachiyomi.data.social.identity.WorkId
@@ -652,6 +658,23 @@ class MainActivity : BaseActivity() {
     }
 
     private fun openSocialRoomIntent(intent: Intent, navigator: Navigator): Boolean {
+        // A backup file opened or shared from elsewhere: copied here, then the restore screen opens on it.
+        val backupUri = incomingBackupUri(intent)
+        if (backupUri != null) {
+            lifecycleScope.launch {
+                val local = withContext(Dispatchers.IO) { copyIncomingBackup(backupUri) }
+                if (local == null) {
+                    toast("Fichier de sauvegarde illisible")
+                } else {
+                    navigator.popUntilRoot()
+                    navigator.push(RestoreBackupScreen(local.toString()))
+                }
+            }
+            intent.data = null
+            ready = true
+            return true
+        }
+
         val roomId = intent.getStringExtra("roomId") ?: return false
         val workIdString = intent.getStringExtra("workId") ?: return false
         val workId = WorkId.parse(workIdString) ?: return false
@@ -681,6 +704,42 @@ class MainActivity : BaseActivity() {
         ready = true
         return true
     }
+
+    /**
+     * The file of an "open with" or "share to" when it is a Shiro backup, else null. The address
+     * of a file received through a messenger rarely ends with ".tachibk", so its name is read from
+     * the provider, and failing that the file is recognised by its gzip header (backups are gzip).
+     */
+    private fun incomingBackupUri(intent: Intent): Uri? {
+        val uri = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            else -> null
+        } ?: return null
+        if (uri.scheme != "content" && uri.scheme != "file") return null
+
+        val name = runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+        }.getOrNull() ?: uri.lastPathSegment
+        if (name?.endsWith(".tachibk", ignoreCase = true) == true) return uri
+
+        val gzip = runCatching {
+            contentResolver.openInputStream(uri)?.use { input ->
+                input.read() == 0x1f && input.read() == 0x8b
+            }
+        }.getOrNull() == true
+        return uri.takeIf { gzip }
+    }
+
+    /** Own copy of the file: the permission to read the shared one does not outlive this screen. */
+    private fun copyIncomingBackup(uri: Uri): Uri? = runCatching {
+        val target = File(cacheDir, "incoming-backup.tachibk")
+        contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { input.copyTo(it) } }
+            ?: return null
+        Uri.fromFile(target)
+    }.getOrNull()
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)

@@ -107,14 +107,28 @@ class AnimeUpcomingLoader(
     suspend fun aniListIdFor(anime: Anime): Int? {
         val tracked = runCatching { tracks.getAnimeTracksAsFlow().first() }.getOrDefault(emptyList())
             .filter { it.animeId == anime.id }
+        catalogAniListId(anime)?.let { return it }
         tracked.firstOrNull { it.trackerId == ANILIST_TRACKER_ID }?.let { return it.remoteId.toInt() }
         tracked.firstOrNull { it.trackerId == MAL_TRACKER_ID }
             ?.let { catalog.resolveAniListIdByMal(it.remoteId) }?.let { return it }
         return catalog.resolveAniListIdByTitle(anime.title)
     }
 
+    /** AniList id kept in the catalogue entry of a multi-source work (the common case). */
+    private suspend fun catalogAniListId(anime: Anime): Int? {
+        if (anime.source != eu.kanade.tachiyomi.data.multisource.MultiSourceAnimeSource.ID) return null
+        val id = runCatching { Injekt.get<eu.kanade.tachiyomi.data.multisource.MultiSourceWorkStore>().get(anime.url)?.id }
+            .getOrNull() ?: return null
+        return when {
+            id.startsWith("anilist:") -> id.removePrefix("anilist:").toIntOrNull()
+            id.startsWith("mal:") -> id.removePrefix("mal:").toLongOrNull()?.let { catalog.resolveAniListIdByMal(it) }
+            else -> null
+        }
+    }
+
     private suspend fun resolveAniListIds(library: List<Anime>): Map<Long, Int> {
         val result = mutableMapOf<Long, Int>()
+        library.forEach { anime -> catalogAniListId(anime)?.let { result[anime.id] = it } }
         val libraryIds = library.map { it.id }.toSet()
         val allTracks = runCatching { tracks.getAnimeTracksAsFlow().first() }.getOrDefault(emptyList())
             .filter { it.animeId in libraryIds }
@@ -125,7 +139,13 @@ class AnimeUpcomingLoader(
         }
 
         // Ongoing works with nothing known yet are looked up by title (a few, newest first).
-        val ongoing = setOf(SAnime.ONGOING.toLong(), SAnime.PUBLISHING_FINISHED.toLong(), SAnime.UPCOMING.toLong())
+        // Works whose status the source does not give (0) are looked up too: that is most of them.
+        val ongoing = setOf(
+            SAnime.ONGOING.toLong(),
+            SAnime.PUBLISHING_FINISHED.toLong(),
+            SAnime.UPCOMING.toLong(),
+            SAnime.UNKNOWN.toLong(),
+        )
         library
             .filter { it.id !in result && it.status in ongoing }
             .sortedByDescending { it.lastUpdate }

@@ -15,6 +15,18 @@ Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 
 ### Quoi de neuf
 
+**Sauvegardes**
+- Un fichier de sauvegarde reçu par Telegram, WhatsApp ou depuis un gestionnaire de fichiers s'ouvre
+  directement avec Shiro (« Ouvrir avec » ou « Partager vers »), sans l'enregistrer d'abord à la main.
+
+**Chat**
+- Les images reçues dans un salon chiffré s'affichent (elles arrivaient en octets chiffrés, d'où la case
+  grise avec l'icône d'image cassée).
+
+**Bibliothèque**
+- Les cartes rondes « bientôt » retrouvent maintenant l'identifiant AniList des œuvres ajoutées par
+  la recherche multi-source, qui n'en avaient pas.
+
 **Stories**
 - Publie une photo ou une vidéo courte en story depuis la page Social : le « + » sur ton avatar, tout
   en haut. Tes amis la voient pendant 24 h dans le ruban, avec un anneau coloré tant qu'ils ne l'ont

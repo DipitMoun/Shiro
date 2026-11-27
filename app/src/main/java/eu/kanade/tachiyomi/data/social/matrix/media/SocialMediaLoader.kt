@@ -35,7 +35,9 @@ object SocialMediaLoader {
         val client = Injekt.get<MatrixSessionManager>().clientOrNull()
             ?: error("Pas de session Matrix")
         val source = when {
-            media.encryptedFileJson != null -> MediaSource.fromJson(media.encryptedFileJson)
+            // The SDK expects {"file": <description>}. The bare description has a "url" key, so it
+            // used to be read as a plain address: the encrypted bytes came back undecrypted.
+            media.encryptedFileJson != null -> MediaSource.fromJson("""{"file":${media.encryptedFileJson}}""")
             media.url != null -> MediaSource.fromUrl(media.url)
             else -> error("Image sans adresse")
         }
