@@ -23,6 +23,13 @@ object SocialMediaLoader {
 
     fun cached(media: ChatMedia): ByteArray? = cache.get(media.cacheKey)
 
+    /** Same cache, for a source the SDK already handed over (stories): [key] identifies it. */
+    suspend fun loadSource(key: String, source: MediaSource): ByteArray = withContext(Dispatchers.IO) {
+        cache.get(key)?.let { return@withContext it }
+        val client = Injekt.get<MatrixSessionManager>().clientOrNull() ?: error("Pas de session Matrix")
+        client.getMediaContent(source).also { cache.put(key, it) }
+    }
+
     suspend fun load(media: ChatMedia): ByteArray = withContext(Dispatchers.IO) {
         cache.get(media.cacheKey)?.let { return@withContext it }
         val client = Injekt.get<MatrixSessionManager>().clientOrNull()

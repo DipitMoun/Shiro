@@ -399,6 +399,15 @@ class AppModule(val app: Application) : InjektModule {
             )
         }
         addSingletonFactory {
+            eu.kanade.tachiyomi.data.social.story.SocialStoryService(
+                context = app,
+                session = get<MatrixSessionManager>(),
+                transport = get<MatrixRoomTransport>(),
+                friends = get<SocialFriendStore>(),
+                dispatcher = get<SocialCommandDispatcher>(),
+            )
+        }
+        addSingletonFactory {
             SocialLiveListener(
                 get<MatrixSessionManager>(),
                 get<SocialInviteMonitor>(),
