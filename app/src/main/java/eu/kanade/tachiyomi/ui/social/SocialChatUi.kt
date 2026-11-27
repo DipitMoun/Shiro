@@ -1024,6 +1024,67 @@ internal fun EpisodeChooser(
 // ---------------------------------------------------------------------------
 
 /**
+ * What the bytes of a chat image decode to. Decoded with Android's own decoder (GIFs and animated
+ * WebP keep their animation) instead of the app's image pipeline, which showed a grey box for
+ * images received through Matrix.
+ */
+internal sealed interface ChatPicture {
+    class Ready(val drawable: android.graphics.drawable.Drawable) : ChatPicture
+    data object Broken : ChatPicture
+}
+
+internal fun decodeChatPicture(bytes: ByteArray, maxSide: Int = 2048): ChatPicture = try {
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+        val source = android.graphics.ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))
+        ChatPicture.Ready(
+            android.graphics.ImageDecoder.decodeDrawable(source) { decoder, info, _ ->
+                val longest = maxOf(info.size.width, info.size.height)
+                if (longest > maxSide) {
+                    val ratio = maxSide.toFloat() / longest
+                    decoder.setTargetSize((info.size.width * ratio).toInt(), (info.size.height * ratio).toInt())
+                }
+            },
+        )
+    } else {
+        val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        if (bitmap == null) {
+            ChatPicture.Broken
+        } else {
+            ChatPicture.Ready(android.graphics.drawable.BitmapDrawable(null as android.content.res.Resources?, bitmap))
+        }
+    }
+} catch (t: Throwable) {
+    android.util.Log.w(
+        "ShiroChatImage",
+        "cannot decode ${bytes.size} bytes, starts with ${bytes.take(12).joinToString(" ") { "%02x".format(it) }}",
+        t,
+    )
+    ChatPicture.Broken
+}
+
+/** Shows a decoded picture, and plays it when it is animated. */
+@Composable
+private fun PictureView(drawable: android.graphics.drawable.Drawable, fit: Boolean, modifier: Modifier) {
+    androidx.compose.ui.viewinterop.AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            android.widget.ImageView(context).apply {
+                scaleType = if (fit) android.widget.ImageView.ScaleType.FIT_CENTER else android.widget.ImageView.ScaleType.CENTER_CROP
+            }
+        },
+        update = { view ->
+            view.setImageDrawable(drawable)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P &&
+                drawable is android.graphics.drawable.AnimatedImageDrawable
+            ) {
+                drawable.repeatCount = android.graphics.drawable.AnimatedImageDrawable.REPEAT_INFINITE
+                drawable.start()
+            }
+        },
+    )
+}
+
+/**
  * An image of the chat: from the Matrix server for a received one, from the local bytes while it
  * is being sent. Tap to see it full screen.
  */
@@ -1032,7 +1093,6 @@ internal fun ChatImage(
     media: eu.kanade.tachiyomi.data.social.matrix.ChatMedia?,
     local: PickedImage?,
 ) {
-    val context = LocalContext.current
     var viewing by remember { mutableStateOf(false) }
 
     val loaded by androidx.compose.runtime.produceState<Result<ByteArray>?>(
@@ -1042,9 +1102,14 @@ internal fun ChatImage(
     ) {
         if (media != null && value == null) {
             value = runCatching { eu.kanade.tachiyomi.data.social.matrix.media.SocialMediaLoader.load(media) }
+                .onFailure { android.util.Log.w("ShiroChatImage", "download failed for ${media.cacheKey.take(80)}", it) }
         }
     }
     val bytes = local?.bytes ?: loaded?.getOrNull()
+    val picture by androidx.compose.runtime.produceState<ChatPicture?>(null, bytes) {
+        value = bytes?.let { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { decodeChatPicture(it) } }
+    }
+
     val width = local?.width ?: media?.width
     val height = local?.height ?: media?.height
     val ratio = if (width != null && height != null && width > 0 && height > 0) {
@@ -1052,7 +1117,6 @@ internal fun ChatImage(
     } else {
         4f / 3f
     }
-    val key = local?.filename ?: media?.cacheKey.orEmpty()
 
     Box(
         modifier = Modifier
@@ -1061,20 +1125,13 @@ internal fun ChatImage(
             .aspectRatio(ratio)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(enabled = bytes != null) { viewing = true },
+            .clickable(enabled = picture is ChatPicture.Ready) { viewing = true },
         contentAlignment = Alignment.Center,
     ) {
+        val current = picture
         when {
-            bytes != null -> AsyncImage(
-                model = coil3.request.ImageRequest.Builder(context)
-                    .data(bytes)
-                    .memoryCacheKey(key)
-                    .build(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-            loaded?.isFailure == true -> Icon(
+            current is ChatPicture.Ready -> PictureView(current.drawable, fit = false, modifier = Modifier.fillMaxSize())
+            current is ChatPicture.Broken || loaded?.isFailure == true -> Icon(
                 Icons.Outlined.BrokenImage,
                 contentDescription = "Image indisponible",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1086,7 +1143,8 @@ internal fun ChatImage(
         }
     }
 
-    if (viewing && bytes != null) {
+    val ready = picture as? ChatPicture.Ready
+    if (viewing && ready != null) {
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { viewing = false },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
@@ -1098,15 +1156,11 @@ internal fun ChatImage(
                     .clickable { viewing = false },
                 contentAlignment = Alignment.Center,
             ) {
-                AsyncImage(
-                    model = coil3.request.ImageRequest.Builder(context)
-                        .data(bytes)
-                        .memoryCacheKey(key + "/full")
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                // A second decode: one drawable cannot be shown by two views at the same time.
+                val full by androidx.compose.runtime.produceState<ChatPicture?>(null, bytes) {
+                    value = bytes?.let { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { decodeChatPicture(it, 4096) } }
+                }
+                (full as? ChatPicture.Ready)?.let { PictureView(it.drawable, fit = true, modifier = Modifier.fillMaxSize()) }
             }
         }
     }
