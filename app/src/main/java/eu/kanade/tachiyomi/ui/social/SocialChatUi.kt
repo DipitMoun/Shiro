@@ -1064,7 +1064,7 @@ internal fun decodeChatPicture(bytes: ByteArray, maxSide: Int = 2048): ChatPictu
 
 /** Shows a decoded picture, and plays it when it is animated. */
 @Composable
-private fun PictureView(drawable: android.graphics.drawable.Drawable, fit: Boolean, modifier: Modifier) {
+internal fun PictureView(drawable: android.graphics.drawable.Drawable, fit: Boolean, modifier: Modifier) {
     androidx.compose.ui.viewinterop.AndroidView(
         modifier = modifier,
         factory = { context ->

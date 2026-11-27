@@ -103,6 +103,16 @@ class AnimeUpcomingLoader(
             .take(limit)
     }
 
+    /** AniList id of one anime: its tracker entry first, then a title lookup. */
+    suspend fun aniListIdFor(anime: Anime): Int? {
+        val tracked = runCatching { tracks.getAnimeTracksAsFlow().first() }.getOrDefault(emptyList())
+            .filter { it.animeId == anime.id }
+        tracked.firstOrNull { it.trackerId == ANILIST_TRACKER_ID }?.let { return it.remoteId.toInt() }
+        tracked.firstOrNull { it.trackerId == MAL_TRACKER_ID }
+            ?.let { catalog.resolveAniListIdByMal(it.remoteId) }?.let { return it }
+        return catalog.resolveAniListIdByTitle(anime.title)
+    }
+
     private suspend fun resolveAniListIds(library: List<Anime>): Map<Long, Int> {
         val result = mutableMapOf<Long, Int>()
         val libraryIds = library.map { it.id }.toSet()
