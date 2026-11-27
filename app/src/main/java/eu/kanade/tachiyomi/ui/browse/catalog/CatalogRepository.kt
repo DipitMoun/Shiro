@@ -749,13 +749,13 @@ class CatalogRepository(
         // Page.airingSchedules, not Media.airingSchedule(airingAt_greater...): AniList refuses the
         // latter with HTTP 400, which used to leave the calendar silently empty.
         const val AIRING_QUERY = """
-            query ($ids: [Int], $from: Int, $to: Int, $page: Int) {
-              Page(page: $page, perPage: 50) {
+            query (${'$'}ids: [Int], ${'$'}from: Int, ${'$'}to: Int, ${'$'}page: Int) {
+              Page(page: ${'$'}page, perPage: 50) {
                 pageInfo { hasNextPage }
                 airingSchedules(
-                  mediaId_in: $ids,
-                  airingAt_greater: $from,
-                  airingAt_lesser: $to,
+                  mediaId_in: ${'$'}ids,
+                  airingAt_greater: ${'$'}from,
+                  airingAt_lesser: ${'$'}to,
                   sort: TIME
                 ) {
                   mediaId
