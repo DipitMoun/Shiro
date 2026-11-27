@@ -109,6 +109,11 @@ class SocialStoryService(
     /** Stories to show, own reel first, then the friends with something new. */
     val reels: StateFlow<List<StoryReel>> = _reels.asStateFlow()
 
+    private val _roomIds = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    /** Story room of each person we are in a story room with (owner mxid to room id). */
+    val roomIds: StateFlow<Map<String, String>> = _roomIds.asStateFlow()
+
     private val _quota = MutableStateFlow(StoryQuota.status(emptyList(), System.currentTimeMillis()))
 
     /** What was sent in the last 24 hours and 28 days. */
@@ -150,13 +155,16 @@ class SocialStoryService(
         val friendIds = friends.friends.value.mapTo(mutableSetOf()) { it.mxid }
         val found = mutableListOf<StoryItem>()
         val ownRoomIds = mutableSetOf<String>()
+        val roomByOwner = mutableMapOf<String, String>()
         for (room in client.rooms()) {
             val owner = runCatching { StoryRoomCodec.ownerOf(room.topic()) }.getOrNull() ?: continue
             if (owner != self && owner !in friendIds) continue
             if (runCatching { room.membership() }.getOrNull() != Membership.JOINED) continue
+            roomByOwner[owner] = room.id()
             if (owner == self) ownRoomIds += room.id()
             found += readRecent(room)
         }
+        _roomIds.value = roomByOwner
         items.value = found.distinctBy { it.eventId }
         rebuild()
         removeExpiredOwn(self, found.filter { it.authorMxid == self }, ownRoomIds.firstOrNull())
@@ -374,6 +382,12 @@ class SocialStoryService(
             if (membership is MembershipState.Join || membership is MembershipState.Invite) continue
             transport.invite(roomId, friend)
         }
+    }
+
+    /** Our own story room, once it exists. */
+    fun ownRoomIdOrNull(): String? {
+        val self = selfMxid() ?: return null
+        return _roomIds.value[self] ?: prefs.getString("own_room_$self", null)
     }
 
     private fun ownRoomId(client: Client, self: String): String? =

@@ -14,6 +14,17 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import eu.kanade.tachiyomi.data.social.status.SocialStatusService
+import eu.kanade.tachiyomi.data.social.story.StoryReel
+import eu.kanade.tachiyomi.ui.social.story.StatusPill
+import eu.kanade.tachiyomi.ui.social.story.StoryComposerScreen
+import eu.kanade.tachiyomi.ui.social.story.StoryRing
+import eu.kanade.tachiyomi.ui.social.story.StoryViewerScreen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -216,7 +227,6 @@ internal fun SocialHomeContent() {
             SignedInContent(
                 account = account,
                 contentPadding = padding,
-                onEditProfile = { navigator.push(SettingsSocialScreen()) },
                 onShowQr = { showQrSheet = true },
                 onAddFriend = { showAddSheet = true },
                 onMessage = ::toast,
@@ -275,7 +285,6 @@ private fun SignedOutState(connecting: Boolean, onConnect: () -> Unit, modifier:
 private fun SignedInContent(
     account: SocialAccount,
     contentPadding: PaddingValues,
-    onEditProfile: () -> Unit,
     onShowQr: () -> Unit,
     onAddFriend: () -> Unit,
     onMessage: (String) -> Unit,
@@ -293,6 +302,11 @@ private fun SignedInContent(
 
     val activityService = remember { Injekt.get<SocialActivityService>() }
     val storyService = remember { Injekt.get<eu.kanade.tachiyomi.data.social.story.SocialStoryService>() }
+    val statusService = remember { Injekt.get<SocialStatusService>() }
+    val reels by storyService.reels.collectAsStateWithLifecycle()
+    val statuses by statusService.statuses.collectAsStateWithLifecycle()
+    var showProfileSheet by remember { mutableStateOf(false) }
+    var showStatusSheet by remember { mutableStateOf(false) }
     val feed by activityService.feed.collectAsStateWithLifecycle()
     val workOpener = remember { SocialWorkOpener() }
     var openingWork by remember { mutableStateOf(false) }
@@ -305,6 +319,8 @@ private fun SignedInContent(
         activityService.refreshFeed()
         storyService.start()
         storyService.refresh()
+        // The story rooms are known once the stories are read.
+        statusService.refresh()
     }
 
     LazyColumn(
@@ -314,12 +330,17 @@ private fun SignedInContent(
         ),
     ) {
         item(key = "profile") {
-            ProfileHeader(account = account, onEditProfile = onEditProfile, onShowQr = onShowQr)
-        }
-        item(key = "stories") {
-            eu.kanade.tachiyomi.ui.social.story.StoriesRow(
-                selfMxid = account.userId,
-                selfName = account.displayName ?: account.userId,
+            val ownReel = reels.firstOrNull { it.authorMxid == account.userId }
+            SelfHeader(
+                account = account,
+                hasStory = ownReel != null,
+                status = statuses[account.userId],
+                onStory = {
+                    if (ownReel != null) navigator.push(StoryViewerScreen(account.userId)) else navigator.push(StoryComposerScreen())
+                },
+                onAddStory = { navigator.push(StoryComposerScreen()) },
+                onProfile = { showProfileSheet = true },
+                onStatus = { showStatusSheet = true },
             )
         }
 
@@ -351,13 +372,19 @@ private fun SignedInContent(
             if (friends.isEmpty()) {
                 EmptyFriends(onAddFriend = onAddFriend)
             } else {
+                val reelByAuthor = reels.associateBy { it.authorMxid }
+                val reserveStatus = friends.any { statuses[it.mxid] != null }
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(friends, key = { it.mxid }) { friend ->
                         FriendBubble(
                             friend = friend,
+                            reel = reelByAuthor[friend.mxid],
+                            status = statuses[friend.mxid],
+                            reserveStatus = reserveStatus,
+                            onStory = { navigator.push(StoryViewerScreen(friend.mxid)) },
                             onOpen = {
                                 navigator.push(
                                     FriendLibraryScreen(authorMxid = friend.mxid, displayName = friend.displayName),
@@ -417,6 +444,34 @@ private fun SignedInContent(
         }
     }
 
+    if (showProfileSheet) {
+        SocialProfileSheet(
+            account = account,
+            onDismiss = { showProfileSheet = false },
+            onShowQr = onShowQr,
+            onMessage = onMessage,
+        )
+    }
+    if (showStatusSheet) {
+        SocialStatusSheet(
+            current = statuses[account.userId],
+            onDismiss = { showStatusSheet = false },
+            onSave = { text ->
+                showStatusSheet = false
+                scope.launch {
+                    val ok = statusService.setStatus(text)
+                    onMessage(
+                        when {
+                            !ok -> "Statut non publié : ton salon de stories n'est pas encore prêt, réessaie dans un instant"
+                            text.isNullOrBlank() -> "Statut effacé"
+                            else -> "Statut publié"
+                        },
+                    )
+                }
+            },
+        )
+    }
+
     missingExtension?.let { (ref, activity) ->
         MissingExtensionDialog(
             ref = ref,
@@ -468,58 +523,77 @@ private fun SignedInContent(
     }
 }
 
+/**
+ * You, in one line: the avatar with the ring of your story, your name, your status. Tap the avatar
+ * for your story, hold it for everything about the account.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ProfileHeader(account: SocialAccount, onEditProfile: () -> Unit, onShowQr: () -> Unit) {
+private fun SelfHeader(
+    account: SocialAccount,
+    hasStory: Boolean,
+    status: String?,
+    onStory: () -> Unit,
+    onAddStory: () -> Unit,
+    onProfile: () -> Unit,
+    onStatus: () -> Unit,
+) {
     val ownProfile = remember { Injekt.get<SocialOwnProfile>() }
     val avatarBytes by ownProfile.avatar.collectAsStateWithLifecycle()
     val avatar = remember(avatarBytes) { avatarBytes?.let(::decodeAvatar) }
     val profileName by ownProfile.displayName.collectAsStateWithLifecycle()
-    val name = profileName ?: account.displayName?.takeIf { it.isNotBlank() }
+    val name = profileName ?: account.displayName?.takeIf { it.isNotBlank() } ?: shortHandle(account.userId)
+    val haptics = LocalHapticFeedback.current
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(bitmap = avatar, size = 84.dp)
-        Spacer(Modifier.width(16.dp))
+        Box {
+            StoryRing(
+                ringed = hasStory,
+                unseen = false,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .combinedClickable(
+                        onClick = onStory,
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onProfile()
+                        },
+                    ),
+            ) {
+                Avatar(bitmap = avatar, size = 56.dp)
+            }
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+                    .border(2.dp, MaterialTheme.colorScheme.background, CircleShape)
+                    .clickable(onClick = onAddStory),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Add, "Ajouter une story", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(14.dp))
+            }
+        }
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                text = name ?: shortHandle(account.userId),
-                style = MaterialTheme.typography.headlineSmall,
+                text = name,
+                style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            // The handle only adds information when a display name is shown above it.
-            if (name != null) {
-                Text(
-                    text = shortHandle(account.userId),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(
-                    onClick = onEditProfile,
-                    contentPadding = PaddingValues(horizontal = 14.dp),
-                ) {
-                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Modifier")
-                }
-                OutlinedButton(
-                    onClick = onShowQr,
-                    contentPadding = PaddingValues(horizontal = 14.dp),
-                ) {
-                    Icon(Icons.Outlined.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Mon QR")
-                }
-            }
+            Spacer(Modifier.height(4.dp))
+            StatusPill(
+                text = status ?: "Ajouter un statut",
+                placeholder = status == null,
+                onClick = onStatus,
+            )
         }
     }
 }
@@ -587,12 +661,21 @@ private fun FriendRequestRow(invite: SocialRoomInvite, onAccept: () -> Unit, onD
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FriendBubble(friend: SocialFriendRecord, onOpen: () -> Unit, onRemove: () -> Unit) {
+private fun FriendBubble(
+    friend: SocialFriendRecord,
+    reel: StoryReel?,
+    status: String?,
+    reserveStatus: Boolean,
+    onStory: () -> Unit,
+    onOpen: () -> Unit,
+    onRemove: () -> Unit,
+) {
     val avatarLoader = remember { Injekt.get<SocialAvatarLoader>() }
     val avatar by produceState<ImageBitmap?>(null, friend.mxid) {
         value = avatarLoader.loadProfileAvatar(friend.mxid, 192)?.let(::decodeAvatar)
     }
     var menuOpen by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
     val name = friend.displayName?.takeIf { it.isNotBlank() } ?: shortHandle(friend.mxid)
 
     Box {
@@ -600,12 +683,26 @@ private fun FriendBubble(friend: SocialFriendRecord, onOpen: () -> Unit, onRemov
             modifier = Modifier
                 .width(76.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .combinedClickable(onClick = onOpen, onLongClick = { menuOpen = true })
+                .combinedClickable(
+                    // A story to watch comes first; the library is one long press away.
+                    onClick = if (reel != null) onStory else onOpen,
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuOpen = true
+                    },
+                )
                 .padding(vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Avatar(bitmap = avatar, size = 68.dp)
-            Spacer(Modifier.height(6.dp))
+            if (reserveStatus) {
+                Box(Modifier.height(26.dp), contentAlignment = Alignment.BottomCenter) {
+                    if (status != null) StatusPill(text = status, maxWidth = 76.dp)
+                }
+            }
+            StoryRing(ringed = reel != null, unseen = reel?.hasUnseen == true) {
+                Avatar(bitmap = avatar, size = 60.dp)
+            }
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = name,
                 style = MaterialTheme.typography.labelMedium,
@@ -659,7 +756,7 @@ private fun EmptyFriends(onAddFriend: () -> Unit) {
 }
 
 @Composable
-private fun Avatar(bitmap: ImageBitmap?, size: Dp) {
+internal fun Avatar(bitmap: ImageBitmap?, size: Dp) {
     if (bitmap != null) {
         Image(
             bitmap = bitmap,

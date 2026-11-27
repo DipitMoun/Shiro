@@ -408,11 +408,30 @@ class AppModule(val app: Application) : InjektModule {
             )
         }
         addSingletonFactory {
+            eu.kanade.tachiyomi.data.social.status.SocialStatusService(
+                context = app,
+                session = get<MatrixSessionManager>(),
+                credentials = matrixCredentialStore,
+                network = get(),
+                stories = get<eu.kanade.tachiyomi.data.social.story.SocialStoryService>(),
+                friends = get<SocialFriendStore>(),
+            )
+        }
+        addSingletonFactory {
+            eu.kanade.tachiyomi.data.social.matrix.sync.SocialStoryNotifier(
+                app,
+                get<SocialNotificationCursor>(),
+                get<SocialAvatarLoader>(),
+                get<SocialFriendStore>(),
+            )
+        }
+        addSingletonFactory {
             SocialLiveListener(
                 get<MatrixSessionManager>(),
                 get<SocialInviteMonitor>(),
                 get<SocialMessageNotifier>(),
                 get<SocialActivityService>(),
+                get<eu.kanade.tachiyomi.data.social.matrix.sync.SocialStoryNotifier>(),
             )
         }
         addSingletonFactory { SocialInbox(get<MatrixSessionManager>()) }

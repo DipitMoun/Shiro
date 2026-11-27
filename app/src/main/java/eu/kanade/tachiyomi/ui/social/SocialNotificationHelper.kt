@@ -267,6 +267,23 @@ object SocialNotificationHelper {
         post(context, "social_activity:${activity.eventId}", Notifications.ID_SOCIAL_ACTIVITY, notification)
     }
 
+    /** A friend posted a story. One notification per friend: a new story replaces the previous one. */
+    fun showStory(context: Context, ownerMxid: String, ownerName: String, timestamp: Long, avatarBytes: ByteArray?) {
+        val avatar = avatarBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        val notification = NotificationCompat.Builder(context, Notifications.CHANNEL_SOCIAL_STORIES)
+            .setSmallIcon(R.drawable.ic_ani)
+            .setLargeIcon(avatar)
+            .setContentTitle(ownerName)
+            .setContentText("a publié une story")
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setAutoCancel(true)
+            .setWhen(timestamp)
+            .setShowWhen(true)
+            .setContentIntent(openAppIntent(context))
+            .build()
+        post(context, "social_story:$ownerMxid", Notifications.ID_SOCIAL_STORIES, notification)
+    }
+
     fun cancelInvite(context: Context, requestKey: String) {
         NotificationManagerCompat.from(context).cancel(inviteTag(requestKey), Notifications.ID_SOCIAL_INVITES)
     }

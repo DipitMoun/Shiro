@@ -48,6 +48,11 @@ class SocialOwnProfile(
         }
     }
 
+    /** The name just saved, shown before the SDK catches up with it. */
+    fun overrideDisplayName(name: String) {
+        _displayName.value = name
+    }
+
     fun refresh() {
         scope.launch { load() }
     }

@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.data.social.matrix.MatrixSessionManager
 import eu.kanade.tachiyomi.data.social.matrix.SocialRoomKey
 import eu.kanade.tachiyomi.data.social.matrix.SocialSessionState
 import eu.kanade.tachiyomi.data.social.matrix.session.MatrixSessionBootstrap
+import eu.kanade.tachiyomi.data.social.story.StoryRoomCodec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -56,6 +57,7 @@ class SocialLiveListener(
     private val inviteMonitor: SocialInviteMonitor,
     private val notifier: SocialMessageNotifier,
     private val activity: SocialActivityService,
+    private val storyNotifier: SocialStoryNotifier,
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -200,7 +202,8 @@ class SocialLiveListener(
         val room = runCatching { client.getRoom(roomId) }.getOrNull() ?: return
         // Shiro work rooms notify messages; activity rooms feed the Social page.
         val isActivityRoom = activity.isActivityRoom(room)
-        if (!isActivityRoom && SocialRoomKey.parseTopic(room.topic().orEmpty()) == null) return
+        val storyOwner = runCatching { StoryRoomCodec.ownerOf(room.topic()) }.getOrNull()?.takeIf { it != selfMxid }
+        if (!isActivityRoom && storyOwner == null && SocialRoomKey.parseTopic(room.topic().orEmpty()) == null) return
 
         val timeline: Timeline = try {
             room.timelineWithConfiguration(
@@ -222,7 +225,11 @@ class SocialLiveListener(
             override fun onUpdate(diff: List<TimelineDiff>) {
                 markActivity()
                 diff.flatMap(::itemsFromDiff).forEach { item ->
-                    if (isActivityRoom) activity.onTimelineItem(room, item) else handleItem(room, selfMxid, item)
+                    when {
+                        isActivityRoom -> activity.onTimelineItem(room, item)
+                        storyOwner != null -> handleStory(room, storyOwner, item)
+                        else -> handleItem(room, selfMxid, item)
+                    }
                 }
             }
         }
@@ -252,6 +259,15 @@ class SocialLiveListener(
         is TimelineDiff.Append -> diff.values
         is TimelineDiff.Reset -> diff.values
         else -> emptyList()
+    }
+
+    private fun handleStory(room: Room, owner: String, item: TimelineItem) {
+        val event = item.asEvent() ?: return
+        if (event.sender != owner) return
+        val eventId = (event.eventOrTransactionId as? EventOrTransactionId.EventId)?.eventId ?: return
+        val msgLike = event.content as? TimelineItemContent.MsgLike ?: return
+        if (msgLike.content.kind !is MsgLikeKind.Message) return
+        scope.launch { storyNotifier.onStory(room.id(), eventId, event.timestamp.toLong(), owner) }
     }
 
     private fun handleItem(room: Room, selfMxid: String, item: TimelineItem) {
