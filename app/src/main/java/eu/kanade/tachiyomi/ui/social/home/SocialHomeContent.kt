@@ -137,7 +137,7 @@ import uy.kohesive.injekt.api.get
 private const val MIN_SEARCH_CHARS = 3
 private const val TAB_SOCIAL = 0
 private const val TAB_MESSAGES = 1
-private const val MAX_FEED_ITEMS = 30
+private const val MAX_FEED_ITEMS = 60
 
 /** "Messages" with the total unread count, from the inbox. */
 @Composable
@@ -323,6 +323,32 @@ private fun SignedInContent(
         statusService.refresh()
     }
 
+    val openActivity: (SocialActivityItem) -> Unit = openActivity@{ activity ->
+            if (openingWork) return@openActivity
+            openingWork = true
+            scope.launch {
+                val ref = activity.source
+                val exact = ref?.let { workOpener.openBySource(it) }
+                if (exact is SourceOpenResult.Open) {
+                    openingWork = false
+                    navigator.push(exact.screen)
+                    return@launch
+                }
+                if (exact is SourceOpenResult.MissingExtension) {
+                    openingWork = false
+                    missingExtension = exact.ref to activity
+                    return@launch
+                }
+                val screen = workOpener.open(
+                    activity.title,
+                    isManga = activity.kind == SocialActivityKind.MANGA_ADDED,
+                )
+                openingWork = false
+                if (screen != null) navigator.push(screen) else onMessage("Œuvre introuvable")
+            }
+
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding(),
@@ -401,75 +427,25 @@ private fun SignedInContent(
         if (feed.isEmpty()) {
             item(key = "activity-empty") {
                 Text(
-                    text = "Les œuvres que tes amis ajoutent à leur bibliothèque apparaîtront ici.",
+                    text = "Les œuvres que tu ajoutes, et celles de tes amis, apparaîtront ici.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
         } else {
-            items(feed.take(MAX_FEED_ITEMS), key = { "activity-${it.eventId}" }) { activity ->
-                val actor = friends.firstOrNull { it.mxid == activity.actorMxid }
-                ActivityRow(
-                    activity = activity,
-                    actorName = actor?.displayName?.takeIf { it.isNotBlank() } ?: shortHandle(activity.actorMxid),
-                    showActor = true,
-                    inLibrary = activityService.isInLibrary(activity.title),
-                    onClick = {
-                        if (openingWork) return@ActivityRow
-                        openingWork = true
-                        scope.launch {
-                            val ref = activity.source
-                            val exact = ref?.let { workOpener.openBySource(it) }
-                            if (exact is SourceOpenResult.Open) {
-                                openingWork = false
-                                navigator.push(exact.screen)
-                                return@launch
-                            }
-                            if (exact is SourceOpenResult.MissingExtension) {
-                                openingWork = false
-                                missingExtension = exact.ref to activity
-                                return@launch
-                            }
-                            val screen = workOpener.open(
-                                activity.title,
-                                isManga = activity.kind == SocialActivityKind.MANGA_ADDED,
-                            )
-                            openingWork = false
-                            if (screen != null) navigator.push(screen) else onMessage("Œuvre introuvable")
-                        }
+            item(key = "activity-cards") {
+                ActivityCarousel(
+                    activities = feed.take(MAX_FEED_ITEMS),
+                    selfMxid = account.userId,
+                    nameOf = { mxid ->
+                        friends.firstOrNull { it.mxid == mxid }?.displayName?.takeIf { it.isNotBlank() } ?: shortHandle(mxid)
                     },
+                    inLibrary = activityService::isInLibrary,
+                    onOpen = openActivity,
                 )
             }
         }
-    }
-
-    if (showProfileSheet) {
-        SocialProfileSheet(
-            account = account,
-            onDismiss = { showProfileSheet = false },
-            onShowQr = onShowQr,
-            onMessage = onMessage,
-        )
-    }
-    if (showStatusSheet) {
-        SocialStatusSheet(
-            current = statuses[account.userId],
-            onDismiss = { showStatusSheet = false },
-            onSave = { text ->
-                showStatusSheet = false
-                scope.launch {
-                    val ok = statusService.setStatus(text)
-                    onMessage(
-                        when {
-                            !ok -> "Statut non publié : ton salon de stories n'est pas encore prêt, réessaie dans un instant"
-                            text.isNullOrBlank() -> "Statut effacé"
-                            else -> "Statut publié"
-                        },
-                    )
-                }
-            },
-        )
     }
 
     missingExtension?.let { (ref, activity) ->

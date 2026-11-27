@@ -17,6 +17,33 @@ Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 
 ---
 
+## 0.21.1 (27/11/2026)
+
+### Quoi de neuf
+
+**Sauvegardes**
+- Un fichier de sauvegarde reçu par Telegram ou WhatsApp s'ouvre enfin avec « Ouvrir avec Shiro » :
+  le traitement n'était branché que sur les intentions de salon Matrix, donc rien ne se passait.
+
+**Social**
+- L'activité est maintenant un carrousel de fiches : l'affiche, le titre, et la photo de la personne
+  par-dessus. Tes propres ajouts y sont aussi, avec ta photo. Chaque fiche ouvre l'œuvre.
+- L'activité est gardée sur le téléphone (jusqu'à 300 entrées) : elle est là dès l'ouverture et ne
+  disparaît plus quand les salons répondent lentement.
+- La pastille de modification de la photo de profil n'est plus coupée.
+
+**Bibliothèque**
+- Les cartes rondes « bientôt » ont un anneau qui se remplit à l'approche de la sortie, et la date
+  est écrite dessous (« Ép. 11 · Demain 19:30 »). Plus de bandeau noir sur la photo.
+- Les cartes « bientôt » existent aussi pour les mangas et webtoons : le prochain chapitre est
+  estimé d'après le rythme des derniers (« Ch. 313 · vers lun »). Rien n'est affiché quand le rythme
+  n'est pas clair ou que la série semble en pause.
+- Une œuvre qu'on vient d'ajouter apparaît maintenant dans les cartes « bientôt » : une recherche
+  AniList qui échouait (réseau) était retenue comme « introuvable », et les œuvres neuves passaient
+  en dernier. Jusqu'à 8 cartes au lieu de 4.
+
+---
+
 ## 0.21.0 (27/11/2026)
 
 ### Quoi de neuf

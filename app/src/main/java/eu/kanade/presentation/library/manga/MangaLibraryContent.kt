@@ -190,6 +190,28 @@ fun MangaLibraryContent(
         }
     }
 
+    // Chapters expected in the next days, guessed from the rhythm of the last ones.
+    val libraryMangaKeys = categories.flatMap { directWorks(it) }.map { it.libraryManga.manga.id }.distinct().sorted()
+    var upcomingWorks by remember { mutableStateOf<List<eu.kanade.presentation.library.components.UpcomingWork>>(emptyList()) }
+    LaunchedEffect(libraryMangaKeys) {
+        upcomingWorks = withContext(Dispatchers.IO) {
+            runCatching {
+                val library = categories.flatMap { directWorks(it) }.map { it.libraryManga.manga }.distinctBy { it.id }
+                eu.kanade.presentation.library.components.MangaUpcomingLoader().load(library).map { (manga, forecast) ->
+                    eu.kanade.presentation.library.components.UpcomingWork(
+                        id = manga.id,
+                        title = manga.title,
+                        coverModel = manga.asMangaCover(),
+                        episode = forecast.number,
+                        airingAtSeconds = forecast.day.atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toEpochSecond(),
+                        prefix = "Ch.",
+                        estimated = true,
+                    )
+                }
+            }.getOrDefault(emptyList())
+        }
+    }
+
     // The carousel mirrors the resume button of the grid: same setting, same condition.
     val carouselWorks = recentWorks.map {
         RecentWork(
@@ -256,6 +278,7 @@ fun MangaLibraryContent(
                         RecentActivityCarousel(
                             recentWorks = carouselWorks,
                             recentCollections = recentCollections,
+                            upcoming = upcomingWorks,
                             onWorkClick = { mangaId -> onMangaClicked(mangaId) },
                             onCollectionClick = { catId ->
                                 categories.find { it.id == catId }?.let { onCategoryClick(it) }

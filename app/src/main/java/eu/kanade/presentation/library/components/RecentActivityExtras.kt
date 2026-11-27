@@ -1,5 +1,10 @@
 package eu.kanade.presentation.library.components
 
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -11,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -67,6 +73,10 @@ data class UpcomingWork(
     val coverModel: Any?,
     val episode: Int,
     val airingAtSeconds: Long,
+    /** "Ép." for an episode, "Ch." for a chapter. */
+    val prefix: String = "Ép.",
+    /** A chapter date worked out from the rhythm of the last ones, not announced: shown as "vers". */
+    val estimated: Boolean = false,
 )
 
 private val dayFormatter = DateTimeFormatter.ofPattern("EEEE d MMMM 'à' HH:mm", Locale.FRENCH)
@@ -87,7 +97,46 @@ internal fun countdownLabel(airingAtSeconds: Long, now: ZonedDateTime = ZonedDat
 internal fun airingDayLabel(airingAtSeconds: Long, zone: ZoneId = ZoneId.systemDefault()): String =
     Instant.ofEpochSecond(airingAtSeconds).atZone(zone).format(dayFormatter).replaceFirstChar { it.uppercase() }
 
-/** Round card of an episode that is coming: the poster in a circle with the countdown on it. */
+private val shortDay = DateTimeFormatter.ofPattern("EEE", Locale.FRENCH)
+
+/** "Ép. 11 · Demain 19:30", "Ch. 313 · vers Lun": what comes out and when, on one short line. */
+internal fun releaseLabel(
+    airingAtSeconds: Long,
+    prefix: String,
+    number: Int,
+    estimated: Boolean,
+    now: ZonedDateTime = ZonedDateTime.now(),
+): String {
+    val at = Instant.ofEpochSecond(airingAtSeconds).atZone(now.zone)
+    val head = "$prefix $number"
+    val days = ChronoUnit.DAYS.between(now.toLocalDate(), at.toLocalDate())
+    val weekday = at.format(shortDay).removeSuffix(".").replaceFirstChar { it.uppercase() }
+    val day = when {
+        days <= 0L -> "Auj."
+        days == 1L -> "Demain"
+        days <= 6L -> weekday
+        else -> String.format(Locale.FRENCH, "%d/%d", at.dayOfMonth, at.monthValue)
+    }
+    if (estimated) return "$head · vers ${day.replaceFirstChar { it.lowercase() }}"
+    val minutes = Duration.between(now, at).toMinutes()
+    return when {
+        minutes < 0 -> "$head · sorti"
+        minutes < 60 -> "$head · dans ${minutes.coerceAtLeast(1)} min"
+        else -> "$head · $day " + String.format(Locale.FRENCH, "%02d:%02d", at.hour, at.minute)
+    }
+}
+
+/** How far along the wait is: 0 a week before, 1 at the moment it comes out. Never fully empty. */
+internal fun ringProgress(airingAtSeconds: Long, nowSeconds: Long = System.currentTimeMillis() / 1000L, windowDays: Int = 7): Float {
+    val window = windowDays * 24f * 3600f
+    val remaining = (airingAtSeconds - nowSeconds).coerceAtLeast(0L)
+    return (1f - remaining / window).coerceIn(0.04f, 1f)
+}
+
+/**
+ * Round card of something that is coming: the poster in a circle, a ring around it that fills as
+ * the day approaches, and under it the title and the date.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun UpcomingCircleCard(
@@ -95,47 +144,52 @@ internal fun UpcomingCircleCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val progress = ringProgress(work.airingAtSeconds)
+    val ring = MaterialTheme.colorScheme.primary
+    val track = MaterialTheme.colorScheme.outlineVariant
     Column(
         modifier = Modifier
-            .width(96.dp)
+            .width(104.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier
-                .size(88.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            if (work.coverModel != null) {
-                AsyncImage(
-                    model = work.coverModel,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-                )
+        Box(modifier = Modifier.size(92.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                val stroke = 3.dp.toPx()
+                val topLeft = Offset(stroke / 2, stroke / 2)
+                val arc = Size(size.width - stroke, size.height - stroke)
+                drawArc(track, 0f, 360f, false, topLeft, arc, style = Stroke(stroke))
+                drawArc(ring, -90f, 360f * progress, false, topLeft, arc, style = Stroke(stroke, cap = StrokeCap.Round))
             }
-            // Darkens the lower part so the countdown stays readable on any poster.
             Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(34.dp)
-                    .background(Color.Black.copy(alpha = 0.55f)),
-            )
-            Text(
-                text = countdownLabel(work.airingAtSeconds),
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                if (work.coverModel != null) {
+                    AsyncImage(
+                        model = work.coverModel,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
         }
         Spacer(Modifier.height(4.dp))
         Text(
             text = work.title,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = releaseLabel(work.airingAtSeconds, work.prefix, work.episode, work.estimated),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
         )

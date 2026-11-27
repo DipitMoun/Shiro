@@ -67,10 +67,11 @@ class SocialActivityService(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val prefs = context.getSharedPreferences("social_activity", Context.MODE_PRIVATE)
     private val roomMutex = Mutex()
+    private val store = ActivityFeedStore(java.io.File(context.filesDir, "social"))
 
     private val _feed = MutableStateFlow<List<SocialActivityItem>>(emptyList())
 
-    /** Friends' activity, newest first. */
+    /** The user's own activity and the friends', newest first, kept on the phone. */
     val feed: StateFlow<List<SocialActivityItem>> = _feed.asStateFlow()
 
     private val _shareEnabled = MutableStateFlow(prefs.getBoolean(KEY_SHARE, true))
@@ -91,7 +92,8 @@ class SocialActivityService(
         val self = selfMxid() ?: return
         if (startedFor == self) return
         startedFor = self
-        _feed.value = emptyList()
+        // What was seen before is shown at once; the rooms then add what is new.
+        _feed.value = store.load(self)
 
         scope.launch {
             // Keeps every current friend invited to our activity room.
@@ -138,7 +140,8 @@ class SocialActivityService(
         val items = mutableListOf<SocialActivityItem>()
         for (room in client.rooms()) {
             val owner = runCatching { SocialActivityCodec.ownerOf(room.topic()) }.getOrNull() ?: continue
-            if (owner == self || owner !in friendIds) continue
+            // Our own room too: it holds what we added on a previous install or another phone.
+            if (owner != self && owner !in friendIds) continue
             if (runCatching { room.membership() }.getOrNull() != Membership.JOINED) continue
             items += readRecent(room)
         }
@@ -183,10 +186,11 @@ class SocialActivityService(
 
     private fun merge(items: List<SocialActivityItem>) {
         if (items.isEmpty()) return
-        _feed.value = (_feed.value + items)
-            .distinctBy { it.eventId }
-            .sortedByDescending { it.timestamp }
-            .take(MAX_FEED)
+        val self = selfMxid()
+        val merged = synchronized(this) {
+            ActivityFeedRules.merge(_feed.value, items, self, MAX_FEED).also { _feed.value = it }
+        }
+        if (self != null) store.save(self, merged)
     }
 
     private class AddedWork(val title: String, val cover: String?, val source: eu.kanade.tachiyomi.data.social.WorkSourceRef?)
@@ -204,7 +208,24 @@ class SocialActivityService(
 
         val added = current.filterKeys { it.toString() !in known }
         // Bulk imports (restore, Telegram) are not news either.
-        if (added.isEmpty() || added.size > MAX_BURST || !_shareEnabled.value) return
+        if (added.isEmpty() || added.size > MAX_BURST) return
+
+        // Our own activity is kept whether or not we share it: it is ours to look back on.
+        val now = System.currentTimeMillis()
+        merge(
+            added.values.map { work ->
+                SocialActivityItem(
+                    eventId = "local:${kind.name}:${normalize(work.title)}:$now",
+                    actorMxid = self,
+                    kind = kind,
+                    title = work.title,
+                    coverUrl = work.cover?.takeIf { it.startsWith("http") },
+                    timestamp = now,
+                    source = work.source,
+                )
+            },
+        )
+        if (!_shareEnabled.value) return
 
         val roomId = roomMutex.withLock { prefs.getString(roomKey(self), null) } ?: return
         added.values.forEach { work ->
@@ -311,7 +332,7 @@ class SocialActivityService(
     private companion object {
         const val KEY_SHARE = "share_activity"
         const val MAX_BURST = 3
-        const val MAX_FEED = 100
+        const val MAX_FEED = 300
         const val PAGE = 30
         const val PAGINATE_TIMEOUT_MS = 5_000L
         const val SETTLE_MS = 400L

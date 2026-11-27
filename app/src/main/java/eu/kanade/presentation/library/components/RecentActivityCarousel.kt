@@ -111,7 +111,12 @@ fun RecentActivityCarousel(
     sheetUpcoming?.let { work ->
         RecentCardSheet(
             title = work.title,
-            detail = "Épisode ${work.episode} · ${airingDayLabel(work.airingAtSeconds)}",
+            detail = if (work.estimated) {
+                "Chapitre ${work.episode}, vers ${airingDayLabel(work.airingAtSeconds).substringBefore(" à ").lowercase()} " +
+                    "(estimé d'après le rythme des derniers chapitres)"
+            } else {
+                "Épisode ${work.episode} · ${airingDayLabel(work.airingAtSeconds)}"
+            },
             onDismiss = { sheetUpcoming = null },
             onOpen = { onWorkClick(work.id) },
             onContinue = null,
