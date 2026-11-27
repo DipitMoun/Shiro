@@ -13,6 +13,39 @@ Dernière release publiée : 0.19.3 (code 136), le 25/11/2026.
 
 ## Prochaine version (en préparation)
 
+(rien pour l'instant)
+
+---
+
+## 0.21.0 (27/11/2026)
+
+### Quoi de neuf
+
+**Social**
+- La page Social est plus légère : ta photo est petite, avec ton pseudo et un statut (60 caractères,
+  visible 24 h par tes amis). Un appui sur la photo ouvre ta story, un « + » en ajoute une.
+- Maintiens ta photo pour ouvrir tout ce qui concerne ton compte : photo, pseudo, notifications,
+  partage de l'activité, QR et déconnexion.
+- La liste d'amis et les stories forment une seule rangée : un anneau coloré autour d'un ami veut
+  dire une story pas encore vue. Un appui ouvre sa story, un appui long le menu (bibliothèque,
+  retirer). Son statut apparaît au-dessus de sa photo.
+- Tu es prévenu quand un ami publie une story (une notification par ami, coupée quand l'app est ouverte).
+
+**Notifications**
+- Les notifications d'activité des amis affichent la couverture en grand quand on les déplie.
+- Rappels de sortie pour les animés de ta bibliothèque : la veille à partir de 18 h, puis peu avant
+  l'heure de diffusion, avec la couverture. Ils ont leur propre canal (« Rappels de sortie ») et
+  s'ouvrent sur la fiche de l'animé. Pas de rappel pour les chapitres de manga : il n'existe pas de
+  calendrier fiable.
+
+**Recherche**
+- La recherche dans les sources manga a maintenant la section « Catalogue » en haut (AniList, MAL,
+  Kitsu), comme pour les animés, au-dessus des résultats de tes extensions.
+
+---
+
+## 0.20.1 (27/11/2026)
+
 ### Quoi de neuf
 
 **Sauvegardes**
