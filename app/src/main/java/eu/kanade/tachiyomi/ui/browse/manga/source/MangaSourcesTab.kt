@@ -45,7 +45,7 @@ import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import eu.kanade.tachiyomi.ui.browse.manga.source.browse.BrowseMangaSourceScreen
 import eu.kanade.tachiyomi.ui.browse.manga.source.discover.MangaDiscoverScreenModel
-import eu.kanade.tachiyomi.ui.browse.manga.source.globalsearch.GlobalMangaSearchScreen
+import eu.kanade.tachiyomi.ui.browse.manga.search.UnifiedMangaSearchScreen
 import eu.kanade.tachiyomi.ui.browse.telegram.TelegramSourceScreen
 import eu.kanade.tachiyomi.ui.entries.manga.MangaScreen
 import kotlinx.collections.immutable.persistentListOf
@@ -105,7 +105,7 @@ fun Screen.mangaSourcesTab(): TabContent {
             AppBar.Action(
                 title = stringResource(MR.strings.action_global_search),
                 icon = Icons.Outlined.TravelExplore,
-                onClick = { navigator.push(GlobalMangaSearchScreen()) },
+                onClick = { navigator.push(UnifiedMangaSearchScreen()) },
             ),
             AppBar.Action(
                 title = "Extensions participantes",
