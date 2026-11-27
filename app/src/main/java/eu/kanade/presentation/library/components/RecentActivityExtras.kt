@@ -1,5 +1,7 @@
 package eu.kanade.presentation.library.components
 
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -156,7 +158,17 @@ internal fun UpcomingDivider() {
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             softWrap = false,
-            modifier = Modifier.rotate(-90f),
+            // Measured wide, then turned: rotating alone leaves the 22 dp width to lay the word out in.
+            modifier = Modifier
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints.copy(maxWidth = Constraints.Infinity, maxHeight = Constraints.Infinity))
+                    layout(placeable.height, placeable.width) {
+                        placeable.placeWithLayer(
+                            x = -(placeable.width - placeable.height) / 2,
+                            y = (placeable.width - placeable.height) / 2,
+                        ) { rotationZ = -90f }
+                    }
+                },
         )
     }
 }

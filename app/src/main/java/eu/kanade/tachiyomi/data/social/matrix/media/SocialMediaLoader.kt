@@ -27,7 +27,22 @@ object SocialMediaLoader {
     suspend fun loadSource(key: String, source: MediaSource): ByteArray = withContext(Dispatchers.IO) {
         cache.get(key)?.let { return@withContext it }
         val client = Injekt.get<MatrixSessionManager>().clientOrNull() ?: error("Pas de session Matrix")
-        client.getMediaContent(source).also { cache.put(key, it) }
+        fetch(client, source).also { cache.put(key, it) }
+    }
+
+    /**
+     * Reads the file without the SDK's own media cache. That cache is keyed by the address of the
+     * file, so a copy stored while the attachment was read as a plain file (not decrypted) kept
+     * being handed back for the encrypted description of the same file.
+     */
+    private suspend fun fetch(client: org.matrix.rustcomponents.sdk.Client, source: MediaSource): ByteArray {
+        val context = Injekt.get<android.app.Application>()
+        val handle = client.getMediaFile(source, null, "application/octet-stream", false, context.cacheDir.path)
+        return try {
+            java.io.File(handle.path()).readBytes()
+        } finally {
+            runCatching { handle.close() }
+        }
     }
 
     suspend fun load(media: ChatMedia): ByteArray = withContext(Dispatchers.IO) {
@@ -41,7 +56,7 @@ object SocialMediaLoader {
             media.url != null -> MediaSource.fromUrl(media.url)
             else -> error("Image sans adresse")
         }
-        val bytes = client.getMediaContent(source)
+        val bytes = fetch(client, source)
         cache.put(media.cacheKey, bytes)
         bytes
     }
